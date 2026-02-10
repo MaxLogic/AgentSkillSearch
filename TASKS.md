@@ -3,8 +3,8 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 8 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 4, Blocked: 4)
-Done tasks: 13
+Open tasks: 7 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 3, Blocked: 4)
+Done tasks: 14
 
 ## In Progress
 
@@ -13,14 +13,6 @@ Done tasks: 13
 ## Next – This Week
 
 ## Next – Later
-
-### T-011 [UI] Main UI (ListView + preview pane + actions)
-Outcome: Build MainForm: search bar, results list view, status bar, preview pane in TMS FNC Edge Browser (simple sanitized snippet rendering, no full markdown renderer), duplicate-info side area in preview, Enter/double-click open, context menu open folder/copy path, and keyboard shortcuts.
-Proof:
-- Command: Operate only via keyboard and NVDA.
-- Expect: NVDA reads list rows; preview updates on selection; shortcuts work (Ctrl+L, Enter, Ctrl+Enter, F5, Esc, Apps/Shift+F10).
-Touches: src/UI/MainForm.pas, src/UI/*.dfm
-Notes: Spec sections 11.1–11.3
 
 ### T-012 [SEARCH] Search-as-you-type debounce + cancellation safety
 Outcome: Implement threaded search with debounce (SearchDebounceMs) and generation-id logic so outdated searches discard results; cancellation on Esc.
@@ -90,6 +82,14 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-011 [UI] Main UI (ListView + preview pane + actions)
+Outcome: Build MainForm: search bar, results list view, status bar, preview pane in TMS FNC Edge Browser (simple sanitized snippet rendering, no full markdown renderer), duplicate-info side area in preview, Enter/double-click open, context menu open folder/copy path, and keyboard shortcuts.
+Proof:
+- Command: Operate only via keyboard and NVDA.
+- Expect: NVDA reads list rows; preview updates on selection; shortcuts work (Ctrl+L, Enter, Ctrl+Enter, F5, Esc, Apps/Shift+F10).
+Touches: src/UI/MainForm.pas, src/UI/*.dfm
+Notes: Spec sections 11.1–11.3
 
 ### T-008 [SEARCH] FTS query parser + BM25 ranking
 Outcome: Implement query syntax (phrases, -exclude, name:, tag:, path:, has:scripts, limit:) and execute FTS5 search with bm25 field weights; return sorted results with lex_score.
