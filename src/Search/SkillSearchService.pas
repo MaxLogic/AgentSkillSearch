@@ -8,6 +8,8 @@ uses
 type
   TSkillSearchResult = record
     Description: string;
+    DuplicateCount: Integer;
+    DuplicatePaths: string;
     HasScripts: Integer;
     LexScore: Double;
     Name: string;
@@ -39,7 +41,7 @@ type
 implementation
 
 uses
-  System.Classes, System.Math, System.StrUtils, System.SysUtils, Data.DB,
+  System.Classes, System.Generics.Collections, System.Math, System.StrUtils, System.SysUtils, Data.DB,
   FireDAC.DApt, FireDAC.Stan.Async, FireDAC.Stan.Def, FireDAC.Stan.Intf, FireDAC.Stan.Option,
   FireDAC.Stan.Param,
   QueryParser;
@@ -178,6 +180,10 @@ end;
 
 function TSkillSearchService.Search(const aRawQuery: string): TArray<TSkillSearchResult>;
 var
+  lCanonicalResult: TSkillSearchResult;
+  lDuplicateByBodyHash: TDictionary<string, Integer>;
+  lBodyHash: string;
+  lCanonicalIndex: Integer;
   i: Integer;
   lFtsMatch: string;
   lQuery: TFDQuery;
@@ -186,6 +192,7 @@ var
   lSql: TStringBuilder;
 begin
   Result := nil;
+  lDuplicateByBodyHash := TDictionary<string, Integer>.Create;
   lSearchQuery := ParseSearchQuery(aRawQuery);
   lFtsMatch := BuildFtsMatchExpression(lSearchQuery);
 
@@ -194,14 +201,16 @@ begin
   try
     if lFtsMatch <> '' then
     begin
-      lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.has_scripts, s.scripts_count,');
+      lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.body_hash, s.has_scripts,');
+      lSql.AppendLine('  s.scripts_count,');
       lSql.AppendLine('  s.scripts_exts, s.body_md, snippet(skills_fts, 3, ''[['', '']]'', '' ... '', 32) AS snippet,');
       lSql.AppendLine('  (-bm25(skills_fts, 10.0, 5.0, 4.0, 1.0)) AS lex_score');
       lSql.AppendLine('FROM skills_fts');
       lSql.AppendLine('JOIN skills s ON s.id = skills_fts.rowid');
       lSql.AppendLine('WHERE skills_fts MATCH :match');
     end else begin
-      lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.has_scripts, s.scripts_count,');
+      lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.body_hash, s.has_scripts,');
+      lSql.AppendLine('  s.scripts_count,');
       lSql.AppendLine('  s.scripts_exts, s.body_md, '''' AS snippet,');
       lSql.AppendLine('  0.0 AS lex_score');
       lSql.AppendLine('FROM skills s');
@@ -286,6 +295,8 @@ begin
       lResult.Tags := lQuery.FieldByName('tags').AsString;
       lResult.SkillFile := lQuery.FieldByName('skill_file').AsString;
       lResult.SkillRoot := lQuery.FieldByName('skill_root').AsString;
+      lResult.DuplicateCount := 1;
+      lResult.DuplicatePaths := '';
       lResult.HasScripts := lQuery.FieldByName('has_scripts').AsInteger;
       lResult.ScriptsCount := lQuery.FieldByName('scripts_count').AsInteger;
       lResult.ScriptsExts := lQuery.FieldByName('scripts_exts').AsString;
@@ -298,11 +309,34 @@ begin
         lResult.Snippet := ClampSnippet(lResult.Snippet);
       end;
 
+      lBodyHash := Trim(lQuery.FieldByName('body_hash').AsString);
+      if lBodyHash = '' then
+      begin
+        lBodyHash := lResult.SkillFile;
+      end;
+
+      if lDuplicateByBodyHash.TryGetValue(lBodyHash, lCanonicalIndex) then
+      begin
+        lCanonicalResult := Result[lCanonicalIndex];
+        Inc(lCanonicalResult.DuplicateCount);
+        if lCanonicalResult.DuplicatePaths = '' then
+        begin
+          lCanonicalResult.DuplicatePaths := lResult.SkillFile;
+        end else begin
+          lCanonicalResult.DuplicatePaths := lCanonicalResult.DuplicatePaths + sLineBreak + lResult.SkillFile;
+        end;
+        Result[lCanonicalIndex] := lCanonicalResult;
+        lQuery.Next;
+        Continue;
+      end;
+
       SetLength(Result, Length(Result) + 1);
+      lDuplicateByBodyHash.Add(lBodyHash, Length(Result) - 1);
       Result[High(Result)] := lResult;
       lQuery.Next;
     end;
   finally
+    lDuplicateByBodyHash.Free;
     lQuery.Free;
     lSql.Free;
   end;
