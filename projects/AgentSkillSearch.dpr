@@ -6,13 +6,13 @@ program AgentSkillSearch;
 
 uses
   Vcl.Forms,
-  SkillSearchMainForm in '..\src\SkillSearchMainForm.pas';
+  MainForm in '..\src\UI\MainForm.pas';
 
 {$R *.res}
 
 begin
   Application.Initialize;
   Application.MainFormOnTaskbar := True;
-  Application.CreateForm(TSkillSearchMainForm, MainForm);
+  Application.CreateForm(TMainForm, AppMainForm);
   Application.Run;
 end.
