@@ -8,6 +8,7 @@
 - UTF-8 `Sources.lst` parser with comment filtering, path normalization, and invalid-path reporting covered by executable tests (`T-003`).
 - Bounded multi-thread scan engine for recursive folder traversal with repo/`SKILL.md` discovery and skip-folder enforcement (`T-004`).
 - Non-interactive git pull worker with per-repo throttling/timeout and persisted pull status/output/duration/head metadata (`T-005`).
+- Deterministic `SKILL.md` indexing with frontmatter-aware name/description/tags parsing, SHA-256 body hashing, FTS refresh, and unchanged-file reindex skipping (`T-006`).
 - Strongly typed portable `settings.ini` loader that creates defaults, repairs missing keys, and logs key restoration events (`T-015`).
 - Worktree-aware git repo discovery with `.git` file/directory handling and persisted repo roots for pull scheduling (`T-016`).
 - Multi-stage scan/git/index pipeline coordinator with cancellable processing and single-writer batched DB commits (`T-017`).

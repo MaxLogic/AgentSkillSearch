@@ -34,6 +34,18 @@ type
     RootPath: string;
   end;
 
+  TSkillState = record
+    BodyHash: string;
+    BodyMarkdown: string;
+    Description: string;
+    Id: Integer;
+    IndexedUtc: string;
+    Name: string;
+    SkillFile: string;
+    SkillRoot: string;
+    Tags: string;
+  end;
+
   TDatabaseManager = class
   private
     fConnection: TFDConnection;
@@ -43,6 +55,7 @@ type
     procedure ApplyPragmas(var aResult: TDbInitResult);
     procedure ConfigureConnection;
     procedure EnsureDatabaseFolder;
+    function IsSkillUnchanged(const aSkill: TIndexedSkill): Boolean;
     function QueryScalarInt(const aSql: string): Integer;
     function QuerySkillIdBySkillFile(const aSkillFile: string): Integer;
     function QueryScalarText(const aSql: string): string;
@@ -56,8 +69,10 @@ type
     function GetRepoCount: Integer;
     function GetSkillCount: Integer;
     function Initialize: TDbInitResult;
+    function GetSkillFtsBodyBySkillFile(const aSkillFile: string): string;
     function TableExists(const aTableName: string): Boolean;
     function TryGetRepoState(const aRootPath: string; out aState: TRepoState): Boolean;
+    function TryGetSkillState(const aSkillFile: string; out aState: TSkillState): Boolean;
     procedure UpsertRepoRoot(const aRootPath: string);
     procedure UpsertRepoPullResult(const aPull: TRepoPullUpdate);
     procedure UpsertSkill(const aSkill: TIndexedSkill);
@@ -279,12 +294,72 @@ begin
   Result := QueryScalarInt('SELECT COUNT(1) FROM skills;');
 end;
 
+function TDatabaseManager.GetSkillFtsBodyBySkillFile(const aSkillFile: string): string;
+var
+  lQuery: TFDQuery;
+begin
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'SELECT f.body_md ' +
+      'FROM skills_fts f ' +
+      'JOIN skills s ON s.id = f.rowid ' +
+      'WHERE s.skill_file = :skill_file;';
+    lQuery.ParamByName('skill_file').AsString := aSkillFile;
+    lQuery.Open;
+    if lQuery.IsEmpty then
+    begin
+      Exit('');
+    end;
+
+    Result := lQuery.Fields[0].AsString;
+  finally
+    lQuery.Free;
+  end;
+end;
+
 function TDatabaseManager.TableExists(const aTableName: string): Boolean;
 begin
   Result := QueryScalarInt(
     'SELECT COUNT(1) FROM sqlite_master WHERE type IN (''table'', ''view'') AND name = ' +
     QuotedStr(aTableName) + ';'
   ) > 0;
+end;
+
+function TDatabaseManager.TryGetSkillState(const aSkillFile: string; out aState: TSkillState): Boolean;
+var
+  lQuery: TFDQuery;
+begin
+  aState := Default(TSkillState);
+
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'SELECT id, skill_root, skill_file, name, description, tags, body_md, body_hash, indexed_utc ' +
+      'FROM skills WHERE skill_file = :skill_file;';
+    lQuery.ParamByName('skill_file').AsString := aSkillFile;
+    lQuery.Open;
+
+    Result := not lQuery.IsEmpty;
+    if not Result then
+    begin
+      Exit(False);
+    end;
+
+    aState.Id := lQuery.FieldByName('id').AsInteger;
+    aState.SkillRoot := lQuery.FieldByName('skill_root').AsString;
+    aState.SkillFile := lQuery.FieldByName('skill_file').AsString;
+    aState.Name := lQuery.FieldByName('name').AsString;
+    aState.Description := lQuery.FieldByName('description').AsString;
+    aState.Tags := lQuery.FieldByName('tags').AsString;
+    aState.BodyMarkdown := lQuery.FieldByName('body_md').AsString;
+    aState.BodyHash := lQuery.FieldByName('body_hash').AsString;
+    aState.IndexedUtc := lQuery.FieldByName('indexed_utc').AsString;
+  finally
+    lQuery.Free;
+  end;
 end;
 
 function TDatabaseManager.TryGetRepoState(const aRootPath: string; out aState: TRepoState): Boolean;
@@ -387,11 +462,38 @@ begin
   end;
 end;
 
+function TDatabaseManager.IsSkillUnchanged(const aSkill: TIndexedSkill): Boolean;
+var
+  lQuery: TFDQuery;
+begin
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text := 'SELECT body_hash, file_mtime_utc FROM skills WHERE skill_file = :skill_file;';
+    lQuery.ParamByName('skill_file').AsString := aSkill.SkillFile;
+    lQuery.Open;
+    if lQuery.IsEmpty then
+    begin
+      Exit(False);
+    end;
+
+    Result := SameText(lQuery.FieldByName('body_hash').AsString, aSkill.BodyHash) and
+      SameText(lQuery.FieldByName('file_mtime_utc').AsString, aSkill.FileMtimeUtc);
+  finally
+    lQuery.Free;
+  end;
+end;
+
 procedure TDatabaseManager.UpsertSkill(const aSkill: TIndexedSkill);
 var
   lQuery: TFDQuery;
   lSkillId: Integer;
 begin
+  if IsSkillUnchanged(aSkill) then
+  begin
+    Exit;
+  end;
+
   lQuery := TFDQuery.Create(nil);
   try
     lQuery.Connection := fConnection;
