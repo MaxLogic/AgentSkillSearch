@@ -8,7 +8,7 @@ implementation
 
 uses
   System.DateUtils, System.Hash, System.IOUtils, System.StrUtils, System.SysUtils,
-  AppPaths, DatabaseManager, QueryParser, SkillSearchService, SkillTypes;
+  AppPaths, DatabaseManager, PreviewRenderer, QueryParser, SkillSearchService, SkillTypes;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -60,6 +60,8 @@ end;
 
 procedure SeedSearchFixture(aDbManager: TDatabaseManager);
 var
+  i: Integer;
+  lLongBody: string;
   lSkills: TArray<TIndexedSkill>;
   lRootA: string;
   lRootB: string;
@@ -68,6 +70,13 @@ begin
   lRootA := 'C:\skills\repo-alpha\retry-patterns';
   lRootB := 'C:\skills\repo-beta\network-basics';
   lRootC := 'C:\skills\repo-gamma\jwt-auth';
+  lLongBody :=
+    'How to implement retry with backoff and rate limit in Delphi.' + sLineBreak +
+    'Inline html <script>alert(1)</script> should never render as executable markup.' + sLineBreak;
+  for i := 1 to 40 do
+  begin
+    lLongBody := lLongBody + 'Retry loops should include bounded jitter and clear retry limits. ';
+  end;
 
   SetLength(lSkills, 3);
   lSkills[0] := BuildSkill(
@@ -76,7 +85,7 @@ begin
     'Retry Patterns',
     'Delphi retry guide',
     'delphi;network',
-    'How to implement retry with backoff and rate limit in Delphi.',
+    lLongBody,
     1,
     2,
     'ps1;py'
@@ -127,6 +136,7 @@ var
   lDbPath: string;
   lFixtureRoot: string;
   lResults: TArray<TSkillSearchResult>;
+  lSearchServiceShortSnippet: TSkillSearchService;
   lSearchService: TSkillSearchService;
   lSkillState: TSkillState;
 begin
@@ -172,15 +182,39 @@ begin
     lResults := lSearchService.Search('"rate limit" limit:1 path:repo-alpha tag:delphi');
     AssertEqualInt(1, Length(lResults), 'Limit/path/tag filters should narrow to one result');
     AssertTrue(ContainsText(lResults[0].SkillRoot, 'repo-alpha'), 'Path filter mismatch');
+    AssertTrue(Length(lResults[0].Snippet) <= 600, 'Default snippet max chars should be enforced');
+    AssertTrue(ContainsText(lResults[0].Snippet, '[['), 'Expected snippet highlight markers for FTS hits');
+    AssertTrue(ContainsText(lResults[0].Snippet, ']]'), 'Expected snippet highlight markers for FTS hits');
   finally
     lSearchService.Free;
   end;
+
+  lSearchServiceShortSnippet := TSkillSearchService.Create(lDbPath, GetSqliteDllPath, 80);
+  try
+    lResults := lSearchServiceShortSnippet.Search('retry');
+    AssertTrue(Length(lResults) >= 1, 'Expected at least one retry result with short snippet cap');
+    AssertTrue(Length(lResults[0].Snippet) <= 80, 'Configured short snippet cap should be enforced');
+  finally
+    lSearchServiceShortSnippet.Free;
+  end;
+end;
+
+procedure TestPreviewSnippetHtmlIsSanitizedAndHighlighted;
+var
+  lHtml: string;
+begin
+  lHtml := BuildPreviewSnippetHtml('Before [[retry]] <script>alert(1)</script> after');
+  AssertTrue(ContainsText(lHtml, '<mark>retry</mark>'), 'Expected highlight markers to render as <mark>');
+  AssertTrue(not ContainsText(lHtml, '<script>'), 'Expected raw script tags to be escaped');
+  AssertTrue(ContainsText(lHtml, '&lt;script&gt;alert(1)&lt;/script&gt;'),
+    'Expected escaped script content in snippet HTML');
 end;
 
 procedure RunSearchTests;
 begin
   TestQueryParserUnderstandsHasScriptsFlag;
   TestSearchFiltersAndRanking;
+  TestPreviewSnippetHtmlIsSanitizedAndHighlighted;
 end;
 
 end.

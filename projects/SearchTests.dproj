@@ -35,7 +35,7 @@
     <DCC_N>false</DCC_N>
     <DCC_S>false</DCC_S>
     <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
-    <DCC_UnitSearchPath>..\..\MaxLogicFoundation;..\src;..\src\Db;..\src\Indexer;..\src\Search;..\tests;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+    <DCC_UnitSearchPath>..\..\MaxLogicFoundation;..\src;..\src\Db;..\src\Indexer;..\src\Search;..\src\UI;..\tests;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
     <SanitizedProjectName>SearchTests</SanitizedProjectName>
   </PropertyGroup>
 
@@ -49,6 +49,7 @@
     <DCCReference Include="..\src\Indexer\SkillTypes.pas" />
     <DCCReference Include="..\src\Search\QueryParser.pas" />
     <DCCReference Include="..\src\Search\SkillSearchService.pas" />
+    <DCCReference Include="..\src\UI\PreviewRenderer.pas" />
     <BuildConfiguration Include="Base">
       <Key>Base</Key>
     </BuildConfiguration>

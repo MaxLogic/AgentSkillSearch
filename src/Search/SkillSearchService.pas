@@ -11,6 +11,7 @@ type
     HasScripts: Integer;
     LexScore: Double;
     Name: string;
+    Snippet: string;
     ScriptsCount: Integer;
     ScriptsExts: string;
     SkillFile: string;
@@ -23,10 +24,14 @@ type
     fConnection: TFDConnection;
     fDatabasePath: string;
     fDriverLink: TFDPhysSQLiteDriverLink;
+    fSnippetMaxChars: Integer;
     fSqliteDllPath: string;
+    function BuildFallbackSnippet(const aBody: string; const aTerms: TArray<string>): string;
+    function ClampSnippet(const aValue: string): string;
     procedure ConfigureConnection;
   public
-    constructor Create(const aDatabasePath, aSqliteDllPath: string);
+    constructor Create(const aDatabasePath, aSqliteDllPath: string); overload;
+    constructor Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer); overload;
     destructor Destroy; override;
     function Search(const aRawQuery: string): TArray<TSkillSearchResult>;
   end;
@@ -34,7 +39,7 @@ type
 implementation
 
 uses
-  System.Classes, System.SysUtils, Data.DB,
+  System.Classes, System.Math, System.StrUtils, System.SysUtils, Data.DB,
   FireDAC.DApt, FireDAC.Stan.Async, FireDAC.Stan.Def, FireDAC.Stan.Intf, FireDAC.Stan.Option,
   FireDAC.Stan.Param,
   QueryParser;
@@ -51,11 +56,100 @@ begin
   Result := '%' + LowerCase(EscapeLike(aValue)) + '%';
 end;
 
+function TSkillSearchService.ClampSnippet(const aValue: string): string;
+begin
+  if fSnippetMaxChars <= 0 then
+  begin
+    Exit(aValue);
+  end;
+
+  if Length(aValue) <= fSnippetMaxChars then
+  begin
+    Exit(aValue);
+  end;
+
+  if fSnippetMaxChars <= 3 then
+  begin
+    Exit(Copy(aValue, 1, fSnippetMaxChars));
+  end;
+
+  Result := Copy(aValue, 1, fSnippetMaxChars - 3) + '...';
+end;
+
+function TSkillSearchService.BuildFallbackSnippet(const aBody: string; const aTerms: TArray<string>): string;
+var
+  i: Integer;
+  lBodyLower: string;
+  lEndPos: Integer;
+  lPos: Integer;
+  lStartPos: Integer;
+  lTerm: string;
+begin
+  if Trim(aBody) = '' then
+  begin
+    Exit('');
+  end;
+
+  lPos := 0;
+  lBodyLower := LowerCase(aBody);
+  for i := 0 to Pred(Length(aTerms)) do
+  begin
+    lTerm := Trim(aTerms[i]);
+    if lTerm = '' then
+    begin
+      Continue;
+    end;
+
+    lPos := Pos(LowerCase(lTerm), lBodyLower);
+    if lPos > 0 then
+    begin
+      Break;
+    end;
+  end;
+
+  if lPos = 0 then
+  begin
+    Result := ClampSnippet(aBody);
+    Exit;
+  end;
+
+  lStartPos := Max(1, lPos - (fSnippetMaxChars div 3));
+  lEndPos := Min(Length(aBody), lStartPos + fSnippetMaxChars - 1);
+  Result := Copy(aBody, lStartPos, lEndPos - lStartPos + 1);
+  if lStartPos > 1 then
+  begin
+    Result := '... ' + Result;
+  end;
+  if lEndPos < Length(aBody) then
+  begin
+    Result := Result + ' ...';
+  end;
+
+  for i := 0 to Pred(Length(aTerms)) do
+  begin
+    lTerm := Trim(aTerms[i]);
+    if lTerm = '' then
+    begin
+      Continue;
+    end;
+
+    Result := StringReplace(Result, lTerm, '[[' + lTerm + ']]', [rfIgnoreCase, rfReplaceAll]);
+  end;
+
+  Result := ClampSnippet(Result);
+end;
+
 constructor TSkillSearchService.Create(const aDatabasePath, aSqliteDllPath: string);
+begin
+  Create(aDatabasePath, aSqliteDllPath, 600);
+end;
+
+constructor TSkillSearchService.Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer);
 begin
   inherited Create;
   fDatabasePath := aDatabasePath;
   fSqliteDllPath := aSqliteDllPath;
+  fSnippetMaxChars := Max(64, aSnippetMaxChars);
   ConfigureConnection;
 end;
 
@@ -100,13 +194,15 @@ begin
   try
     if lFtsMatch <> '' then
     begin
-      lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.has_scripts, s.scripts_count, s.scripts_exts,');
+      lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.has_scripts, s.scripts_count,');
+      lSql.AppendLine('  s.scripts_exts, s.body_md, snippet(skills_fts, 3, ''[['', '']]'', '' ... '', 32) AS snippet,');
       lSql.AppendLine('  (-bm25(skills_fts, 10.0, 5.0, 4.0, 1.0)) AS lex_score');
       lSql.AppendLine('FROM skills_fts');
       lSql.AppendLine('JOIN skills s ON s.id = skills_fts.rowid');
       lSql.AppendLine('WHERE skills_fts MATCH :match');
     end else begin
-      lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.has_scripts, s.scripts_count, s.scripts_exts,');
+      lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.has_scripts, s.scripts_count,');
+      lSql.AppendLine('  s.scripts_exts, s.body_md, '''' AS snippet,');
       lSql.AppendLine('  0.0 AS lex_score');
       lSql.AppendLine('FROM skills s');
       lSql.AppendLine('WHERE 1=1');
@@ -194,6 +290,13 @@ begin
       lResult.ScriptsCount := lQuery.FieldByName('scripts_count').AsInteger;
       lResult.ScriptsExts := lQuery.FieldByName('scripts_exts').AsString;
       lResult.LexScore := lQuery.FieldByName('lex_score').AsFloat;
+      lResult.Snippet := lQuery.FieldByName('snippet').AsString;
+      if Trim(lResult.Snippet) = '' then
+      begin
+        lResult.Snippet := BuildFallbackSnippet(lQuery.FieldByName('body_md').AsString, lSearchQuery.PositiveTerms);
+      end else begin
+        lResult.Snippet := ClampSnippet(lResult.Snippet);
+      end;
 
       SetLength(Result, Length(Result) + 1);
       Result[High(Result)] := lResult;
