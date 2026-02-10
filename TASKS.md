@@ -3,24 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 18 (In Progress: 0, Next Today: 0, Next This Week: 14, Next Later: 4, Blocked: 0)
-Done tasks: 3
+Open tasks: 17 (In Progress: 0, Next Today: 0, Next This Week: 13, Next Later: 4, Blocked: 0)
+Done tasks: 4
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-015 [CFG] Implement settings.ini contract + defaults loader
-Outcome: Implement strongly-typed settings loading for all required sections/keys, using portable EXE-folder settings only (`.\settings.ini`, `.\Sources.lst` in our `bin` layout), and persist defaults for missing keys.
-Proof:
-- Command: Start the app with no settings.ini present.
-- Expect: A valid settings.ini is created beside the EXE with required keys from [General], [Git], [Index], [Search], [Semantic], and [UI].
-- Command: Delete one required key (for example GitPullTimeoutSeconds) and restart.
-- Expect: Startup does not crash; the missing key is restored with default value and logged.
-Touches: src/Settings.pas, src/Config/*.pas, settings.ini
-Notes: Spec sections 4.2, 5
 
 ### T-016 [SCAN] Add worktree-aware Git repo detection
 Outcome: Detect repo roots for both `.git` directory and `.git` file pointer formats, respect `TreatWorktreesAsRepos`, and persist stable repo roots for pull scheduling.
@@ -169,6 +159,16 @@ Notes: Spec sections 3.2, 5, 16
 ## Blocked
 
 ## Done
+
+### T-015 [CFG] Implement settings.ini contract + defaults loader
+Outcome: Implement strongly-typed settings loading for all required sections/keys, using portable EXE-folder settings only (`.\settings.ini`, `.\Sources.lst` in our `bin` layout), and persist defaults for missing keys.
+Proof:
+- Command: Start the app with no settings.ini present.
+- Expect: A valid settings.ini is created beside the EXE with required keys from [General], [Git], [Index], [Search], [Semantic], and [UI].
+- Command: Delete one required key (for example GitPullTimeoutSeconds) and restart.
+- Expect: Startup does not crash; the missing key is restored with default value and logged.
+Touches: src/Settings.pas, src/Config/*.pas, settings.ini
+Notes: Spec sections 4.2, 5
 
 ### T-003 [IDX] Implement Sources.lst parser
 Outcome: Parse Sources.lst (UTF-8), ignoring comments (#, ;, //) and empty lines, returning normalized absolute/UNC paths.

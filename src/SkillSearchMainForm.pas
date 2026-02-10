@@ -20,7 +20,7 @@ var
 implementation
 
 uses
-  AppPaths, DatabaseManager;
+  AppPaths, DatabaseManager, Settings;
 
 constructor TSkillSearchMainForm.Create(aOwner: TComponent);
 begin
@@ -40,9 +40,14 @@ end;
 
 procedure TSkillSearchMainForm.InitializeDatabase;
 var
+  lDbPath: string;
   lDbManager: TDatabaseManager;
+  lSettings: TSettingsLoadResult;
 begin
-  lDbManager := TDatabaseManager.Create(GetCacheDbPath, GetSqliteDllPath);
+  lSettings := LoadOrCreateSettings(GetSettingsFilePath);
+  lDbPath := ResolveSettingsPath(lSettings.Settings.General.CacheDbPath, GetExeDirectory);
+
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
   try
     lDbManager.Initialize;
   finally

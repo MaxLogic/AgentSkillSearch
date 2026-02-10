@@ -10,6 +10,7 @@ function GetProjectRootDirectory: string;
 function GetCacheDirectory: string;
 function GetCacheDbPath: string;
 function GetSqliteDllPath: string;
+function GetSourcesListPath: string;
 
 implementation
 
@@ -28,7 +29,7 @@ end;
 
 function GetCacheDirectory: string;
 begin
-  Result := TPath.Combine(GetProjectRootDirectory, 'cache');
+  Result := TPath.Combine(GetExeDirectory, 'cache');
 end;
 
 function GetCacheDbPath: string;
@@ -39,6 +40,11 @@ end;
 function GetSqliteDllPath: string;
 begin
   Result := TPath.Combine(GetExeDirectory, 'sqlite3.dll');
+end;
+
+function GetSourcesListPath: string;
+begin
+  Result := TPath.Combine(GetExeDirectory, 'Sources.lst');
 end;
 
 end.

@@ -81,3 +81,6 @@ pas-api-map.md
 /cache/*.db
 /cache/*.db-*
 /logs/*.log
+/bin/cache/*.db
+/bin/cache/*.db-*
+/bin/logs/*.log

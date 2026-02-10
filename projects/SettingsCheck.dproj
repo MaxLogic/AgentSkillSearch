@@ -1,10 +1,10 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <ProjectGuid>{50408D3B-EFE9-4DAE-A247-853DBA7D845D}</ProjectGuid>
-    <MainSource>DbInitCheck.dpr</MainSource>
+    <ProjectGuid>{A0E6B0C8-C603-4FA5-B0B7-6217262E0F62}</ProjectGuid>
+    <MainSource>SettingsCheck.dpr</MainSource>
     <Base>True</Base>
     <Config Condition="'$(Config)'==''">Debug</Config>
-    <ProjectName Condition="'$(ProjectName)'==''">DbInitCheck</ProjectName>
+    <ProjectName Condition="'$(ProjectName)'==''">SettingsCheck</ProjectName>
     <ProjectVersion>20.2</ProjectVersion>
     <FrameworkType>None</FrameworkType>
     <AppType>Console</AppType>
@@ -25,16 +25,6 @@
     <CfgParent>Base</CfgParent>
     <Base>true</Base>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Config)'=='Release' or '$(Cfg_1)'!=''">
-    <Cfg_1>true</Cfg_1>
-    <CfgParent>Base</CfgParent>
-    <Base>true</Base>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Config)'=='Debug' or '$(Cfg_2)'!=''">
-    <Cfg_2>true</Cfg_2>
-    <CfgParent>Base</CfgParent>
-    <Base>true</Base>
-  </PropertyGroup>
 
   <PropertyGroup Condition="'$(Base)'!=''">
     <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
@@ -45,28 +35,19 @@
     <DCC_N>false</DCC_N>
     <DCC_S>false</DCC_S>
     <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
-    <DCC_UnitSearchPath>..\src;..\src\Config;..\src\Db;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
-    <SanitizedProjectName>DbInitCheck</SanitizedProjectName>
+    <DCC_UnitSearchPath>..\src;..\src\Config;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+    <SanitizedProjectName>SettingsCheck</SanitizedProjectName>
   </PropertyGroup>
 
   <ItemGroup>
     <DelphiCompile Include="$(MainSource)">
       <MainSource>MainSource</MainSource>
     </DelphiCompile>
-    <DCCReference Include="..\src\AppPaths.pas" />
     <DCCReference Include="..\src\Settings.pas" />
     <DCCReference Include="..\src\Config\SettingsModel.pas" />
-    <DCCReference Include="..\src\Db\DatabaseManager.pas" />
+    <DCCReference Include="..\src\AppPaths.pas" />
     <BuildConfiguration Include="Base">
       <Key>Base</Key>
-    </BuildConfiguration>
-    <BuildConfiguration Include="Release">
-      <Key>Cfg_1</Key>
-      <CfgParent>Base</CfgParent>
-    </BuildConfiguration>
-    <BuildConfiguration Include="Debug">
-      <Key>Cfg_2</Key>
-      <CfgParent>Base</CfgParent>
     </BuildConfiguration>
   </ItemGroup>
 
@@ -76,7 +57,7 @@
     <BorlandProject>
       <Delphi.Personality>
         <Source>
-          <Source Name="MainSource">DbInitCheck.dpr</Source>
+          <Source Name="MainSource">SettingsCheck.dpr</Source>
         </Source>
       </Delphi.Personality>
       <Platforms>

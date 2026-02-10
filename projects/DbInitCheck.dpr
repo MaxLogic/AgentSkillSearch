@@ -9,15 +9,21 @@ program DbInitCheck;
 uses
   System.SysUtils,
   AppPaths in '..\src\AppPaths.pas',
-  DatabaseManager in '..\src\Db\DatabaseManager.pas';
+  DatabaseManager in '..\src\Db\DatabaseManager.pas',
+  Settings in '..\src\Settings.pas';
 
 var
   lResult: TDbInitResult;
   lDbManager: TDatabaseManager;
+  lSettings: TSettingsLoadResult;
+  lSettingsDbPath: string;
 
 begin
   try
-    lDbManager := TDatabaseManager.Create(GetCacheDbPath, GetSqliteDllPath);
+    lSettings := LoadOrCreateSettings(GetSettingsFilePath);
+    lSettingsDbPath := ResolveSettingsPath(lSettings.Settings.General.CacheDbPath, GetExeDirectory);
+
+    lDbManager := TDatabaseManager.Create(lSettingsDbPath, GetSqliteDllPath);
     try
       lResult := lDbManager.Initialize;
 

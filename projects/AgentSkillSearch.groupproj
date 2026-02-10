@@ -1,5 +1,8 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <Projects Include="SettingsCheck.dproj">
+      <Dependencies />
+    </Projects>
     <Projects Include="SourcesListTests.dproj">
       <Dependencies />
     </Projects>
