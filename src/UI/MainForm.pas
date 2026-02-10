@@ -81,7 +81,7 @@ uses
   System.IOUtils, System.StrUtils, System.SysUtils,
   Winapi.ShellAPI, Winapi.Windows,
   Vcl.Clipbrd,
-  AppPaths, DiagnosticsForm, Logging, Settings, SourcesList;
+  AppPaths, DiagnosticsForm, Logging, PreviewRenderer, Settings, SourcesList;
 
 constructor TMainForm.Create(aOwner: TComponent);
 var
@@ -112,7 +112,7 @@ begin
   fDatabaseManager := TDatabaseManager.Create(fDbPath, GetSqliteDllPath);
   fDatabaseManager.Initialize;
 
-  fSearchService := TSkillSearchService.Create(fDbPath, GetSqliteDllPath);
+  fSearchService := TSkillSearchService.Create(fDbPath, GetSqliteDllPath, fAppSettings.Search.SnippetMaxChars);
 
   CreateLayout;
 
@@ -329,13 +329,16 @@ end;
 procedure TMainForm.RenderPreview(const aResult: TSkillSearchResult);
 var
   lHtml: string;
+  lSnippetHtml: string;
 begin
+  lSnippetHtml := BuildPreviewSnippetHtml(aResult.Snippet);
   lHtml :=
     '<html><body style="font-family:Segoe UI;padding:12px;">' +
     '<h3>' + EscapeHtml(aResult.Name) + '</h3>' +
     '<p><b>Description:</b> ' + EscapeHtml(aResult.Description) + '</p>' +
     '<p><b>Tags:</b> ' + EscapeHtml(aResult.Tags) + '</p>' +
     '<p><b>Scripts:</b> ' + IntToStr(aResult.ScriptsCount) + ' [' + EscapeHtml(aResult.ScriptsExts) + ']</p>' +
+    '<p><b>Snippet:</b><br/>' + lSnippetHtml + '</p>' +
     '<p><b>Path:</b> ' + EscapeHtml(aResult.SkillFile) + '</p>' +
     '</body></html>';
 

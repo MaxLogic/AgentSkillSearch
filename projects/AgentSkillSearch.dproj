@@ -68,6 +68,7 @@
     </DelphiCompile>
     <DCCReference Include="..\src\UI\MainForm.pas" />
     <DCCReference Include="..\src\UI\DiagnosticsForm.pas" />
+    <DCCReference Include="..\src\UI\PreviewRenderer.pas" />
     <DCCReference Include="..\src\AppPaths.pas" />
     <DCCReference Include="..\src\Logging.pas" />
     <DCCReference Include="..\src\Settings.pas" />

@@ -3,8 +3,8 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 4 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 4)
-Done tasks: 17
+Open tasks: 3 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 3)
+Done tasks: 18
 
 ## In Progress
 
@@ -15,16 +15,6 @@ Done tasks: 17
 ## Next – Later
 
 ## Blocked
-
-### T-018 [SEARCH] Add snippets + sanitized preview rendering
-Outcome: Generate query-aware snippets (`snippet()` or fallback extractor), cap by `SnippetMaxChars`, and render sanitized HTML in preview with match highlighting.
-Proof:
-- Command: Search for a term present in markdown with inline HTML and long body text.
-- Expect: Snippet is truncated to configured max length, dangerous markup is escaped, and highlighted matches are visible in preview.
-Touches: src/Search/*.pas, src/UI/MainForm.pas, src/UI/Preview*.pas
-Deps: T-008, T-011
-Notes:
-- Deferred until core search query execution and UI preview host are in place.
 
 ### T-019 [IDX] Detect duplicate skills by body_hash
 Outcome: Detect duplicate skill bodies using `body_hash`, keep all rows indexed in DB, collapse duplicate rows from the main results list, and expose duplicate count with a compact duplicate-path list in preview.
@@ -58,6 +48,16 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-018 [SEARCH] Add snippets + sanitized preview rendering
+Outcome: Generate query-aware snippets (`snippet()` or fallback extractor), cap by `SnippetMaxChars`, and render sanitized HTML in preview with match highlighting.
+Proof:
+- Command: Search for a term present in markdown with inline HTML and long body text.
+- Expect: Snippet is truncated to configured max length, dangerous markup is escaped, and highlighted matches are visible in preview.
+Touches: src/Search/*.pas, src/UI/MainForm.pas, src/UI/Preview*.pas
+Deps: T-008, T-011
+Notes:
+- Deferred until core search query execution and UI preview host are in place.
 
 ### T-014 [PKG] Runtime packaging (sqlite dll, settings template)
 Outcome: Package EXE with sqlite3.dll (FTS5) and vec0.dll in `bin\`, default settings.ini and Sources.lst beside the EXE, and ensure relative paths work in portable mode.
