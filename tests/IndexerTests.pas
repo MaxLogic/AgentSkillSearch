@@ -65,6 +65,8 @@ begin
   lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-one');
   ForceDirectories(lSkillRoot);
   lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  ForceDirectories(TPath.Combine(lSkillRoot, 'scripts'));
+  TFile.WriteAllText(TPath.Combine(lSkillRoot, 'scripts\build.ps1'), 'Write-Output "ok"', TEncoding.UTF8);
 
   TFile.WriteAllText(
     lSkillFile,
@@ -91,6 +93,9 @@ begin
     AssertEqualText('Deterministic Skill', lStateFirst.Name, 'Name parse mismatch');
     AssertEqualText('Initial deterministic description', lStateFirst.Description, 'Description parse mismatch');
     AssertEqualText('delphi;git', lStateFirst.Tags, 'Tags parse mismatch');
+    AssertEqualInt(1, lStateFirst.HasScripts, 'Expected has_scripts=1');
+    AssertEqualInt(1, lStateFirst.ScriptsCount, 'Expected one discovered script');
+    AssertEqualText('ps1', lStateFirst.ScriptsExts, 'Expected discovered script extension set');
 
     Sleep(1200);
     IndexSkillFile(lDbManager, lSkillFile);
@@ -131,9 +136,59 @@ begin
   end;
 end;
 
+procedure TestIndexerDetectsScriptChangesEvenWhenSkillMarkdownIsUnchanged;
+var
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lSkillFile: string;
+  lSkillRoot: string;
+  lStateFirst: TSkillState;
+  lStateSecond: TSkillState;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchIndexerScriptsFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-scripts');
+  ForceDirectories(lSkillRoot);
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+
+  TFile.WriteAllText(lSkillFile, '# Script Detection Skill' + sLineBreak + sLineBreak + 'Body text', TEncoding.UTF8);
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\\SkillCache.db');
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    lDbManager.Initialize;
+
+    IndexSkillFile(lDbManager, lSkillFile);
+    AssertTrue(lDbManager.TryGetSkillState(TPath.GetFullPath(lSkillFile), lStateFirst), 'Missing first script skill state');
+    AssertEqualInt(0, lStateFirst.HasScripts, 'Expected no scripts before script file is added');
+
+    Sleep(1200);
+    ForceDirectories(TPath.Combine(lSkillRoot, 'scripts'));
+    TFile.WriteAllText(TPath.Combine(lSkillRoot, 'scripts\runner.py'), 'print("ok")', TEncoding.UTF8);
+
+    IndexSkillFile(lDbManager, lSkillFile);
+    AssertTrue(lDbManager.TryGetSkillState(TPath.GetFullPath(lSkillFile), lStateSecond),
+      'Missing second script skill state');
+    AssertEqualInt(1, lStateSecond.HasScripts, 'Expected script detection to flip to true');
+    AssertEqualInt(1, lStateSecond.ScriptsCount, 'Expected one detected script after script file was added');
+    AssertEqualText('py', lStateSecond.ScriptsExts, 'Expected detected script extension py');
+    AssertTrue(not SameText(lStateFirst.IndexedUtc, lStateSecond.IndexedUtc),
+      'Indexed timestamp should change when script detection fields change');
+  finally
+    lDbManager.Free;
+  end;
+end;
+
 procedure RunIndexerTests;
 begin
   TestIndexerUpsertAndSkipUnchanged;
+  TestIndexerDetectsScriptChangesEvenWhenSkillMarkdownIsUnchanged;
 end;
 
 end.

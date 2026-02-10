@@ -3,30 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 10 (In Progress: 0, Next Today: 0, Next This Week: 2, Next Later: 4, Blocked: 4)
-Done tasks: 11
+Open tasks: 8 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 4, Blocked: 4)
+Done tasks: 13
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-007 [IDX] HasScripts detection + filter flag
-Outcome: During indexing, detect scripts under the skill root by extension list and store has_scripts/scripts_count/scripts_exts; add UI filter + query syntax support.
-Proof:
-- Command: Search with 'has:scripts' and without.
-- Expect: Filter returns only skills with scripts; count matches expectations on known fixture.
-Touches: src/Indexer/*.pas, src/Search/QueryParser.pas, src/UI/MainForm.pas
-Notes: Spec sections 8.4, 10.1, 11
-
-### T-008 [SEARCH] FTS query parser + BM25 ranking
-Outcome: Implement query syntax (phrases, -exclude, name:, tag:, path:, has:scripts, limit:) and execute FTS5 search with bm25 field weights; return sorted results with lex_score.
-Proof:
-- Command: Run a set of scripted searches on a fixture DB.
-- Expect: Filters work; name matches outrank body-only matches; excluded terms remove items.
-Touches: src/Search/*.pas, tests/SearchTests.pas
-Notes: Spec sections 10.1, 10.2
 
 ## Next – Later
 
@@ -106,6 +90,22 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-008 [SEARCH] FTS query parser + BM25 ranking
+Outcome: Implement query syntax (phrases, -exclude, name:, tag:, path:, has:scripts, limit:) and execute FTS5 search with bm25 field weights; return sorted results with lex_score.
+Proof:
+- Command: Run a set of scripted searches on a fixture DB.
+- Expect: Filters work; name matches outrank body-only matches; excluded terms remove items.
+Touches: src/Search/*.pas, tests/SearchTests.pas
+Notes: Spec sections 10.1, 10.2
+
+### T-007 [IDX] HasScripts detection + filter flag
+Outcome: During indexing, detect scripts under the skill root by extension list and store has_scripts/scripts_count/scripts_exts; add UI filter + query syntax support.
+Proof:
+- Command: Search with 'has:scripts' and without.
+- Expect: Filter returns only skills with scripts; count matches expectations on known fixture.
+Touches: src/Indexer/*.pas, src/Search/QueryParser.pas, src/UI/MainForm.pas
+Notes: Spec sections 8.4, 10.1, 11
 
 ### T-006 [IDX] Skill indexer + FTS upsert
 Outcome: Read SKILL.md, extract name/description/tags deterministically, compute body_hash, upsert into skills + skills_fts, and skip reindex if unchanged.
