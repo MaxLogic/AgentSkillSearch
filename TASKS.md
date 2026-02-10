@@ -3,22 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 11 (In Progress: 0, Next Today: 0, Next This Week: 3, Next Later: 4, Blocked: 4)
-Done tasks: 10
+Open tasks: 10 (In Progress: 0, Next Today: 0, Next This Week: 2, Next Later: 4, Blocked: 4)
+Done tasks: 11
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-006 [IDX] Skill indexer + FTS upsert
-Outcome: Read SKILL.md, extract name/description/tags deterministically, compute body_hash, upsert into skills + skills_fts, and skip reindex if unchanged.
-Proof:
-- Command: Modify a SKILL.md and re-run Index.
-- Expect: DB row updates and search results reflect change; unchanged skills are skipped.
-Touches: src/Indexer/*.pas, src/Db/*.pas
-Notes: Spec sections 8, 7.3
 
 ### T-007 [IDX] HasScripts detection + filter flag
 Outcome: During indexing, detect scripts under the skill root by extension list and store has_scripts/scripts_count/scripts_exts; add UI filter + query syntax support.
@@ -114,6 +106,14 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-006 [IDX] Skill indexer + FTS upsert
+Outcome: Read SKILL.md, extract name/description/tags deterministically, compute body_hash, upsert into skills + skills_fts, and skip reindex if unchanged.
+Proof:
+- Command: Modify a SKILL.md and re-run Index.
+- Expect: DB row updates and search results reflect change; unchanged skills are skipped.
+Touches: src/Indexer/*.pas, src/Db/*.pas
+Notes: Spec sections 8, 7.3
 
 ### T-005 [GIT] Git pull worker with throttling + timeout
 Outcome: Implement git pull pipeline: detect repo roots, consult DB for last_pull_utc, skip if within MinPullIntervalMinutes, else run git pull with GitPullTimeoutSeconds in non-interactive mode; store status/output/duration/head_commit.

@@ -6,6 +6,9 @@
     <Projects Include="PipelineTests.dproj">
       <Dependencies />
     </Projects>
+    <Projects Include="IndexerTests.dproj">
+      <Dependencies />
+    </Projects>
     <Projects Include="ScannerTests.dproj">
       <Dependencies />
     </Projects>
