@@ -38,6 +38,8 @@ begin
       Writeln('HAS_REPOS=', BoolToStr(lDbManager.TableExists('repos'), True));
       Writeln('HAS_SKILLS=', BoolToStr(lDbManager.TableExists('skills'), True));
       Writeln('HAS_SKILLS_FTS=', BoolToStr(lDbManager.TableExists('skills_fts'), True));
+      Writeln('HAS_SKILL_CHUNKS=', BoolToStr(lDbManager.TableExists('skill_chunks'), True));
+      Writeln('HAS_CHUNK_VEC=', BoolToStr(lDbManager.TableExists('chunk_vec'), True));
     finally
       lDbManager.Free;
     end;

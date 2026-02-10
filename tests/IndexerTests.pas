@@ -219,11 +219,77 @@ begin
   AssertTrue(ContainsText(lError, 'Malformed frontmatter'), 'Expected explicit frontmatter parse error');
 end;
 
+procedure TestChunkVectorsAreUpdatedIncrementallyByChunkHash;
+var
+  lChunkStatesFirst: TArray<TSkillChunkState>;
+  lChunkStatesSecond: TArray<TSkillChunkState>;
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lSkillFile: string;
+  lSkillRoot: string;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchIndexerChunkVectorFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-semantic');
+  ForceDirectories(lSkillRoot);
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  TFile.WriteAllText(
+    lSkillFile,
+    '# Section A' + sLineBreak + sLineBreak +
+    'Alpha paragraph stays stable.' + sLineBreak + sLineBreak +
+    '# Section B' + sLineBreak + sLineBreak +
+    'Beta paragraph version one.' + sLineBreak,
+    TEncoding.UTF8
+  );
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    lDbManager.Initialize;
+    IndexSkillFile(lDbManager, lSkillFile);
+    lChunkStatesFirst := lDbManager.GetChunkStatesBySkillFile(TPath.GetFullPath(lSkillFile));
+    AssertEqualInt(2, Length(lChunkStatesFirst), 'Expected two semantic chunks after first index');
+    AssertEqualInt(16, lChunkStatesFirst[0].VectorDim, 'Expected deterministic vector dimension for first chunk');
+    AssertEqualInt(16, lChunkStatesFirst[1].VectorDim, 'Expected deterministic vector dimension for second chunk');
+
+    Sleep(1200);
+    TFile.WriteAllText(
+      lSkillFile,
+      '# Section A' + sLineBreak + sLineBreak +
+      'Alpha paragraph stays stable.' + sLineBreak + sLineBreak +
+      '# Section B' + sLineBreak + sLineBreak +
+      'Beta paragraph version two with changed wording.' + sLineBreak,
+      TEncoding.UTF8
+    );
+
+    IndexSkillFile(lDbManager, lSkillFile);
+    lChunkStatesSecond := lDbManager.GetChunkStatesBySkillFile(TPath.GetFullPath(lSkillFile));
+    AssertEqualInt(2, Length(lChunkStatesSecond), 'Expected two semantic chunks after update');
+    AssertEqualText(lChunkStatesFirst[0].ChunkHash, lChunkStatesSecond[0].ChunkHash,
+      'Unchanged section should keep same chunk hash');
+    AssertEqualText(lChunkStatesFirst[0].VectorUpdatedUtc, lChunkStatesSecond[0].VectorUpdatedUtc,
+      'Unchanged section should keep vector timestamp');
+    AssertTrue(not SameText(lChunkStatesFirst[1].ChunkHash, lChunkStatesSecond[1].ChunkHash),
+      'Changed section should update chunk hash');
+    AssertTrue(not SameText(lChunkStatesFirst[1].VectorUpdatedUtc, lChunkStatesSecond[1].VectorUpdatedUtc),
+      'Changed section should refresh vector timestamp');
+  finally
+    lDbManager.Free;
+  end;
+end;
+
 procedure RunIndexerTests;
 begin
   TestIndexerUpsertAndSkipUnchanged;
   TestIndexerDetectsScriptChangesEvenWhenSkillMarkdownIsUnchanged;
   TestIndexerRejectsMalformedFrontMatter;
+  TestChunkVectorsAreUpdatedIncrementallyByChunkHash;
 end;
 
 end.

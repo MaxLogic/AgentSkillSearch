@@ -45,7 +45,7 @@
     <DCC_N>false</DCC_N>
     <DCC_S>false</DCC_S>
     <DCC_Namespace>Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
-    <DCC_UnitSearchPath>..\..\MaxLogicFoundation;..\src;..\src\Config;..\src\Db;..\src\Git;..\src\Indexer;..\src\Pipeline;..\src\Search;..\src\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+    <DCC_UnitSearchPath>..\..\MaxLogicFoundation;..\src;..\src\Config;..\src\Db;..\src\Git;..\src\Indexer;..\src\Pipeline;..\src\Search;..\src\Semantic;..\src\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
     <SanitizedProjectName>AgentSkillSearch</SanitizedProjectName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Cfg_1)'!=''">

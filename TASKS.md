@@ -3,8 +3,8 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 2 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 2)
-Done tasks: 19
+Open tasks: 1 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 1)
+Done tasks: 20
 
 ## In Progress
 
@@ -27,6 +27,8 @@ Notes:
 - Deferred until lexical query pipeline and chunk/vector persistence are complete.
 - Proof requires local Ollama runtime availability.
 
+## Done
+
 ### T-010 [SEM] Chunking + vector storage + incremental re-embed
 Outcome: Implement chunking by headings/paragraphs, store chunks + vectors in DB, and update vectors only when chunk_hash changes; use max-chunk similarity per skill.
 Proof:
@@ -36,8 +38,6 @@ Touches: src/Semantic/Chunker.pas, src/Db/*.pas
 Deps: T-006
 Notes:
 - Deferred until core index upsert flow is finalized.
-
-## Done
 
 ### T-019 [IDX] Detect duplicate skills by body_hash
 Outcome: Detect duplicate skill bodies using `body_hash`, keep all rows indexed in DB, collapse duplicate rows from the main results list, and expose duplicate count with a compact duplicate-path list in preview.
