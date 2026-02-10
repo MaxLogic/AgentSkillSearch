@@ -3,5 +3,17 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT_FILE="$ROOT_DIR/projects/AgentSkillSearch.dproj"
+OUTPUT_DIR="$ROOT_DIR/bin"
+RUNTIME_TEMPLATE_DIR="$ROOT_DIR/assets/runtime"
 
 bash /home/pawel/.codex/skills/build-delphi/scripts/build-delphi.sh "$PROJECT_FILE" -ver 23 -config Debug -platform Win64
+
+cp "$RUNTIME_TEMPLATE_DIR/settings.ini" "$OUTPUT_DIR/settings.ini"
+cp "$RUNTIME_TEMPLATE_DIR/Sources.lst" "$OUTPUT_DIR/Sources.lst"
+
+for dll in sqlite3.dll vec0.dll; do
+  if [[ ! -f "$OUTPUT_DIR/$dll" ]]; then
+    echo "ERROR: missing runtime dependency $OUTPUT_DIR/$dll" >&2
+    exit 1
+  fi
+done

@@ -37,6 +37,26 @@ begin
   Result := TPath.Combine(GetExeDirectory, 'settings.ini');
 end;
 
+function GetDefaultSourcesListTemplate: string;
+begin
+  Result :=
+    '# Agent Skill Search sources list' + sLineBreak +
+    '# One path per line. Supported comments: # ; //' + sLineBreak +
+    '# Example: C:\projects\MaxLogic' + sLineBreak +
+    '# Example: \\server\share\skills' + sLineBreak;
+end;
+
+procedure EnsureSourcesListTemplate(const aSourcesListPath: string);
+begin
+  if TFile.Exists(aSourcesListPath) then
+  begin
+    Exit;
+  end;
+
+  ForceDirectories(ExtractFilePath(aSourcesListPath));
+  TFile.WriteAllText(aSourcesListPath, GetDefaultSourcesListTemplate, TEncoding.UTF8);
+end;
+
 procedure AddRestoredKey(var aResult: TSettingsLoadResult; const aSection, aKey: string);
 var
   lLen: Integer;
@@ -288,6 +308,7 @@ begin
     lIni.Free;
   end;
 
+  EnsureSourcesListTemplate(ResolveSettingsPath(Result.Settings.General.SourcesListPath, lSettingsDir));
   WriteSettingsRecoveryLog(Result.Settings, lSettingsDir, Result.RestoredKeys);
 end;
 

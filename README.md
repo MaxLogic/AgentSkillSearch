@@ -25,6 +25,10 @@ From WSL, use the helper scripts in `projects/`:
 bash projects/build-win64.sh
 ```
 
+The build script also packages runtime templates beside the EXE in `bin/`:
+- `settings.ini`
+- `Sources.lst`
+
 Win32 is intentionally unsupported because our bundled SQLite runtime is x64-only:
 
 ```bash

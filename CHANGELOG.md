@@ -14,6 +14,7 @@
 - Main VCL UI with search bar, filters row, results `TListView`, TMS FNC web preview pane, duplicate-info side area, status bar, context menu actions, and keyboard shortcuts (`T-011`).
 - Debounced asynchronous search controller with generation-based stale-result discard and Esc cancellation safety (`T-012`).
 - Diagnostics logging with per-run scan summaries, surfaced pipeline/index/git failures, and an in-app diagnostics dialog (`T-013`).
+- Deterministic runtime packaging for Win64 output with template `settings.ini`/`Sources.lst` beside the EXE and portable-folder startup checks (`T-014`).
 - Strongly typed portable `settings.ini` loader that creates defaults, repairs missing keys, and logs key restoration events (`T-015`).
 - Worktree-aware git repo discovery with `.git` file/directory handling and persisted repo roots for pull scheduling (`T-016`).
 - Multi-stage scan/git/index pipeline coordinator with cancellable processing and single-writer batched DB commits (`T-017`).
