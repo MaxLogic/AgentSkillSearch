@@ -3,7 +3,7 @@ unit DatabaseManager;
 interface
 
 uses
-  FireDAC.Comp.Client, FireDAC.Phys.SQLite, SkillTypes;
+  System.SysUtils, FireDAC.Comp.Client, FireDAC.Phys.SQLite, SkillTypes;
 
 type
   TDbInitResult = record
@@ -49,6 +49,14 @@ type
     Tags: string;
   end;
 
+  TSkillChunkState = record
+    ChunkHash: string;
+    ChunkId: Integer;
+    ChunkIndex: Integer;
+    VectorDim: Integer;
+    VectorUpdatedUtc: string;
+  end;
+
   TDatabaseManager = class
   private
     fConnection: TFDConnection;
@@ -56,13 +64,17 @@ type
     fDriverLink: TFDPhysSQLiteDriverLink;
     fSqliteDllPath: string;
     procedure ApplyPragmas(var aResult: TDbInitResult);
+    function BuildDeterministicVector(const aChunkText: string): TArray<Single>;
     procedure ConfigureConnection;
+    function EncodeVectorBlob(const aVector: TArray<Single>): TBytes;
     procedure EnsureDatabaseFolder;
     function IsSkillUnchanged(const aSkill: TIndexedSkill): Boolean;
     function QueryScalarInt(const aSql: string): Integer;
     function QuerySkillIdBySkillFile(const aSkillFile: string): Integer;
     function QueryScalarText(const aSql: string): string;
+    procedure ReplaceChunkVector(const aChunkId: Integer; const aChunkText: string);
     procedure RunMigrations;
+    procedure UpsertSkillChunksAndVectors(const aSkillId: Integer; const aBodyMarkdown: string);
     procedure VerifyFts5Support;
   public
     constructor Create(const aDatabasePath, aSqliteDllPath: string);
@@ -72,6 +84,7 @@ type
     function GetRepoCount: Integer;
     function GetSkillCount: Integer;
     function Initialize: TDbInitResult;
+    function GetChunkStatesBySkillFile(const aSkillFile: string): TArray<TSkillChunkState>;
     function GetSkillFtsBodyBySkillFile(const aSkillFile: string): string;
     function TableExists(const aTableName: string): Boolean;
     function TryGetRepoState(const aRootPath: string; out aState: TRepoState): Boolean;
@@ -87,9 +100,14 @@ type
 implementation
 
 uses
-  System.DateUtils, System.IOUtils, System.SysUtils, Data.DB,
+  System.Classes, System.DateUtils, System.Generics.Collections, System.Hash, System.IOUtils, System.Math, Data.DB,
   FireDAC.DApt, FireDAC.Stan.Async, FireDAC.Stan.Def, FireDAC.Stan.Intf, FireDAC.Stan.Option,
-  FireDAC.Stan.Param;
+  FireDAC.Stan.Param,
+  Chunker;
+
+const
+  cSemanticVectorDim = 16;
+  cSemanticVectorModel = 'deterministic-v1';
 
 constructor TDatabaseManager.Create(const aDatabasePath, aSqliteDllPath: string);
 begin
@@ -130,6 +148,43 @@ begin
   fConnection.Params.Add('LockingMode=Normal');
   fConnection.Params.Add('BusyTimeout=5000');
   fConnection.Connected := True;
+end;
+
+function TDatabaseManager.BuildDeterministicVector(const aChunkText: string): TArray<Single>;
+var
+  i: Integer;
+  lBytes: TBytes;
+  lNorm: Double;
+begin
+  SetLength(Result, cSemanticVectorDim);
+  lBytes := THashSHA2.GetHashBytes(aChunkText, THashSHA2.TSHA2Version.SHA256);
+
+  lNorm := 0.0;
+  for i := 0 to Pred(cSemanticVectorDim) do
+  begin
+    Result[i] := (Integer(lBytes[i]) - 127) / 127.0;
+    lNorm := lNorm + (Result[i] * Result[i]);
+  end;
+
+  lNorm := Sqrt(lNorm);
+  if lNorm <= 0 then
+  begin
+    Exit;
+  end;
+
+  for i := 0 to Pred(cSemanticVectorDim) do
+  begin
+    Result[i] := Result[i] / lNorm;
+  end;
+end;
+
+function TDatabaseManager.EncodeVectorBlob(const aVector: TArray<Single>): TBytes;
+begin
+  SetLength(Result, Length(aVector) * SizeOf(Single));
+  if Length(aVector) > 0 then
+  begin
+    Move(aVector[0], Result[0], Length(Result));
+  end;
 end;
 
 function TDatabaseManager.QueryScalarText(const aSql: string): string;
@@ -245,6 +300,23 @@ const
     '  scripts_exts TEXT,' +
     '  FOREIGN KEY(source_id) REFERENCES sources(id),' +
     '  FOREIGN KEY(repo_id) REFERENCES repos(id)' +
+    ');' +
+    'CREATE TABLE IF NOT EXISTS skill_chunks (' +
+    '  id INTEGER PRIMARY KEY,' +
+    '  skill_id INTEGER NOT NULL,' +
+    '  chunk_index INTEGER NOT NULL,' +
+    '  chunk_text TEXT NOT NULL,' +
+    '  chunk_hash TEXT NOT NULL,' +
+    '  UNIQUE(skill_id, chunk_index),' +
+    '  FOREIGN KEY(skill_id) REFERENCES skills(id) ON DELETE CASCADE' +
+    ');' +
+    'CREATE TABLE IF NOT EXISTS chunk_vec (' +
+    '  chunk_id INTEGER PRIMARY KEY,' +
+    '  model TEXT NOT NULL,' +
+    '  dim INTEGER NOT NULL,' +
+    '  vec BLOB NOT NULL,' +
+    '  updated_utc TEXT NOT NULL,' +
+    '  FOREIGN KEY(chunk_id) REFERENCES skill_chunks(id) ON DELETE CASCADE' +
     ');' +
     'CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(' +
     '  name,' +
@@ -496,6 +568,164 @@ begin
   end;
 end;
 
+function TDatabaseManager.GetChunkStatesBySkillFile(const aSkillFile: string): TArray<TSkillChunkState>;
+var
+  lLen: Integer;
+  lQuery: TFDQuery;
+begin
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'SELECT c.id, c.chunk_index, c.chunk_hash, COALESCE(v.dim, 0) AS vector_dim, COALESCE(v.updated_utc, '''') AS vector_updated_utc ' +
+      'FROM skill_chunks c ' +
+      'JOIN skills s ON s.id = c.skill_id ' +
+      'LEFT JOIN chunk_vec v ON v.chunk_id = c.id ' +
+      'WHERE s.skill_file = :skill_file ' +
+      'ORDER BY c.chunk_index;';
+    lQuery.ParamByName('skill_file').AsString := aSkillFile;
+    lQuery.Open;
+
+    while not lQuery.Eof do
+    begin
+      lLen := Length(Result);
+      SetLength(Result, lLen + 1);
+      Result[lLen].ChunkId := lQuery.FieldByName('id').AsInteger;
+      Result[lLen].ChunkIndex := lQuery.FieldByName('chunk_index').AsInteger;
+      Result[lLen].ChunkHash := lQuery.FieldByName('chunk_hash').AsString;
+      Result[lLen].VectorDim := lQuery.FieldByName('vector_dim').AsInteger;
+      Result[lLen].VectorUpdatedUtc := lQuery.FieldByName('vector_updated_utc').AsString;
+      lQuery.Next;
+    end;
+  finally
+    lQuery.Free;
+  end;
+end;
+
+procedure TDatabaseManager.ReplaceChunkVector(const aChunkId: Integer; const aChunkText: string);
+var
+  lBlob: TBytes;
+  lNowUtc: TDateTime;
+  lQuery: TFDQuery;
+  lStream: TBytesStream;
+  lUtcText: string;
+  lVector: TArray<Single>;
+begin
+  lVector := BuildDeterministicVector(aChunkText);
+  lBlob := EncodeVectorBlob(lVector);
+  lNowUtc := TTimeZone.Local.ToUniversalTime(Now);
+  lUtcText := FormatDateTime('yyyy-mm-dd\"T\"hh:nn:ss\"Z\"', lNowUtc, TFormatSettings.Invariant);
+
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'INSERT INTO chunk_vec(chunk_id, model, dim, vec, updated_utc) ' +
+      'VALUES (:chunk_id, :model, :dim, :vec, :updated_utc) ' +
+      'ON CONFLICT(chunk_id) DO UPDATE SET ' +
+      '  model=excluded.model, ' +
+      '  dim=excluded.dim, ' +
+      '  vec=excluded.vec, ' +
+      '  updated_utc=excluded.updated_utc';
+    lQuery.ParamByName('chunk_id').AsInteger := aChunkId;
+    lQuery.ParamByName('model').AsString := cSemanticVectorModel;
+    lQuery.ParamByName('dim').AsInteger := Length(lVector);
+    lQuery.ParamByName('vec').DataType := ftBlob;
+    lStream := TBytesStream.Create(lBlob);
+    try
+      lQuery.ParamByName('vec').LoadFromStream(lStream, ftBlob);
+    finally
+      lStream.Free;
+    end;
+    lQuery.ParamByName('updated_utc').AsString := lUtcText;
+    lQuery.ExecSQL;
+  finally
+    lQuery.Free;
+  end;
+end;
+
+procedure TDatabaseManager.UpsertSkillChunksAndVectors(const aSkillId: Integer; const aBodyMarkdown: string);
+var
+  i: Integer;
+  lChunk: TSkillChunk;
+  lChunks: TArray<TSkillChunk>;
+  lExistingHashes: TDictionary<Integer, string>;
+  lExistingIds: TDictionary<Integer, Integer>;
+  lExistingIndices: TArray<Integer>;
+  lExistingQuery: TFDQuery;
+  lExistingId: Integer;
+  lProcessedIndices: TDictionary<Integer, Byte>;
+begin
+  lChunks := BuildSkillChunks(aBodyMarkdown);
+  lExistingIds := TDictionary<Integer, Integer>.Create;
+  lExistingHashes := TDictionary<Integer, string>.Create;
+  lProcessedIndices := TDictionary<Integer, Byte>.Create;
+  lExistingQuery := TFDQuery.Create(nil);
+  try
+    lExistingQuery.Connection := fConnection;
+    lExistingQuery.SQL.Text :=
+      'SELECT id, chunk_index, chunk_hash FROM skill_chunks WHERE skill_id = :skill_id ORDER BY chunk_index;';
+    lExistingQuery.ParamByName('skill_id').AsInteger := aSkillId;
+    lExistingQuery.Open;
+    while not lExistingQuery.Eof do
+    begin
+      lExistingId := lExistingQuery.FieldByName('id').AsInteger;
+      i := lExistingQuery.FieldByName('chunk_index').AsInteger;
+      lExistingIds.AddOrSetValue(i, lExistingId);
+      lExistingHashes.AddOrSetValue(i, lExistingQuery.FieldByName('chunk_hash').AsString);
+      lExistingQuery.Next;
+    end;
+
+    for i := 0 to Pred(Length(lChunks)) do
+    begin
+      lChunk := lChunks[i];
+      lProcessedIndices.AddOrSetValue(lChunk.ChunkIndex, 1);
+
+      if lExistingIds.TryGetValue(lChunk.ChunkIndex, lExistingId) then
+      begin
+        if SameText(lExistingHashes[lChunk.ChunkIndex], lChunk.ChunkHash) then
+        begin
+          Continue;
+        end;
+
+        fConnection.ExecSQL(
+          'UPDATE skill_chunks SET chunk_text = :chunk_text, chunk_hash = :chunk_hash WHERE id = :id;',
+          [lChunk.ChunkText, lChunk.ChunkHash, lExistingId]
+        );
+        fConnection.ExecSQL('DELETE FROM chunk_vec WHERE chunk_id = :chunk_id;', [lExistingId]);
+        ReplaceChunkVector(lExistingId, lChunk.ChunkText);
+        Continue;
+      end;
+
+      fConnection.ExecSQL(
+        'INSERT INTO skill_chunks(skill_id, chunk_index, chunk_text, chunk_hash) ' +
+        'VALUES (:skill_id, :chunk_index, :chunk_text, :chunk_hash);',
+        [aSkillId, lChunk.ChunkIndex, lChunk.ChunkText, lChunk.ChunkHash]
+      );
+      lExistingId := QueryScalarInt('SELECT last_insert_rowid();');
+      ReplaceChunkVector(lExistingId, lChunk.ChunkText);
+    end;
+
+    lExistingIndices := lExistingIds.Keys.ToArray;
+    for i := 0 to Pred(Length(lExistingIndices)) do
+    begin
+      if lProcessedIndices.ContainsKey(lExistingIndices[i]) then
+      begin
+        Continue;
+      end;
+
+      lExistingId := lExistingIds[lExistingIndices[i]];
+      fConnection.ExecSQL('DELETE FROM chunk_vec WHERE chunk_id = :chunk_id;', [lExistingId]);
+      fConnection.ExecSQL('DELETE FROM skill_chunks WHERE id = :id;', [lExistingId]);
+    end;
+  finally
+    lExistingQuery.Free;
+    lProcessedIndices.Free;
+    lExistingHashes.Free;
+    lExistingIds.Free;
+  end;
+end;
+
 procedure TDatabaseManager.UpsertSkill(const aSkill: TIndexedSkill);
 var
   lQuery: TFDQuery;
@@ -564,6 +794,7 @@ begin
       'INSERT INTO skills_fts(rowid, name, description, tags, body_md) VALUES(:rowid, :name, :description, :tags, :body_md)',
       [lSkillId, aSkill.Name, aSkill.Description, aSkill.Tags, aSkill.BodyMarkdown]
     );
+    UpsertSkillChunksAndVectors(lSkillId, aSkill.BodyMarkdown);
   end;
 end;
 
