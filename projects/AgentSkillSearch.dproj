@@ -73,6 +73,7 @@
     <DCCReference Include="..\src\Db\DatabaseManager.pas" />
     <DCCReference Include="..\src\Indexer\SkillTypes.pas" />
     <DCCReference Include="..\src\Search\QueryParser.pas" />
+    <DCCReference Include="..\src\Search\SearchController.pas" />
     <DCCReference Include="..\src\Search\SkillSearchService.pas" />
     <BuildConfiguration Include="Base">
       <Key>Base</Key>

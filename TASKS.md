@@ -3,8 +3,8 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 7 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 3, Blocked: 4)
-Done tasks: 14
+Open tasks: 6 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 2, Blocked: 4)
+Done tasks: 15
 
 ## In Progress
 
@@ -13,14 +13,6 @@ Done tasks: 14
 ## Next – This Week
 
 ## Next – Later
-
-### T-012 [SEARCH] Search-as-you-type debounce + cancellation safety
-Outcome: Implement threaded search with debounce (SearchDebounceMs) and generation-id logic so outdated searches discard results; cancellation on Esc.
-Proof:
-- Command: Type quickly; trigger multiple searches.
-- Expect: UI updates only from latest search; no flicker; previous threads exit or discard.
-Touches: src/Search/SearchController.pas, src/UI/MainForm.pas
-Notes: Spec section 9.3, 10
 
 ### T-013 [OPS] Logging, diagnostics, and error surfacing
 Outcome: Add robust logging and a simple diagnostics dialog showing last scan summary + last errors (git failures, index parse errors).
@@ -82,6 +74,14 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-012 [SEARCH] Search-as-you-type debounce + cancellation safety
+Outcome: Implement threaded search with debounce (SearchDebounceMs) and generation-id logic so outdated searches discard results; cancellation on Esc.
+Proof:
+- Command: Type quickly; trigger multiple searches.
+- Expect: UI updates only from latest search; no flicker; previous threads exit or discard.
+Touches: src/Search/SearchController.pas, src/UI/MainForm.pas
+Notes: Spec section 9.3, 10
 
 ### T-011 [UI] Main UI (ListView + preview pane + actions)
 Outcome: Build MainForm: search bar, results list view, status bar, preview pane in TMS FNC Edge Browser (simple sanitized snippet rendering, no full markdown renderer), duplicate-info side area in preview, Enter/double-click open, context menu open folder/copy path, and keyboard shortcuts.
