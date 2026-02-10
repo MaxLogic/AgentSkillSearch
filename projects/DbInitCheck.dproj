@@ -1,13 +1,13 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <ProjectGuid>{A03D2A50-5AA2-4A4B-8A7A-6B20BCE5AC01}</ProjectGuid>
-    <MainSource>AgentSkillSearch.dpr</MainSource>
+    <ProjectGuid>{50408D3B-EFE9-4DAE-A247-853DBA7D845D}</ProjectGuid>
+    <MainSource>DbInitCheck.dpr</MainSource>
     <Base>True</Base>
     <Config Condition="'$(Config)'==''">Debug</Config>
-    <ProjectName Condition="'$(ProjectName)'==''">AgentSkillSearch</ProjectName>
+    <ProjectName Condition="'$(ProjectName)'==''">DbInitCheck</ProjectName>
     <ProjectVersion>20.2</ProjectVersion>
-    <FrameworkType>VCL</FrameworkType>
-    <AppType>Application</AppType>
+    <FrameworkType>None</FrameworkType>
+    <AppType>Console</AppType>
     <Platform Condition="'$(Platform)'==''">Win64</Platform>
     <TargetedPlatforms>3</TargetedPlatforms>
   </PropertyGroup>
@@ -44,29 +44,15 @@
     <DCC_K>false</DCC_K>
     <DCC_N>false</DCC_N>
     <DCC_S>false</DCC_S>
-    <DCC_Namespace>Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
+    <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
     <DCC_UnitSearchPath>..\src;..\src\Db;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
-    <SanitizedProjectName>AgentSkillSearch</SanitizedProjectName>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Cfg_1)'!=''">
-    <DCC_Define>RELEASE;$(DCC_Define)</DCC_Define>
-    <DCC_DebugInformation>0</DCC_DebugInformation>
-    <DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
-    <DCC_SymbolReferenceInfo>0</DCC_SymbolReferenceInfo>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Cfg_2)'!=''">
-    <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
-    <DCC_Optimize>false</DCC_Optimize>
-    <DCC_GenerateStackFrames>true</DCC_GenerateStackFrames>
-    <DCC_RangeChecking>true</DCC_RangeChecking>
-    <DCC_IntegerOverflowCheck>true</DCC_IntegerOverflowCheck>
+    <SanitizedProjectName>DbInitCheck</SanitizedProjectName>
   </PropertyGroup>
 
   <ItemGroup>
     <DelphiCompile Include="$(MainSource)">
       <MainSource>MainSource</MainSource>
     </DelphiCompile>
-    <DCCReference Include="..\src\SkillSearchMainForm.pas" />
     <DCCReference Include="..\src\AppPaths.pas" />
     <DCCReference Include="..\src\Db\DatabaseManager.pas" />
     <BuildConfiguration Include="Base">
@@ -88,7 +74,7 @@
     <BorlandProject>
       <Delphi.Personality>
         <Source>
-          <Source Name="MainSource">AgentSkillSearch.dpr</Source>
+          <Source Name="MainSource">DbInitCheck.dpr</Source>
         </Source>
       </Delphi.Personality>
       <Platforms>

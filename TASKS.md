@@ -3,20 +3,12 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 20 (In Progress: 0, Next Today: 2, Next This Week: 14, Next Later: 4, Blocked: 0)
-Done tasks: 1
+Open tasks: 19 (In Progress: 0, Next Today: 1, Next This Week: 14, Next Later: 4, Blocked: 0)
+Done tasks: 2
 
 ## In Progress
 
 ## Next – Today
-
-### T-002 [DB] Bundle SQLite with FTS5 + WAL configuration
-Outcome: Bundle an SQLite DLL with FTS5 enabled and implement a DB layer that opens the cache DB, applies required PRAGMAs (WAL, synchronous NORMAL, temp_store MEMORY, foreign_keys ON), and runs migrations.
-Proof:
-- Command: Run app first time with empty cache.
-- Expect: cache\SkillCache.db created; PRAGMA journal_mode reports "wal"; schema tables exist.
-Touches: src/Db/*.pas, bin/sqlite3.dll, bin/vec0.dll, cache/
-Notes: Spec sections 3.2, 7
 
 ### T-003 [IDX] Implement Sources.lst parser
 Outcome: Parse Sources.lst (UTF-8), ignoring comments (#, ;, //) and empty lines, returning normalized absolute/UNC paths.
@@ -185,6 +177,14 @@ Notes: Spec sections 3.2, 5, 16
 ## Blocked
 
 ## Done
+
+### T-002 [DB] Bundle SQLite with FTS5 + WAL configuration
+Outcome: Bundle an SQLite DLL with FTS5 enabled and implement a DB layer that opens the cache DB, applies required PRAGMAs (WAL, synchronous NORMAL, temp_store MEMORY, foreign_keys ON), and runs migrations.
+Proof:
+- Command: Run app first time with empty cache.
+- Expect: cache\SkillCache.db created; PRAGMA journal_mode reports "wal"; schema tables exist.
+Touches: src/Db/*.pas, bin/sqlite3.dll, bin/vec0.dll, cache/
+Notes: Spec sections 3.2, 7
 
 ### T-001 [DOC] Create repo skeleton + build script
 Outcome: Create the project folder structure (src/, tests/, docs/, assets/, cache/, logs/) and a build script/instructions so a fresh checkout can compile in Delphi 12.

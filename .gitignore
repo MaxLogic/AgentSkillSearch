@@ -77,3 +77,7 @@ todo.md
 *.cmds
 dunitx-results.xml
 pas-api-map.md
+
+/cache/*.db
+/cache/*.db-*
+/logs/*.log
