@@ -3,40 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 15 (In Progress: 0, Next Today: 0, Next This Week: 11, Next Later: 4, Blocked: 0)
-Done tasks: 6
+Open tasks: 14 (In Progress: 0, Next Today: 0, Next This Week: 8, Next Later: 4, Blocked: 2)
+Done tasks: 7
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-018 [SEARCH] Add snippets + sanitized preview rendering
-Outcome: Generate query-aware snippets (`snippet()` or fallback extractor), cap by `SnippetMaxChars`, and render sanitized HTML in preview with match highlighting.
-Proof:
-- Command: Search for a term present in markdown with inline HTML and long body text.
-- Expect: Snippet is truncated to configured max length, dangerous markup is escaped, and highlighted matches are visible in preview.
-Touches: src/Search/*.pas, src/UI/MainForm.pas, src/UI/Preview*.pas
-Notes: Spec sections 10.3, 11.1, 15
-
-### T-019 [IDX] Detect duplicate skills by body_hash
-Outcome: Detect duplicate skill bodies using `body_hash`, keep all rows indexed in DB, collapse duplicate rows from the main results list, and expose duplicate count with a compact duplicate-path list in preview.
-Proof:
-- Command: Index two different skill roots with identical SKILL.md content.
-- Expect: DB keeps both rows; search list shows one canonical row; preview shows duplicate count > 1 plus duplicate locations.
-Touches: src/Indexer/*.pas, src/Db/*.pas, src/UI/MainForm.pas
-Notes: Spec section 7.4 (Option A)
-
-### T-020 [BUILD] Enforce Win64 target for SQLite runtime compatibility
-Outcome: Make Win64 the required runtime target for app builds that consume bundled SQLite DLLs, and fail fast for unsupported Win32 builds with a clear message.
-Proof:
-- Command: Build Win32.
-- Expect: Build or startup fails with explicit message that Win64 is required.
-- Command: Build Win64 and start app with bundled DLLs.
-- Expect: App starts, SQLite library loads successfully, and FTS5 capability check passes.
-Touches: projects/*.dproj, projects/*.dpr, src/Db/*.pas, bin/
-Notes: Maintainer requirement (Win64 for SQLite DLL consumption), spec section 3.2
 
 ### T-009 [SEM] Ollama client + embeddings rerank (hybrid)
 Outcome: Add local-first semantic rerank via Ollama (/api/embeddings): embed query, rerank top CandidateRerankCount candidates using cosine similarity over chunk vectors, and combine lex+sem into final score.
@@ -142,7 +116,37 @@ Notes: Spec sections 3.2, 5, 16
 
 ## Blocked
 
+### T-018 [SEARCH] Add snippets + sanitized preview rendering
+Outcome: Generate query-aware snippets (`snippet()` or fallback extractor), cap by `SnippetMaxChars`, and render sanitized HTML in preview with match highlighting.
+Proof:
+- Command: Search for a term present in markdown with inline HTML and long body text.
+- Expect: Snippet is truncated to configured max length, dangerous markup is escaped, and highlighted matches are visible in preview.
+Touches: src/Search/*.pas, src/UI/MainForm.pas, src/UI/Preview*.pas
+Deps: T-008, T-011
+Notes:
+- Deferred until core search query execution and UI preview host are in place.
+
+### T-019 [IDX] Detect duplicate skills by body_hash
+Outcome: Detect duplicate skill bodies using `body_hash`, keep all rows indexed in DB, collapse duplicate rows from the main results list, and expose duplicate count with a compact duplicate-path list in preview.
+Proof:
+- Command: Index two different skill roots with identical SKILL.md content.
+- Expect: DB keeps both rows; search list shows one canonical row; preview shows duplicate count > 1 plus duplicate locations.
+Touches: src/Indexer/*.pas, src/Db/*.pas, src/UI/MainForm.pas
+Deps: T-006, T-008, T-011
+Notes:
+- Deferred until index upsert/search list rendering pipeline is complete.
+
 ## Done
+
+### T-020 [BUILD] Enforce Win64 target for SQLite runtime compatibility
+Outcome: Make Win64 the required runtime target for app builds that consume bundled SQLite DLLs, and fail fast for unsupported Win32 builds with a clear message.
+Proof:
+- Command: Build Win32.
+- Expect: Build or startup fails with explicit message that Win64 is required.
+- Command: Build Win64 and start app with bundled DLLs.
+- Expect: App starts, SQLite library loads successfully, and FTS5 capability check passes.
+Touches: projects/*.dproj, projects/*.dpr, src/Db/*.pas, bin/
+Notes: Maintainer requirement (Win64 for SQLite DLL consumption), spec section 3.2
 
 ### T-017 [PIPE] Implement 3-pool pipeline coordinator + single DB writer
 Outcome: Add a coordinator that wires scan/git/index pools with bounded queues and a single DB writer thread that batches transactions for `repos`, `skills`, and `skills_fts`.
