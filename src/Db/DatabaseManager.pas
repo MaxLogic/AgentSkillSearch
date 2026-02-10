@@ -38,9 +38,12 @@ type
     BodyHash: string;
     BodyMarkdown: string;
     Description: string;
+    HasScripts: Integer;
     Id: Integer;
     IndexedUtc: string;
     Name: string;
+    ScriptsCount: Integer;
+    ScriptsExts: string;
     SkillFile: string;
     SkillRoot: string;
     Tags: string;
@@ -337,7 +340,8 @@ begin
   try
     lQuery.Connection := fConnection;
     lQuery.SQL.Text :=
-      'SELECT id, skill_root, skill_file, name, description, tags, body_md, body_hash, indexed_utc ' +
+      'SELECT id, skill_root, skill_file, name, description, tags, body_md, body_hash, indexed_utc, ' +
+      '  has_scripts, scripts_count, scripts_exts ' +
       'FROM skills WHERE skill_file = :skill_file;';
     lQuery.ParamByName('skill_file').AsString := aSkillFile;
     lQuery.Open;
@@ -357,6 +361,9 @@ begin
     aState.BodyMarkdown := lQuery.FieldByName('body_md').AsString;
     aState.BodyHash := lQuery.FieldByName('body_hash').AsString;
     aState.IndexedUtc := lQuery.FieldByName('indexed_utc').AsString;
+    aState.HasScripts := lQuery.FieldByName('has_scripts').AsInteger;
+    aState.ScriptsCount := lQuery.FieldByName('scripts_count').AsInteger;
+    aState.ScriptsExts := lQuery.FieldByName('scripts_exts').AsString;
   finally
     lQuery.Free;
   end;
@@ -469,7 +476,9 @@ begin
   lQuery := TFDQuery.Create(nil);
   try
     lQuery.Connection := fConnection;
-    lQuery.SQL.Text := 'SELECT body_hash, file_mtime_utc FROM skills WHERE skill_file = :skill_file;';
+    lQuery.SQL.Text :=
+      'SELECT body_hash, file_mtime_utc, has_scripts, scripts_count, scripts_exts ' +
+      'FROM skills WHERE skill_file = :skill_file;';
     lQuery.ParamByName('skill_file').AsString := aSkill.SkillFile;
     lQuery.Open;
     if lQuery.IsEmpty then
@@ -478,7 +487,10 @@ begin
     end;
 
     Result := SameText(lQuery.FieldByName('body_hash').AsString, aSkill.BodyHash) and
-      SameText(lQuery.FieldByName('file_mtime_utc').AsString, aSkill.FileMtimeUtc);
+      SameText(lQuery.FieldByName('file_mtime_utc').AsString, aSkill.FileMtimeUtc) and
+      (lQuery.FieldByName('has_scripts').AsInteger = aSkill.HasScripts) and
+      (lQuery.FieldByName('scripts_count').AsInteger = aSkill.ScriptsCount) and
+      SameText(lQuery.FieldByName('scripts_exts').AsString, aSkill.ScriptsExts);
   finally
     lQuery.Free;
   end;
@@ -499,9 +511,11 @@ begin
     lQuery.Connection := fConnection;
     lQuery.SQL.Text :=
       'INSERT INTO skills (' +
-      '  source_id, repo_id, skill_root, skill_file, name, description, tags, body_md, body_hash, file_mtime_utc, indexed_utc' +
+      '  source_id, repo_id, skill_root, skill_file, name, description, tags, body_md, body_hash, file_mtime_utc, indexed_utc, ' +
+      '  has_scripts, scripts_count, scripts_exts' +
       ') VALUES (' +
-      '  :source_id, :repo_id, :skill_root, :skill_file, :name, :description, :tags, :body_md, :body_hash, :file_mtime_utc, :indexed_utc' +
+      '  :source_id, :repo_id, :skill_root, :skill_file, :name, :description, :tags, :body_md, :body_hash, :file_mtime_utc, :indexed_utc, ' +
+      '  :has_scripts, :scripts_count, :scripts_exts' +
       ') ON CONFLICT(skill_file) DO UPDATE SET ' +
       '  source_id=excluded.source_id, ' +
       '  repo_id=excluded.repo_id, ' +
@@ -512,7 +526,10 @@ begin
       '  body_md=excluded.body_md, ' +
       '  body_hash=excluded.body_hash, ' +
       '  file_mtime_utc=excluded.file_mtime_utc, ' +
-      '  indexed_utc=excluded.indexed_utc';
+      '  indexed_utc=excluded.indexed_utc, ' +
+      '  has_scripts=excluded.has_scripts, ' +
+      '  scripts_count=excluded.scripts_count, ' +
+      '  scripts_exts=excluded.scripts_exts';
 
     lQuery.ParamByName('source_id').AsInteger := aSkill.SourceId;
     if aSkill.RepoId > 0 then
@@ -531,6 +548,9 @@ begin
     lQuery.ParamByName('body_hash').AsString := aSkill.BodyHash;
     lQuery.ParamByName('file_mtime_utc').AsString := aSkill.FileMtimeUtc;
     lQuery.ParamByName('indexed_utc').AsString := aSkill.IndexedUtc;
+    lQuery.ParamByName('has_scripts').AsInteger := aSkill.HasScripts;
+    lQuery.ParamByName('scripts_count').AsInteger := aSkill.ScriptsCount;
+    lQuery.ParamByName('scripts_exts').AsString := aSkill.ScriptsExts;
     lQuery.ExecSQL;
   finally
     lQuery.Free;

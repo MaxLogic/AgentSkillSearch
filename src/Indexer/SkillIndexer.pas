@@ -5,12 +5,24 @@ interface
 uses
   SkillTypes;
 
-function TryBuildIndexedSkill(const aSkillFilePath: string; out aSkill: TIndexedSkill; out aError: string): Boolean;
+type
+  TSkillIndexOptions = record
+    ComputeHasScripts: Boolean;
+    HasScriptsMaxFilesToScan: Integer;
+    HasScriptsSkipFolders: string;
+    ScriptExtensions: string;
+  end;
+
+function DefaultSkillIndexOptions: TSkillIndexOptions;
+function TryBuildIndexedSkill(const aSkillFilePath: string; out aSkill: TIndexedSkill; out aError: string): Boolean; overload;
+function TryBuildIndexedSkill(const aSkillFilePath: string; const aOptions: TSkillIndexOptions; out aSkill: TIndexedSkill;
+  out aError: string): Boolean; overload;
 
 implementation
 
 uses
-  System.Classes, System.DateUtils, System.Hash, System.IOUtils, System.StrUtils, System.SysUtils;
+  System.Classes, System.DateUtils, System.Generics.Collections, System.Hash, System.IOUtils, System.StrUtils,
+  System.SysUtils;
 
 function UtcDateTimeToIso8601(const aUtc: TDateTime): string;
 begin
@@ -282,7 +294,177 @@ begin
   Result := '';
 end;
 
+function IsSkippedDirectory(const aDirectoryPath: string; const aSkipFolders: TDictionary<string, Byte>): Boolean;
+var
+  lDirName: string;
+begin
+  lDirName := LowerCase(ExtractFileName(aDirectoryPath));
+  Result := aSkipFolders.ContainsKey(lDirName);
+end;
+
+procedure ParseSemicolonSet(const aValue: string; const aTrimLeadingDot: Boolean; aItems: TDictionary<string, Byte>);
+var
+  i: Integer;
+  lItem: string;
+  lItems: TArray<string>;
+begin
+  lItems := SplitString(aValue, ';');
+  for i := 0 to Pred(Length(lItems)) do
+  begin
+    lItem := LowerCase(Trim(lItems[i]));
+    if lItem = '' then
+    begin
+      Continue;
+    end;
+
+    if aTrimLeadingDot and (Length(lItem) > 1) and (lItem[1] = '.') then
+    begin
+      lItem := Copy(lItem, 2, MaxInt);
+    end;
+
+    if not aItems.ContainsKey(lItem) then
+    begin
+      aItems.Add(lItem, 1);
+    end;
+  end;
+end;
+
+function BuildExtensionsList(const aExtensions: TDictionary<string, Byte>): string;
+var
+  lItems: TArray<string>;
+begin
+  lItems := aExtensions.Keys.ToArray;
+  TArray.Sort<string>(lItems);
+  Result := string.Join(';', lItems);
+end;
+
+procedure ComputeScriptsInfo(const aSkillRoot: string; const aOptions: TSkillIndexOptions; out aHasScripts: Integer;
+  out aScriptsCount: Integer; out aScriptsExts: string);
+var
+  lAllowedExtensions: TDictionary<string, Byte>;
+  lDiscoveredExtensions: TDictionary<string, Byte>;
+  lDirectory: string;
+  lDirectories: TArray<string>;
+  lFiles: TArray<string>;
+  lPending: TList<string>;
+  lScannedFiles: Integer;
+  lSkipFolders: TDictionary<string, Byte>;
+  lSubDirectory: string;
+  lFilePath: string;
+  lExtension: string;
+begin
+  aHasScripts := 0;
+  aScriptsCount := 0;
+  aScriptsExts := '';
+
+  if not aOptions.ComputeHasScripts then
+  begin
+    Exit;
+  end;
+
+  lAllowedExtensions := TDictionary<string, Byte>.Create;
+  lDiscoveredExtensions := TDictionary<string, Byte>.Create;
+  lPending := TList<string>.Create;
+  lSkipFolders := TDictionary<string, Byte>.Create;
+  try
+    ParseSemicolonSet(aOptions.ScriptExtensions, True, lAllowedExtensions);
+    ParseSemicolonSet(aOptions.HasScriptsSkipFolders, False, lSkipFolders);
+
+    lPending.Add(aSkillRoot);
+    lScannedFiles := 0;
+
+    while lPending.Count > 0 do
+    begin
+      if lScannedFiles >= aOptions.HasScriptsMaxFilesToScan then
+      begin
+        Break;
+      end;
+
+      lDirectory := lPending[lPending.Count - 1];
+      lPending.Delete(lPending.Count - 1);
+
+      try
+        lFiles := TDirectory.GetFiles(lDirectory);
+      except
+        on EInOutError do
+        begin
+          Continue;
+        end;
+      end;
+
+      for lFilePath in lFiles do
+      begin
+        Inc(lScannedFiles);
+        if lScannedFiles > aOptions.HasScriptsMaxFilesToScan then
+        begin
+          Break;
+        end;
+
+        lExtension := LowerCase(Copy(ExtractFileExt(lFilePath), 2, MaxInt));
+        if (lExtension <> '') and lAllowedExtensions.ContainsKey(lExtension) then
+        begin
+          Inc(aScriptsCount);
+          if not lDiscoveredExtensions.ContainsKey(lExtension) then
+          begin
+            lDiscoveredExtensions.Add(lExtension, 1);
+          end;
+        end;
+      end;
+
+      if lScannedFiles >= aOptions.HasScriptsMaxFilesToScan then
+      begin
+        Break;
+      end;
+
+      try
+        lDirectories := TDirectory.GetDirectories(lDirectory);
+      except
+        on EInOutError do
+        begin
+          Continue;
+        end;
+      end;
+
+      for lSubDirectory in lDirectories do
+      begin
+        if IsSkippedDirectory(lSubDirectory, lSkipFolders) then
+        begin
+          Continue;
+        end;
+
+        lPending.Add(lSubDirectory);
+      end;
+    end;
+
+    if aScriptsCount > 0 then
+    begin
+      aHasScripts := 1;
+    end;
+
+    aScriptsExts := BuildExtensionsList(lDiscoveredExtensions);
+  finally
+    lSkipFolders.Free;
+    lPending.Free;
+    lDiscoveredExtensions.Free;
+    lAllowedExtensions.Free;
+  end;
+end;
+
+function DefaultSkillIndexOptions: TSkillIndexOptions;
+begin
+  Result.ComputeHasScripts := True;
+  Result.HasScriptsMaxFilesToScan := 5000;
+  Result.HasScriptsSkipFolders := '.git;node_modules;bin;obj;dist;build;.venv;__pycache__';
+  Result.ScriptExtensions := 'py;ps1;bat;cmd;sh;js;ts;lua;rb;pl;go;rs;java;cs;cpp;c;h;pas';
+end;
+
 function TryBuildIndexedSkill(const aSkillFilePath: string; out aSkill: TIndexedSkill; out aError: string): Boolean;
+begin
+  Result := TryBuildIndexedSkill(aSkillFilePath, DefaultSkillIndexOptions, aSkill, aError);
+end;
+
+function TryBuildIndexedSkill(const aSkillFilePath: string; const aOptions: TSkillIndexOptions; out aSkill: TIndexedSkill;
+  out aError: string): Boolean;
 var
   lBody: string;
   lBodyForParsing: string;
@@ -336,6 +518,8 @@ begin
   end else begin
     aSkill.Tags := ExtractTags(lBodyForParsing);
   end;
+
+  ComputeScriptsInfo(aSkill.SkillRoot, aOptions, aSkill.HasScripts, aSkill.ScriptsCount, aSkill.ScriptsExts);
 
   aSkill.FileMtimeUtc := UtcDateTimeToIso8601(lMtimeUtc);
   aSkill.IndexedUtc := UtcDateTimeToIso8601(TTimeZone.Local.ToUniversalTime(Now));
