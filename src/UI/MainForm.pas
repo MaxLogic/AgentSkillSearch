@@ -328,6 +328,7 @@ end;
 
 procedure TMainForm.RenderPreview(const aResult: TSkillSearchResult);
 var
+  lDuplicateText: string;
   lHtml: string;
   lSnippetHtml: string;
 begin
@@ -343,8 +344,15 @@ begin
     '</body></html>';
 
   fPreviewBrowser.LoadHTML(lHtml);
-  fDuplicateInfoMemo.Lines.Text := 'Duplicate rows are not collapsed in this view yet.' + sLineBreak +
-    'This side area is reserved for duplicate summaries.';
+  if aResult.DuplicateCount <= 1 then
+  begin
+    lDuplicateText := 'No duplicate skills detected for this result.';
+  end else begin
+    lDuplicateText := Format('Duplicate skills detected: %d', [aResult.DuplicateCount]) + sLineBreak +
+      'Canonical:' + sLineBreak + aResult.SkillFile + sLineBreak + sLineBreak +
+      'Other locations:' + sLineBreak + aResult.DuplicatePaths;
+  end;
+  fDuplicateInfoMemo.Lines.Text := lDuplicateText;
 end;
 
 function TMainForm.GetSelectedSkillFile: string;

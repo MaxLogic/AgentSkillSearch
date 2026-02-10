@@ -66,10 +66,12 @@ var
   lRootA: string;
   lRootB: string;
   lRootC: string;
+  lRootD: string;
 begin
   lRootA := 'C:\skills\repo-alpha\retry-patterns';
   lRootB := 'C:\skills\repo-beta\network-basics';
   lRootC := 'C:\skills\repo-gamma\jwt-auth';
+  lRootD := 'C:\skills\repo-delta\retry-patterns-copy';
   lLongBody :=
     'How to implement retry with backoff and rate limit in Delphi.' + sLineBreak +
     'Inline html <script>alert(1)</script> should never render as executable markup.' + sLineBreak;
@@ -78,7 +80,7 @@ begin
     lLongBody := lLongBody + 'Retry loops should include bounded jitter and clear retry limits. ';
   end;
 
-  SetLength(lSkills, 3);
+  SetLength(lSkills, 4);
   lSkills[0] := BuildSkill(
     lRootA,
     'SKILL.md',
@@ -113,6 +115,18 @@ begin
     1,
     1,
     'js'
+  );
+
+  lSkills[3] := BuildSkill(
+    lRootD,
+    'SKILL.md',
+    'Retry Patterns Copy',
+    'Copy of retry guide',
+    'delphi;network',
+    lLongBody,
+    1,
+    2,
+    'ps1;py'
   );
 
   aDbManager.WriteBatch(nil, lSkills);
@@ -166,10 +180,14 @@ begin
     lResults := lSearchService.Search('retry');
     AssertTrue(Length(lResults) >= 2, 'Expected at least two retry matches');
     AssertTrue(SameText(lResults[0].Name, 'Retry Patterns'), 'Name match should outrank body-only match');
+    AssertEqualInt(2, lResults[0].DuplicateCount, 'Expected duplicate collapse count for same body_hash');
+    AssertTrue(ContainsText(lResults[0].DuplicatePaths, 'repo-delta'),
+      'Expected duplicate paths list to include collapsed location');
 
     lResults := lSearchService.Search('retry has:scripts');
     AssertEqualInt(1, Length(lResults), 'has:scripts should keep only script-enabled retry skills');
     AssertEqualInt(1, lResults[0].HasScripts, 'Result should have has_scripts=1');
+    AssertEqualInt(2, lResults[0].DuplicateCount, 'has:scripts result should preserve duplicate collapse details');
 
     lResults := lSearchService.Search('retry -has:scripts');
     AssertEqualInt(1, Length(lResults), '-has:scripts should keep only non-script retry skills');

@@ -3,8 +3,8 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 3 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 3)
-Done tasks: 18
+Open tasks: 2 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 2)
+Done tasks: 19
 
 ## In Progress
 
@@ -15,16 +15,6 @@ Done tasks: 18
 ## Next – Later
 
 ## Blocked
-
-### T-019 [IDX] Detect duplicate skills by body_hash
-Outcome: Detect duplicate skill bodies using `body_hash`, keep all rows indexed in DB, collapse duplicate rows from the main results list, and expose duplicate count with a compact duplicate-path list in preview.
-Proof:
-- Command: Index two different skill roots with identical SKILL.md content.
-- Expect: DB keeps both rows; search list shows one canonical row; preview shows duplicate count > 1 plus duplicate locations.
-Touches: src/Indexer/*.pas, src/Db/*.pas, src/UI/MainForm.pas
-Deps: T-006, T-008, T-011
-Notes:
-- Deferred until index upsert/search list rendering pipeline is complete.
 
 ### T-009 [SEM] Ollama client + embeddings rerank (hybrid)
 Outcome: Add local-first semantic rerank via Ollama (/api/embeddings): embed query, rerank top CandidateRerankCount candidates using cosine similarity over chunk vectors, and combine lex+sem into final score.
@@ -48,6 +38,16 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-019 [IDX] Detect duplicate skills by body_hash
+Outcome: Detect duplicate skill bodies using `body_hash`, keep all rows indexed in DB, collapse duplicate rows from the main results list, and expose duplicate count with a compact duplicate-path list in preview.
+Proof:
+- Command: Index two different skill roots with identical SKILL.md content.
+- Expect: DB keeps both rows; search list shows one canonical row; preview shows duplicate count > 1 plus duplicate locations.
+Touches: src/Indexer/*.pas, src/Db/*.pas, src/UI/MainForm.pas
+Deps: T-006, T-008, T-011
+Notes:
+- Deferred until index upsert/search list rendering pipeline is complete.
 
 ### T-018 [SEARCH] Add snippets + sanitized preview rendering
 Outcome: Generate query-aware snippets (`snippet()` or fallback extractor), cap by `SnippetMaxChars`, and render sanitized HTML in preview with match highlighting.
