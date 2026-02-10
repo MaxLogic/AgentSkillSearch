@@ -16,6 +16,9 @@ indexing `SKILL.md` files into SQLite FTS5, and searching with lexical and seman
 
 ## Build (Delphi 12)
 
+The project references shared units directly from sibling repo `..\..\MaxLogicFoundation`
+(resolved from `projects/*.dproj` search paths).
+
 From WSL, use the helper scripts in `projects/`:
 
 ```bash

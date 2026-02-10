@@ -20,7 +20,7 @@ implementation
 
 uses
   System.Classes, System.IOUtils, System.IniFiles, System.SysUtils,
-  AppPaths;
+  AppPaths, AutoFree;
 
 function ResolveSettingsPath(const aValue, aBaseDirectory: string): string;
 begin
