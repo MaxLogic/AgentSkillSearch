@@ -3,8 +3,8 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 1 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 1)
-Done tasks: 20
+Open tasks: 0 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 21
 
 ## In Progress
 
@@ -16,6 +16,8 @@ Done tasks: 20
 
 ## Blocked
 
+## Done
+
 ### T-009 [SEM] Ollama client + embeddings rerank (hybrid)
 Outcome: Add local-first semantic rerank via Ollama (/api/embeddings): embed query, rerank top CandidateRerankCount candidates using cosine similarity over chunk vectors, and combine lex+sem into final score.
 Proof:
@@ -26,8 +28,6 @@ Deps: T-008, T-010
 Notes:
 - Deferred until lexical query pipeline and chunk/vector persistence are complete.
 - Proof requires local Ollama runtime availability.
-
-## Done
 
 ### T-010 [SEM] Chunking + vector storage + incremental re-embed
 Outcome: Implement chunking by headings/paragraphs, store chunks + vectors in DB, and update vectors only when chunk_hash changes; use max-chunk similarity per skill.

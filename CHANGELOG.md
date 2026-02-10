@@ -18,6 +18,7 @@
 - Query-aware FTS snippets with configurable character caps plus sanitized preview rendering with match highlighting (`T-018`).
 - Duplicate suppression in result lists using `body_hash`, with duplicate counts and duplicate-path details surfaced in preview (`T-019`).
 - Semantic chunk/vector persistence with heading-aware chunking and incremental vector refresh only for changed chunk hashes (`T-010`).
+- Hybrid semantic rerank via Ollama embeddings over cached chunk vectors, with graceful lexical fallback when Ollama is unavailable (`T-009`).
 - Strongly typed portable `settings.ini` loader that creates defaults, repairs missing keys, and logs key restoration events (`T-015`).
 - Worktree-aware git repo discovery with `.git` file/directory handling and persisted repo roots for pull scheduling (`T-016`).
 - Multi-stage scan/git/index pipeline coordinator with cancellable processing and single-writer batched DB commits (`T-017`).

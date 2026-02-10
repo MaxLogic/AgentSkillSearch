@@ -3,16 +3,25 @@ unit SkillSearchService;
 interface
 
 uses
-  FireDAC.Comp.Client, FireDAC.Phys.SQLite;
+  System.SysUtils, FireDAC.Comp.Client, FireDAC.Phys.SQLite;
 
 type
+  TSemanticSearchOptions = record
+    Enabled: Boolean;
+    CandidateRerankCount: Integer;
+    Model: string;
+    OllamaBaseUrl: string;
+  end;
+
   TSkillSearchResult = record
     Description: string;
     DuplicateCount: Integer;
     DuplicatePaths: string;
+    FinalScore: Double;
     HasScripts: Integer;
     LexScore: Double;
     Name: string;
+    SemanticScore: Double;
     Snippet: string;
     ScriptsCount: Integer;
     ScriptsExts: string;
@@ -26,25 +35,51 @@ type
     fConnection: TFDConnection;
     fDatabasePath: string;
     fDriverLink: TFDPhysSQLiteDriverLink;
+    fSemanticOptions: TSemanticSearchOptions;
     fSnippetMaxChars: Integer;
     fSqliteDllPath: string;
+    procedure ApplySemanticRerank(const aQuery: string; var aResults: TArray<TSkillSearchResult>);
     function BuildFallbackSnippet(const aBody: string; const aTerms: TArray<string>): string;
+    function CosineSimilarity(const aLeft, aRight: TArray<Single>): Double;
     function ClampSnippet(const aValue: string): string;
     procedure ConfigureConnection;
+    function DecodeVectorBlob(const aBlob: TBytes): TArray<Single>;
+    function EncodeVectorBlob(const aVector: TArray<Single>): TBytes;
+    function GetCurrentUtcIso8601: string;
+    function NormalizeScore(const aValue, aMin, aMax: Double): Double;
+    procedure PersistChunkVector(const aChunkId: Integer; const aVector: TArray<Single>);
+    function TryComputeSkillSemanticScore(const aSkillFile: string; const aQueryVector: TArray<Single>;
+      out aScore: Double): Boolean;
+    function TryExtractEmbedding(const aJsonText: string; out aVector: TArray<Single>): Boolean;
+    function TryLoadChunkVector(const aModel: string; aQuery: TFDQuery; out aVector: TArray<Single>): Boolean;
+    function TryRequestEmbedding(const aText: string; out aVector: TArray<Single>): Boolean;
   public
+    constructor Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer;
+      const aSemanticOptions: TSemanticSearchOptions); overload;
     constructor Create(const aDatabasePath, aSqliteDllPath: string); overload;
     constructor Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer); overload;
     destructor Destroy; override;
     function Search(const aRawQuery: string): TArray<TSkillSearchResult>;
   end;
 
+function DefaultSemanticSearchOptions: TSemanticSearchOptions;
+
 implementation
 
 uses
-  System.Classes, System.Generics.Collections, System.Math, System.StrUtils, System.SysUtils, Data.DB,
+  System.Classes, System.DateUtils, System.Generics.Collections, System.Generics.Defaults, System.JSON,
+  System.Math, System.Net.HttpClient, System.Net.URLClient, System.StrUtils, Data.DB,
   FireDAC.DApt, FireDAC.Stan.Async, FireDAC.Stan.Def, FireDAC.Stan.Intf, FireDAC.Stan.Option,
   FireDAC.Stan.Param,
   QueryParser;
+
+function DefaultSemanticSearchOptions: TSemanticSearchOptions;
+begin
+  Result.Enabled := False;
+  Result.CandidateRerankCount := 300;
+  Result.Model := 'mxbai-embed-large';
+  Result.OllamaBaseUrl := 'http://localhost:11434';
+end;
 
 function EscapeLike(const aValue: string): string;
 begin
@@ -148,10 +183,17 @@ end;
 
 constructor TSkillSearchService.Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer);
 begin
+  Create(aDatabasePath, aSqliteDllPath, aSnippetMaxChars, DefaultSemanticSearchOptions);
+end;
+
+constructor TSkillSearchService.Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer;
+  const aSemanticOptions: TSemanticSearchOptions);
+begin
   inherited Create;
   fDatabasePath := aDatabasePath;
   fSqliteDllPath := aSqliteDllPath;
   fSnippetMaxChars := Max(64, aSnippetMaxChars);
+  fSemanticOptions := aSemanticOptions;
   ConfigureConnection;
 end;
 
@@ -176,6 +218,408 @@ begin
   fConnection.Params.Add('LockingMode=Normal');
   fConnection.Params.Add('BusyTimeout=5000');
   fConnection.Connected := True;
+end;
+
+function TSkillSearchService.EncodeVectorBlob(const aVector: TArray<Single>): TBytes;
+begin
+  SetLength(Result, Length(aVector) * SizeOf(Single));
+  if Length(Result) > 0 then
+  begin
+    Move(aVector[0], Result[0], Length(Result));
+  end;
+end;
+
+function TSkillSearchService.DecodeVectorBlob(const aBlob: TBytes): TArray<Single>;
+var
+  lCount: Integer;
+begin
+  if Length(aBlob) = 0 then
+  begin
+    Exit(nil);
+  end;
+
+  lCount := Length(aBlob) div SizeOf(Single);
+  if lCount <= 0 then
+  begin
+    Exit(nil);
+  end;
+
+  SetLength(Result, lCount);
+  Move(aBlob[0], Result[0], lCount * SizeOf(Single));
+end;
+
+function TSkillSearchService.GetCurrentUtcIso8601: string;
+var
+  lUtcNow: TDateTime;
+begin
+  lUtcNow := TTimeZone.Local.ToUniversalTime(Now);
+  Result := FormatDateTime('yyyy-mm-dd\"T\"hh:nn:ss\"Z\"', lUtcNow, TFormatSettings.Invariant);
+end;
+
+function TSkillSearchService.TryExtractEmbedding(const aJsonText: string; out aVector: TArray<Single>): Boolean;
+var
+  i: Integer;
+  lArray: TJSONArray;
+  lJsonValue: TJSONValue;
+  lNumber: TJSONNumber;
+  lObject: TJSONObject;
+begin
+  aVector := nil;
+  lJsonValue := TJSONObject.ParseJSONValue(aJsonText);
+  if not Assigned(lJsonValue) then
+  begin
+    Exit(False);
+  end;
+
+  try
+    if not (lJsonValue is TJSONObject) then
+    begin
+      Exit(False);
+    end;
+
+    lObject := TJSONObject(lJsonValue);
+    lArray := lObject.Values['embedding'] as TJSONArray;
+    if not Assigned(lArray) then
+    begin
+      Exit(False);
+    end;
+
+    SetLength(aVector, lArray.Count);
+    for i := 0 to Pred(lArray.Count) do
+    begin
+      if lArray.Items[i] is TJSONNumber then
+      begin
+        lNumber := TJSONNumber(lArray.Items[i]);
+        aVector[i] := lNumber.AsDouble;
+      end else begin
+        aVector[i] := StrToFloatDef(lArray.Items[i].Value, 0.0, TFormatSettings.Invariant);
+      end;
+    end;
+
+    Result := Length(aVector) > 0;
+  finally
+    lJsonValue.Free;
+  end;
+end;
+
+function TSkillSearchService.TryRequestEmbedding(const aText: string; out aVector: TArray<Single>): Boolean;
+var
+  lClient: THTTPClient;
+  lHeaders: TNetHeaders;
+  lRequestJson: string;
+  lRequestObject: TJSONObject;
+  lRequestStream: TStringStream;
+  lResponse: IHTTPResponse;
+  lResponseText: string;
+  lUrl: string;
+begin
+  aVector := nil;
+  if not fSemanticOptions.Enabled then
+  begin
+    Exit(False);
+  end;
+
+  lUrl := Trim(fSemanticOptions.OllamaBaseUrl);
+  if lUrl = '' then
+  begin
+    Exit(False);
+  end;
+
+  lUrl := ExcludeTrailingPathDelimiter(lUrl) + '/api/embeddings';
+
+  lRequestObject := TJSONObject.Create;
+  try
+    lRequestObject.AddPair('model', fSemanticOptions.Model);
+    lRequestObject.AddPair('prompt', aText);
+    lRequestJson := lRequestObject.ToJSON;
+  finally
+    lRequestObject.Free;
+  end;
+
+  lClient := THTTPClient.Create;
+  lRequestStream := TStringStream.Create(lRequestJson, TEncoding.UTF8);
+  try
+    lClient.ConnectionTimeout := 500;
+    lClient.ResponseTimeout := 1200;
+    SetLength(lHeaders, 1);
+    lHeaders[0] := TNetHeader.Create('Content-Type', 'application/json');
+    lResponse := lClient.Post(lUrl, lRequestStream, nil, lHeaders);
+    if not Assigned(lResponse) then
+    begin
+      Exit(False);
+    end;
+
+    if lResponse.StatusCode < 200 then
+    begin
+      Exit(False);
+    end;
+    if lResponse.StatusCode >= 300 then
+    begin
+      Exit(False);
+    end;
+
+    lResponseText := lResponse.ContentAsString(TEncoding.UTF8);
+    Result := TryExtractEmbedding(lResponseText, aVector);
+  except
+    Result := False;
+  end;
+  lRequestStream.Free;
+  lClient.Free;
+end;
+
+procedure TSkillSearchService.PersistChunkVector(const aChunkId: Integer; const aVector: TArray<Single>);
+var
+  lBlob: TBytes;
+  lQuery: TFDQuery;
+  lStream: TBytesStream;
+begin
+  lBlob := EncodeVectorBlob(aVector);
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'INSERT INTO chunk_vec(chunk_id, model, dim, vec, updated_utc) ' +
+      'VALUES (:chunk_id, :model, :dim, :vec, :updated_utc) ' +
+      'ON CONFLICT(chunk_id) DO UPDATE SET ' +
+      '  model=excluded.model, ' +
+      '  dim=excluded.dim, ' +
+      '  vec=excluded.vec, ' +
+      '  updated_utc=excluded.updated_utc';
+    lQuery.ParamByName('chunk_id').AsInteger := aChunkId;
+    lQuery.ParamByName('model').AsString := fSemanticOptions.Model;
+    lQuery.ParamByName('dim').AsInteger := Length(aVector);
+    lQuery.ParamByName('vec').DataType := ftBlob;
+    lStream := TBytesStream.Create(lBlob);
+    try
+      lQuery.ParamByName('vec').LoadFromStream(lStream, ftBlob);
+    finally
+      lStream.Free;
+    end;
+    lQuery.ParamByName('updated_utc').AsString := GetCurrentUtcIso8601;
+    lQuery.ExecSQL;
+  finally
+    lQuery.Free;
+  end;
+end;
+
+function TSkillSearchService.TryLoadChunkVector(const aModel: string; aQuery: TFDQuery; out aVector: TArray<Single>)
+  : Boolean;
+var
+  lBlob: TBytes;
+  lBlobField: TBlobField;
+  lStream: TBytesStream;
+begin
+  aVector := nil;
+  if aQuery.FieldByName('vec').IsNull then
+  begin
+    Exit(False);
+  end;
+  if not SameText(aModel, aQuery.FieldByName('model').AsString) then
+  begin
+    Exit(False);
+  end;
+  if not (aQuery.FieldByName('vec') is TBlobField) then
+  begin
+    Exit(False);
+  end;
+
+  lBlobField := TBlobField(aQuery.FieldByName('vec'));
+  lStream := TBytesStream.Create;
+  try
+    lBlobField.SaveToStream(lStream);
+    SetLength(lBlob, lStream.Size);
+    if lStream.Size > 0 then
+    begin
+      Move(lStream.Bytes[0], lBlob[0], lStream.Size);
+    end;
+    aVector := DecodeVectorBlob(lBlob);
+    Result := Length(aVector) > 0;
+  finally
+    lStream.Free;
+  end;
+end;
+
+function TSkillSearchService.CosineSimilarity(const aLeft, aRight: TArray<Single>): Double;
+var
+  i: Integer;
+  lCount: Integer;
+  lDot: Double;
+  lLeftNorm: Double;
+  lRightNorm: Double;
+begin
+  lCount := Min(Length(aLeft), Length(aRight));
+  if lCount <= 0 then
+  begin
+    Exit(0.0);
+  end;
+
+  lDot := 0.0;
+  lLeftNorm := 0.0;
+  lRightNorm := 0.0;
+  for i := 0 to Pred(lCount) do
+  begin
+    lDot := lDot + (aLeft[i] * aRight[i]);
+    lLeftNorm := lLeftNorm + (aLeft[i] * aLeft[i]);
+    lRightNorm := lRightNorm + (aRight[i] * aRight[i]);
+  end;
+
+  if (lLeftNorm <= 0.0) or (lRightNorm <= 0.0) then
+  begin
+    Exit(0.0);
+  end;
+  Result := lDot / (Sqrt(lLeftNorm) * Sqrt(lRightNorm));
+end;
+
+function TSkillSearchService.TryComputeSkillSemanticScore(const aSkillFile: string; const aQueryVector: TArray<Single>;
+  out aScore: Double): Boolean;
+var
+  lChunkId: Integer;
+  lChunkVector: TArray<Single>;
+  lCurrentScore: Double;
+  lHasAnyScore: Boolean;
+  lQuery: TFDQuery;
+begin
+  aScore := 0.0;
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'SELECT c.id AS chunk_id, c.chunk_text, COALESCE(v.model, '''') AS model, v.vec ' +
+      'FROM skill_chunks c ' +
+      'JOIN skills s ON s.id = c.skill_id ' +
+      'LEFT JOIN chunk_vec v ON v.chunk_id = c.id ' +
+      'WHERE s.skill_file = :skill_file ' +
+      'ORDER BY c.chunk_index;';
+    lQuery.ParamByName('skill_file').AsString := aSkillFile;
+    lQuery.Open;
+
+    lHasAnyScore := False;
+    while not lQuery.Eof do
+    begin
+      if not TryLoadChunkVector(fSemanticOptions.Model, lQuery, lChunkVector) then
+      begin
+        if not TryRequestEmbedding(lQuery.FieldByName('chunk_text').AsString, lChunkVector) then
+        begin
+          lQuery.Next;
+          Continue;
+        end;
+
+        lChunkId := lQuery.FieldByName('chunk_id').AsInteger;
+        PersistChunkVector(lChunkId, lChunkVector);
+      end;
+
+      lCurrentScore := CosineSimilarity(aQueryVector, lChunkVector);
+      if (not lHasAnyScore) or (lCurrentScore > aScore) then
+      begin
+        aScore := lCurrentScore;
+        lHasAnyScore := True;
+      end;
+
+      lQuery.Next;
+    end;
+
+    Result := lHasAnyScore;
+  finally
+    lQuery.Free;
+  end;
+end;
+
+function TSkillSearchService.NormalizeScore(const aValue, aMin, aMax: Double): Double;
+begin
+  if SameValue(aMin, aMax, 1.0e-9) then
+  begin
+    Exit(1.0);
+  end;
+  Result := (aValue - aMin) / (aMax - aMin);
+end;
+
+procedure TSkillSearchService.ApplySemanticRerank(const aQuery: string; var aResults: TArray<TSkillSearchResult>);
+var
+  i: Integer;
+  lCandidateCount: Integer;
+  lCandidates: TArray<TSkillSearchResult>;
+  lLexMax: Double;
+  lLexMin: Double;
+  lNormLex: Double;
+  lNormSem: Double;
+  lQueryVector: TArray<Single>;
+  lSemMax: Double;
+  lSemMin: Double;
+begin
+  if not fSemanticOptions.Enabled then
+  begin
+    Exit;
+  end;
+  if Trim(aQuery) = '' then
+  begin
+    Exit;
+  end;
+  if Length(aResults) = 0 then
+  begin
+    Exit;
+  end;
+  if fSemanticOptions.CandidateRerankCount <= 0 then
+  begin
+    Exit;
+  end;
+
+  if not TryRequestEmbedding(aQuery, lQueryVector) then
+  begin
+    Exit;
+  end;
+
+  lCandidateCount := Min(Length(aResults), fSemanticOptions.CandidateRerankCount);
+  SetLength(lCandidates, lCandidateCount);
+
+  lLexMin := MaxDouble;
+  lLexMax := -MaxDouble;
+  lSemMin := MaxDouble;
+  lSemMax := -MaxDouble;
+
+  for i := 0 to Pred(lCandidateCount) do
+  begin
+    lCandidates[i] := aResults[i];
+    if not TryComputeSkillSemanticScore(lCandidates[i].SkillFile, lQueryVector, lCandidates[i].SemanticScore) then
+    begin
+      lCandidates[i].SemanticScore := 0.0;
+    end;
+
+    lLexMin := Min(lLexMin, lCandidates[i].LexScore);
+    lLexMax := Max(lLexMax, lCandidates[i].LexScore);
+    lSemMin := Min(lSemMin, lCandidates[i].SemanticScore);
+    lSemMax := Max(lSemMax, lCandidates[i].SemanticScore);
+  end;
+
+  for i := 0 to Pred(lCandidateCount) do
+  begin
+    lNormLex := NormalizeScore(lCandidates[i].LexScore, lLexMin, lLexMax);
+    lNormSem := NormalizeScore(lCandidates[i].SemanticScore, lSemMin, lSemMax);
+    lCandidates[i].FinalScore := (0.35 * lNormLex) + (0.65 * lNormSem);
+    lCandidates[i].LexScore := lCandidates[i].FinalScore;
+  end;
+
+  TArray.Sort<TSkillSearchResult>(
+    lCandidates,
+    TComparer<TSkillSearchResult>.Construct(
+      function(const aLeft, aRight: TSkillSearchResult): Integer
+      begin
+        if aLeft.FinalScore > aRight.FinalScore then
+        begin
+          Exit(-1);
+        end;
+        if aLeft.FinalScore < aRight.FinalScore then
+        begin
+          Exit(1);
+        end;
+        Result := CompareText(aLeft.Name, aRight.Name);
+      end
+    )
+  );
+
+  for i := 0 to Pred(lCandidateCount) do
+  begin
+    aResults[i] := lCandidates[i];
+  end;
 end;
 
 function TSkillSearchService.Search(const aRawQuery: string): TArray<TSkillSearchResult>;
@@ -301,6 +745,8 @@ begin
       lResult.ScriptsCount := lQuery.FieldByName('scripts_count').AsInteger;
       lResult.ScriptsExts := lQuery.FieldByName('scripts_exts').AsString;
       lResult.LexScore := lQuery.FieldByName('lex_score').AsFloat;
+      lResult.SemanticScore := 0.0;
+      lResult.FinalScore := lResult.LexScore;
       lResult.Snippet := lQuery.FieldByName('snippet').AsString;
       if Trim(lResult.Snippet) = '' then
       begin
@@ -335,6 +781,8 @@ begin
       Result[High(Result)] := lResult;
       lQuery.Next;
     end;
+
+    ApplySemanticRerank(aRawQuery, Result);
   finally
     lDuplicateByBodyHash.Free;
     lQuery.Free;
