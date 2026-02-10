@@ -185,10 +185,45 @@ begin
   end;
 end;
 
+procedure TestIndexerRejectsMalformedFrontMatter;
+var
+  lError: string;
+  lFixtureRoot: string;
+  lSkill: TIndexedSkill;
+  lSkillFile: string;
+  lSkillRoot: string;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchIndexerMalformedFrontmatterFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-invalid-frontmatter');
+  ForceDirectories(lSkillRoot);
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  TFile.WriteAllText(
+    lSkillFile,
+    '---' + sLineBreak +
+    'name: Broken Skill' + sLineBreak +
+    'description: missing terminating fence' + sLineBreak +
+    '# Heading that should not parse' + sLineBreak,
+    TEncoding.UTF8
+  );
+
+  AssertTrue(
+    not TryBuildIndexedSkill(lSkillFile, lSkill, lError),
+    'Malformed frontmatter should fail deterministic indexing'
+  );
+  AssertTrue(ContainsText(lError, 'Malformed frontmatter'), 'Expected explicit frontmatter parse error');
+end;
+
 procedure RunIndexerTests;
 begin
   TestIndexerUpsertAndSkipUnchanged;
   TestIndexerDetectsScriptChangesEvenWhenSkillMarkdownIsUnchanged;
+  TestIndexerRejectsMalformedFrontMatter;
 end;
 
 end.

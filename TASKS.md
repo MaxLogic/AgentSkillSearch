@@ -3,8 +3,8 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 6 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 2, Blocked: 4)
-Done tasks: 15
+Open tasks: 5 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 1, Blocked: 4)
+Done tasks: 16
 
 ## In Progress
 
@@ -13,14 +13,6 @@ Done tasks: 15
 ## Next – This Week
 
 ## Next – Later
-
-### T-013 [OPS] Logging, diagnostics, and error surfacing
-Outcome: Add robust logging and a simple diagnostics dialog showing last scan summary + last errors (git failures, index parse errors).
-Proof:
-- Command: Force a git failure (bad credential) and a malformed SKILL.md.
-- Expect: Errors logged and visible in diagnostics; app continues.
-Touches: src/Logging.pas, src/UI/DiagnosticsForm.pas
-Notes: Spec section 13
 
 ### T-014 [PKG] Runtime packaging (sqlite dll, settings template)
 Outcome: Package EXE with sqlite3.dll (FTS5) and vec0.dll in `bin\`, default settings.ini and Sources.lst beside the EXE, and ensure relative paths work in portable mode.
@@ -74,6 +66,14 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-013 [OPS] Logging, diagnostics, and error surfacing
+Outcome: Add robust logging and a simple diagnostics dialog showing last scan summary + last errors (git failures, index parse errors).
+Proof:
+- Command: Force a git failure (bad credential) and a malformed SKILL.md.
+- Expect: Errors logged and visible in diagnostics; app continues.
+Touches: src/Logging.pas, src/UI/DiagnosticsForm.pas
+Notes: Spec section 13
 
 ### T-012 [SEARCH] Search-as-you-type debounce + cancellation safety
 Outcome: Implement threaded search with debounce (SearchDebounceMs) and generation-id logic so outdated searches discard results; cancellation on Esc.

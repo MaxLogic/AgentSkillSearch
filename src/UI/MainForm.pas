@@ -5,31 +5,37 @@ interface
 uses
   System.Classes, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
-  DatabaseManager, SearchController, SkillSearchService;
+  DatabaseManager, PipelineCoordinator, SearchController, SettingsModel, SkillSearchService;
 
 type
   TMainForm = class(TForm)
   private
+    fAppSettings: TAppSettings;
     fCopyPathMenuItem: TMenuItem;
     fDatabaseManager: TDatabaseManager;
     fDbPath: string;
+    fDiagnosticsButton: TButton;
     fDuplicateInfoMemo: TMemo;
     fDuplicateInfoPanel: TPanel;
     fHasScriptsCheckBox: TCheckBox;
+    fLogPath: string;
     fOpenFileMenuItem: TMenuItem;
     fOpenFolderMenuItem: TMenuItem;
     fPopupMenu: TPopupMenu;
     fPreviewBrowser: TTMSFNCWebBrowser;
     fResults: TArray<TSkillSearchResult>;
     fResultsListView: TListView;
+    fScanButton: TButton;
     fSearchAsYouTypeCheckBox: TCheckBox;
     fSearchButton: TButton;
     fSearchController: TSearchController;
     fSearchEdit: TEdit;
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
+    fSourcesListPath: string;
     fStatusBar: TStatusBar;
     procedure ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
+    function BuildPipelineOptions: TPipelineOptions;
     function BuildEffectiveQuery: string;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
@@ -40,11 +46,14 @@ type
     procedure OpenSelectedSkillFile;
     procedure OpenSelectedSkillFolder;
     procedure QueueSearch(const aImmediate: Boolean);
+    procedure RunScanUpdate;
     procedure RenderPreview(const aResult: TSkillSearchResult);
     procedure ShowEmptyPreview;
+    function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
     procedure UpdateStatus(const aText: string);
 
     procedure HandleCopyPathClick(Sender: TObject);
+    procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleHasScriptsClick(Sender: TObject);
     procedure HandleOpenFileClick(Sender: TObject);
@@ -57,6 +66,7 @@ type
       const aError: string);
     procedure HandleSearchEditChange(Sender: TObject);
     procedure HandleSearchEditKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure HandleScanButtonClick(Sender: TObject);
   public
     constructor Create(aOwner: TComponent); override;
     destructor Destroy; override;
@@ -71,10 +81,11 @@ uses
   System.IOUtils, System.StrUtils, System.SysUtils,
   Winapi.ShellAPI, Winapi.Windows,
   Vcl.Clipbrd,
-  AppPaths, Settings;
+  AppPaths, DiagnosticsForm, Logging, Settings, SourcesList;
 
 constructor TMainForm.Create(aOwner: TComponent);
 var
+  i: Integer;
   lSettings: TSettingsLoadResult;
 begin
   inherited Create(aOwner);
@@ -86,8 +97,17 @@ begin
   OnKeyDown := HandleFormKeyDown;
 
   lSettings := LoadOrCreateSettings(GetSettingsFilePath);
+  fAppSettings := lSettings.Settings;
   fSettingsPath := lSettings.SettingsPath;
-  fDbPath := ResolveSettingsPath(lSettings.Settings.General.CacheDbPath, GetExeDirectory);
+  fDbPath := ResolveSettingsPath(fAppSettings.General.CacheDbPath, GetExeDirectory);
+  fLogPath := ResolveSettingsPath(fAppSettings.General.LogPath, GetExeDirectory);
+  fSourcesListPath := ResolveSettingsPath(fAppSettings.General.SourcesListPath, GetExeDirectory);
+  InitLogging(fLogPath);
+  LogInfo('Application startup. Settings=' + fSettingsPath);
+  for i := 0 to Pred(Length(lSettings.RestoredKeys)) do
+  begin
+    LogInfo('Settings key restored: ' + lSettings.RestoredKeys[i]);
+  end;
 
   fDatabaseManager := TDatabaseManager.Create(fDbPath, GetSqliteDllPath);
   fDatabaseManager.Initialize;
@@ -96,14 +116,14 @@ begin
 
   CreateLayout;
 
-  fSearchAsYouTypeCheckBox.Checked := lSettings.Settings.Search.SearchAsYouType;
+  fSearchAsYouTypeCheckBox.Checked := fAppSettings.Search.SearchAsYouType;
 
   fSearchController := TSearchController.Create(
     function(const aQuery: string): TArray<TSkillSearchResult>
     begin
       Result := fSearchService.Search(aQuery);
     end,
-    lSettings.Settings.Search.SearchDebounceMs
+    fAppSettings.Search.SearchDebounceMs
   );
   fSearchController.OnCompleted := HandleSearchCompleted;
 
@@ -112,6 +132,7 @@ end;
 
 destructor TMainForm.Destroy;
 begin
+  LogInfo('Application shutdown.');
   fSearchController.Free;
   fSearchService.Free;
   fDatabaseManager.Free;
@@ -149,6 +170,20 @@ begin
   fSearchButton.Width := 100;
   fSearchButton.Caption := 'Search';
   fSearchButton.OnClick := HandleSearchButtonClick;
+
+  fScanButton := TButton.Create(self);
+  fScanButton.Parent := lSearchPanel;
+  fScanButton.Align := alRight;
+  fScanButton.Width := 110;
+  fScanButton.Caption := 'Scan/Update';
+  fScanButton.OnClick := HandleScanButtonClick;
+
+  fDiagnosticsButton := TButton.Create(self);
+  fDiagnosticsButton.Parent := lSearchPanel;
+  fDiagnosticsButton.Align := alRight;
+  fDiagnosticsButton.Width := 110;
+  fDiagnosticsButton.Caption := 'Diagnostics';
+  fDiagnosticsButton.OnClick := HandleDiagnosticsButtonClick;
 
   fSearchAsYouTypeCheckBox := TCheckBox.Create(self);
   fSearchAsYouTypeCheckBox.Parent := lSearchPanel;
@@ -348,6 +383,93 @@ begin
   end;
 end;
 
+function TMainForm.BuildPipelineOptions: TPipelineOptions;
+begin
+  Result := DefaultPipelineOptions;
+  Result.GitExePath := fAppSettings.Git.GitExePath;
+  Result.GitPullArgs := fAppSettings.Git.GitPullArgs;
+  Result.GitPullTimeoutSeconds := fAppSettings.Git.GitPullTimeoutSeconds;
+  Result.MaxGitPullThreads := fAppSettings.General.MaxGitPullThreads;
+  Result.MaxIndexThreads := fAppSettings.General.MaxIndexThreads;
+  Result.MaxScanThreads := fAppSettings.General.MaxScanThreads;
+  Result.MinPullIntervalMinutes := fAppSettings.Git.MinPullIntervalMinutes;
+  Result.PullEnabled := fAppSettings.Git.PullEnabled;
+  Result.SkipFolders := fAppSettings.Git.SkipFolders;
+  Result.SkillFileName := fAppSettings.Index.SkillFileName;
+  Result.TreatWorktreesAsRepos := fAppSettings.Git.TreatWorktreesAsRepos;
+end;
+
+function TMainForm.TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
+var
+  i: Integer;
+  lParseResult: TSourcesListParseResult;
+begin
+  aSourceRoots := nil;
+  if not TFile.Exists(fSourcesListPath) then
+  begin
+    RecordPipelineError('Sources list not found: ' + fSourcesListPath);
+    Exit(False);
+  end;
+
+  lParseResult := ParseSourcesListFile(fSourcesListPath, GetExeDirectory);
+  for i := 0 to Pred(Length(lParseResult.Issues)) do
+  begin
+    RecordPipelineError(
+      Format(
+        'Sources list issue line %d "%s": %s',
+        [lParseResult.Issues[i].LineNumber, Trim(lParseResult.Issues[i].RawLine), lParseResult.Issues[i].Reason]
+      )
+    );
+  end;
+
+  aSourceRoots := lParseResult.ValidPaths;
+  Result := Length(aSourceRoots) > 0;
+end;
+
+procedure TMainForm.RunScanUpdate;
+var
+  lCoordinator: TPipelineCoordinator;
+  lOptions: TPipelineOptions;
+  lResult: TPipelineRunResult;
+  lSourceRoots: TArray<string>;
+  lStatusText: string;
+begin
+  if not TryLoadSourceRoots(lSourceRoots) then
+  begin
+    UpdateStatus('Scan skipped: no valid source paths.');
+    Exit;
+  end;
+
+  lOptions := BuildPipelineOptions;
+  UpdateStatus('Scanning and indexing...');
+  LogInfo('Scan started from UI. Sources=' + IntToStr(Length(lSourceRoots)));
+
+  lCoordinator := TPipelineCoordinator.Create(fDatabaseManager, lOptions);
+  try
+    lResult := lCoordinator.Run(lSourceRoots, nil);
+  finally
+    lCoordinator.Free;
+  end;
+
+  lStatusText := Format(
+    'Scan complete. Repos queued/pulled/throttled/failed: %d/%d/%d/%d | Skills queued/written: %d/%d | Errors: %d',
+    [lResult.ReposQueued, lResult.ReposPulled, lResult.ReposThrottled, lResult.ReposFailed, lResult.SkillsQueued,
+     lResult.SkillsWritten, lResult.ErrorCount]
+  );
+  if lResult.Cancelled then
+  begin
+    lStatusText := lStatusText + ' | Cancelled';
+  end;
+  if Trim(lResult.LastError) <> '' then
+  begin
+    lStatusText := lStatusText + ' | Last error: ' + lResult.LastError;
+  end;
+
+  UpdateStatus(lStatusText);
+  fStatusBar.Panels[1].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
+  QueueSearch(True);
+end;
+
 procedure TMainForm.QueueSearch(const aImmediate: Boolean);
 var
   lQuery: string;
@@ -441,6 +563,24 @@ end;
 procedure TMainForm.HandleSearchButtonClick(Sender: TObject);
 begin
   QueueSearch(True);
+end;
+
+procedure TMainForm.HandleScanButtonClick(Sender: TObject);
+begin
+  try
+    RunScanUpdate;
+  except
+    on E: Exception do
+    begin
+      RecordPipelineError('Scan failed: ' + E.Message);
+      UpdateStatus('Scan failed: ' + E.Message);
+    end;
+  end;
+end;
+
+procedure TMainForm.HandleDiagnosticsButtonClick(Sender: TObject);
+begin
+  ShowDiagnosticsDialog(self);
 end;
 
 procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
@@ -546,7 +686,7 @@ begin
 
   if Key = VK_F5 then
   begin
-    QueueSearch(True);
+    HandleScanButtonClick(Sender);
     Key := 0;
     Exit;
   end;
