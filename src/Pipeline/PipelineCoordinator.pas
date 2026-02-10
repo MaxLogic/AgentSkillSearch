@@ -4,15 +4,20 @@ interface
 
 uses
   System.Diagnostics, System.Generics.Collections,
-  DatabaseManager, SkillTypes;
+  DatabaseManager, GitPullWorker, SkillTypes;
 
 type
   TPipelineOptions = record
     AutoCancelAfterMs: Integer;
     DbBatchSize: Integer;
+    GitExePath: string;
+    GitPullArgs: string;
+    GitPullTimeoutSeconds: Integer;
     MaxGitPullThreads: Integer;
     MaxIndexThreads: Integer;
     MaxScanThreads: Integer;
+    MinPullIntervalMinutes: Integer;
+    PullEnabled: Boolean;
     SimulationDelayMs: Integer;
     SkipFolders: string;
     SkillFileName: string;
@@ -23,7 +28,10 @@ type
     Cancelled: Boolean;
     ErrorCount: Integer;
     LastError: string;
+    ReposFailed: Integer;
+    ReposPulled: Integer;
     ReposQueued: Integer;
+    ReposThrottled: Integer;
     ReposWritten: Integer;
     SkillsQueued: Integer;
     SkillsWritten: Integer;
@@ -44,7 +52,10 @@ type
     fErrorCount: Integer;
     fLastError: string;
     fOptions: TPipelineOptions;
+    fReposFailed: Integer;
+    fReposPulled: Integer;
     fReposQueued: Integer;
+    fReposThrottled: Integer;
     fReposWritten: Integer;
     fSkillsQueued: Integer;
     fSkillsWritten: Integer;
@@ -52,7 +63,10 @@ type
     fStopwatch: TStopwatch;
     procedure AddError(const aMessage: string);
     procedure AddRepoDiscovered(aRepos: TList<string>; const aRepoPath: string);
+    procedure AddRepoPullResult(aRepoPulls: TList<TRepoPullUpdate>; const aPullResult: TRepoPullUpdate);
     procedure AddSkillDiscovered(aSkills: TList<string>; const aSkillFilePath: string);
+    function BuildPullUpdate(const aRepoPath: string; const aPullResult: TGitPullResult): TRepoPullUpdate;
+    function BuildThrottledPullUpdate(const aRepoPath, aLastPullUtc: string): TRepoPullUpdate;
     function BuildUniquePaths(const aInput: TList<string>): TArray<string>;
     function IsSkippedDirectory(const aDirectoryPath: string): Boolean;
     function ShouldAutoCancel: Boolean;
@@ -67,17 +81,22 @@ function DefaultPipelineOptions: TPipelineOptions;
 implementation
 
 uses
-  System.Classes, System.IOUtils, System.Math, System.StrUtils, System.SyncObjs, System.SysUtils,
+  System.Classes, System.DateUtils, System.IOUtils, System.Math, System.StrUtils, System.SyncObjs, System.SysUtils,
   System.Threading,
   RepoDetection, SkillIndexer;
 
 function DefaultPipelineOptions: TPipelineOptions;
 begin
   Result.AutoCancelAfterMs := 0;
-  Result.MaxScanThreads := 4;
+  Result.DbBatchSize := 32;
+  Result.GitExePath := 'git.exe';
+  Result.GitPullArgs := 'pull --ff-only';
+  Result.GitPullTimeoutSeconds := 1800;
   Result.MaxGitPullThreads := 2;
   Result.MaxIndexThreads := 4;
-  Result.DbBatchSize := 32;
+  Result.MaxScanThreads := 4;
+  Result.MinPullIntervalMinutes := 1440;
+  Result.PullEnabled := True;
   Result.SimulationDelayMs := 0;
   Result.SkipFolders := '.git;node_modules;bin;obj;.vs;.idea;dist;build;.venv;__pycache__';
   Result.SkillFileName := 'SKILL.md';
@@ -127,6 +146,16 @@ begin
   end;
 end;
 
+procedure TPipelineCoordinator.AddRepoPullResult(aRepoPulls: TList<TRepoPullUpdate>; const aPullResult: TRepoPullUpdate);
+begin
+  TMonitor.Enter(aRepoPulls);
+  try
+    aRepoPulls.Add(aPullResult);
+  finally
+    TMonitor.Exit(aRepoPulls);
+  end;
+end;
+
 procedure TPipelineCoordinator.AddSkillDiscovered(aSkills: TList<string>; const aSkillFilePath: string);
 begin
   TMonitor.Enter(aSkills);
@@ -136,6 +165,26 @@ begin
   finally
     TMonitor.Exit(aSkills);
   end;
+end;
+
+function TPipelineCoordinator.BuildPullUpdate(const aRepoPath: string; const aPullResult: TGitPullResult): TRepoPullUpdate;
+begin
+  Result.RootPath := aRepoPath;
+  Result.LastPullUtc := aPullResult.TimestampUtc;
+  Result.LastPullStatus := aPullResult.Status;
+  Result.LastPullOutput := aPullResult.OutputText;
+  Result.LastPullDurationMs := aPullResult.DurationMs;
+  Result.HeadCommit := aPullResult.HeadCommit;
+end;
+
+function TPipelineCoordinator.BuildThrottledPullUpdate(const aRepoPath, aLastPullUtc: string): TRepoPullUpdate;
+begin
+  Result.RootPath := aRepoPath;
+  Result.LastPullUtc := aLastPullUtc;
+  Result.LastPullStatus := 'skipped (throttled)';
+  Result.LastPullOutput := '';
+  Result.LastPullDurationMs := 0;
+  Result.HeadCommit := '';
 end;
 
 function TPipelineCoordinator.BuildUniquePaths(const aInput: TList<string>): TArray<string>;
@@ -254,16 +303,26 @@ function TPipelineCoordinator.Run(const aSourceRoots: TArray<string>; aCancelTok
 var
   i: Integer;
   lBatchRepos: TArray<string>;
+  lBatchRepoPulls: TArray<TRepoPullUpdate>;
   lBatchSkills: TArray<TIndexedSkill>;
+  lGitOptions: TGitPullOptions;
+  lGitPool: TThreadPool;
+  lKnownRepoState: TRepoState;
+  lNowUtc: TDateTime;
   lIndexedSkills: TList<TIndexedSkill>;
   lLocalDbManager: TDatabaseManager;
+  lReposToPull: TList<string>;
   lReposDiscovered: TList<string>;
   lReposForGit: TArray<string>;
-  lReposPrepared: TList<string>;
+  lRepoPullUpdates: TList<TRepoPullUpdate>;
+  lRepoStateReader: TDatabaseManager;
   lSkillFilesDiscovered: TList<string>;
   lSkillFilesForIndex: TArray<string>;
 begin
+  fReposFailed := 0;
+  fReposPulled := 0;
   fReposQueued := 0;
+  fReposThrottled := 0;
   fSkillsQueued := 0;
   fReposWritten := 0;
   fSkillsWritten := 0;
@@ -280,7 +339,8 @@ begin
 
   lReposDiscovered := TList<string>.Create;
   lSkillFilesDiscovered := TList<string>.Create;
-  lReposPrepared := TList<string>.Create;
+  lReposToPull := TList<string>.Create;
+  lRepoPullUpdates := TList<TRepoPullUpdate>.Create;
   lIndexedSkills := TList<TIndexedSkill>.Create;
   try
     if Length(aSourceRoots) > 0 then
@@ -310,31 +370,86 @@ begin
 
     if Length(lReposForGit) > 0 then
     begin
-      TParallel.For(
-        0,
-        High(lReposForGit),
-        procedure(aIndex: Integer)
-        begin
-          try
-            TMonitor.Enter(lReposPrepared);
-            try
-              lReposPrepared.Add(lReposForGit[aIndex]);
-            finally
-              TMonitor.Exit(lReposPrepared);
-            end;
+      lNowUtc := TTimeZone.Local.ToUniversalTime(Now);
 
-            if fOptions.SimulationDelayMs > 0 then
-            begin
-              Sleep(fOptions.SimulationDelayMs);
-            end;
-          except
-            on E: Exception do
-            begin
-              AddError('Git worker failed: ' + E.Message);
-            end;
+      lRepoStateReader := TDatabaseManager.Create(fDbManager.DatabasePath, fDbManager.SqliteDllPath);
+      try
+        lRepoStateReader.Initialize;
+
+        for i := 0 to Pred(Length(lReposForGit)) do
+        begin
+          if lRepoStateReader.TryGetRepoState(lReposForGit[i], lKnownRepoState) and
+            TGitPullWorker.IsThrottled(lKnownRepoState.LastPullUtc, fOptions.MinPullIntervalMinutes, lNowUtc) then
+          begin
+            AddRepoPullResult(lRepoPullUpdates, BuildThrottledPullUpdate(lReposForGit[i], lKnownRepoState.LastPullUtc));
+            TInterlocked.Increment(fReposThrottled);
+          end else begin
+            lReposToPull.Add(lReposForGit[i]);
           end;
-        end
-      );
+        end;
+      finally
+        lRepoStateReader.Free;
+      end;
+
+      if fOptions.PullEnabled and (lReposToPull.Count > 0) then
+      begin
+        lGitOptions.GitExePath := fOptions.GitExePath;
+        lGitOptions.GitPullArgs := fOptions.GitPullArgs;
+        lGitOptions.GitPullTimeoutSeconds := fOptions.GitPullTimeoutSeconds;
+
+        lGitPool := TThreadPool.Create;
+        try
+          lGitPool.SetMinWorkerThreads(1);
+          lGitPool.SetMaxWorkerThreads(Max(1, fOptions.MaxGitPullThreads));
+
+          TParallel.&For(
+            0,
+            lReposToPull.Count - 1,
+            procedure(aIndex: Integer)
+            var
+              lPullResult: TGitPullResult;
+              lPullUpdate: TRepoPullUpdate;
+              lPullWorker: TGitPullWorker;
+              lRepoPath: string;
+            begin
+              lPullWorker := TGitPullWorker.Create;
+              try
+                try
+                  lRepoPath := lReposToPull[aIndex];
+                  lPullResult := lPullWorker.PullRepo(lRepoPath, lGitOptions);
+                  lPullUpdate := BuildPullUpdate(lRepoPath, lPullResult);
+                  AddRepoPullResult(lRepoPullUpdates, lPullUpdate);
+
+                  if SameText(lPullUpdate.LastPullStatus, 'pulled') then
+                  begin
+                    TInterlocked.Increment(fReposPulled);
+                  end else begin
+                    TInterlocked.Increment(fReposFailed);
+                    AddError('Git pull failed for "' + lRepoPath + '": ' + lPullUpdate.LastPullStatus + ' ' +
+                      lPullUpdate.LastPullOutput);
+                  end;
+
+                  if fOptions.SimulationDelayMs > 0 then
+                  begin
+                    Sleep(fOptions.SimulationDelayMs);
+                  end;
+                except
+                  on E: Exception do
+                  begin
+                    TInterlocked.Increment(fReposFailed);
+                    AddError('Git worker failed: ' + E.Message);
+                  end;
+                end;
+              finally
+                lPullWorker.Free;
+              end;
+            end,
+            lGitPool
+          );
+        finally
+          lGitPool.Free;
+        end;
+      end;
     end;
 
     if Length(lSkillFilesForIndex) > 0 then
@@ -374,7 +489,8 @@ begin
       );
     end;
 
-    lBatchRepos := lReposPrepared.ToArray;
+    lBatchRepos := lReposForGit;
+    lBatchRepoPulls := lRepoPullUpdates.ToArray;
     lBatchSkills := lIndexedSkills.ToArray;
 
     lLocalDbManager := TDatabaseManager.Create(fDbManager.DatabasePath, fDbManager.SqliteDllPath);
@@ -395,6 +511,22 @@ begin
 
         lLocalDbManager.WriteBatch(Copy(lBatchRepos, i, fOptions.DbBatchSize), nil);
         TInterlocked.Add(fReposWritten, Min(fOptions.DbBatchSize, Length(lBatchRepos) - i));
+        i := i + fOptions.DbBatchSize;
+      end;
+
+      i := 0;
+      while i < Length(lBatchRepoPulls) do
+      begin
+        if fCancelToken.IsCancelled and (i > 0) then
+        begin
+          Break;
+        end;
+        if ShouldAutoCancel then
+        begin
+          fCancelToken.Cancel;
+        end;
+
+        lLocalDbManager.WriteBatchWithRepoPulls(nil, Copy(lBatchRepoPulls, i, fOptions.DbBatchSize), nil);
         i := i + fOptions.DbBatchSize;
       end;
 
@@ -423,7 +555,10 @@ begin
     lLocalDbManager.Free;
 
     Result.Cancelled := fCancelToken.IsCancelled;
+    Result.ReposFailed := fReposFailed;
+    Result.ReposPulled := fReposPulled;
     Result.ReposQueued := fReposQueued;
+    Result.ReposThrottled := fReposThrottled;
     Result.SkillsQueued := fSkillsQueued;
     Result.ReposWritten := fReposWritten;
     Result.SkillsWritten := fSkillsWritten;
@@ -431,7 +566,8 @@ begin
     Result.LastError := fLastError;
   finally
     lIndexedSkills.Free;
-    lReposPrepared.Free;
+    lRepoPullUpdates.Free;
+    lReposToPull.Free;
     lSkillFilesDiscovered.Free;
     lReposDiscovered.Free;
 
