@@ -3,38 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 14 (In Progress: 0, Next Today: 0, Next This Week: 8, Next Later: 4, Blocked: 2)
-Done tasks: 7
+Open tasks: 13 (In Progress: 0, Next Today: 0, Next This Week: 5, Next Later: 4, Blocked: 4)
+Done tasks: 8
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-009 [SEM] Ollama client + embeddings rerank (hybrid)
-Outcome: Add local-first semantic rerank via Ollama (/api/embeddings): embed query, rerank top CandidateRerankCount candidates using cosine similarity over chunk vectors, and combine lex+sem into final score.
-Proof:
-- Command: With Ollama running, run a synonym query that lexical search ranks poorly.
-- Expect: With semantic enabled, relevant skills move up; if Ollama is down, fallback to lexical without crash.
-Touches: src/Semantic/*.pas, src/Search/*.pas, src/Db/*.pas, settings.ini
-Notes: Spec section 10.4–10.6; maintainer decision: ship semantic in v1
-
-### T-010 [SEM] Chunking + vector storage + incremental re-embed
-Outcome: Implement chunking by headings/paragraphs, store chunks + vectors in DB, and update vectors only when chunk_hash changes; use max-chunk similarity per skill.
-Proof:
-- Command: Change one section of SKILL.md and reindex.
-- Expect: Only affected chunks get new vectors; semantic rerank uses updated content.
-Touches: src/Semantic/Chunker.pas, src/Db/*.pas
-Notes: Spec section 10.5; maintainer decision: ship semantic in v1
-
-### T-021 [BUILD] Add MaxLogicFoundation via project search path
-Outcome: Configure project/library search path to reference MaxLogicFoundation directly and reuse shared units by reference instead of copying them into this repo.
-Proof:
-- Command: Build Win64 from a clean checkout without copying foundation units into this repo.
-- Expect: Compilation resolves referenced MaxLogicFoundation units from configured search paths and build succeeds.
-Touches: projects/*.dproj, projects/*.groupproj, README.md
-Notes: Maintainer decision, spec sections 3.5, 15
 
 ### T-004 [SCAN] Multi-thread scanner with bounded queue
 Outcome: Implement recursive directory scan using MaxScanThreads with a work-queue of directories; discover repo roots and SKILL.md files; apply skip folder rules.
@@ -136,7 +112,36 @@ Deps: T-006, T-008, T-011
 Notes:
 - Deferred until index upsert/search list rendering pipeline is complete.
 
+### T-009 [SEM] Ollama client + embeddings rerank (hybrid)
+Outcome: Add local-first semantic rerank via Ollama (/api/embeddings): embed query, rerank top CandidateRerankCount candidates using cosine similarity over chunk vectors, and combine lex+sem into final score.
+Proof:
+- Command: With Ollama running, run a synonym query that lexical search ranks poorly.
+- Expect: With semantic enabled, relevant skills move up; if Ollama is down, fallback to lexical without crash.
+Touches: src/Semantic/*.pas, src/Search/*.pas, src/Db/*.pas, settings.ini
+Deps: T-008, T-010
+Notes:
+- Deferred until lexical query pipeline and chunk/vector persistence are complete.
+- Proof requires local Ollama runtime availability.
+
+### T-010 [SEM] Chunking + vector storage + incremental re-embed
+Outcome: Implement chunking by headings/paragraphs, store chunks + vectors in DB, and update vectors only when chunk_hash changes; use max-chunk similarity per skill.
+Proof:
+- Command: Change one section of SKILL.md and reindex.
+- Expect: Only affected chunks get new vectors; semantic rerank uses updated content.
+Touches: src/Semantic/Chunker.pas, src/Db/*.pas
+Deps: T-006
+Notes:
+- Deferred until core index upsert flow is finalized.
+
 ## Done
+
+### T-021 [BUILD] Add MaxLogicFoundation via project search path
+Outcome: Configure project/library search path to reference MaxLogicFoundation directly and reuse shared units by reference instead of copying them into this repo.
+Proof:
+- Command: Build Win64 from a clean checkout without copying foundation units into this repo.
+- Expect: Compilation resolves referenced MaxLogicFoundation units from configured search paths and build succeeds.
+Touches: projects/*.dproj, projects/*.groupproj, README.md
+Notes: Maintainer decision, spec sections 3.5, 15
 
 ### T-020 [BUILD] Enforce Win64 target for SQLite runtime compatibility
 Outcome: Make Win64 the required runtime target for app builds that consume bundled SQLite DLLs, and fail fast for unsupported Win32 builds with a clear message.

@@ -10,3 +10,4 @@
 - Worktree-aware git repo discovery with `.git` file/directory handling and persisted repo roots for pull scheduling (`T-016`).
 - Multi-stage scan/git/index pipeline coordinator with cancellable processing and single-writer batched DB commits (`T-017`).
 - Enforced Win64-only build/runtime path for bundled SQLite with explicit Win32 fatal guard and verified FTS5 runtime checks (`T-020`).
+- Configured all project builds to resolve shared units directly from sibling `MaxLogicFoundation` search paths (`T-021`).
