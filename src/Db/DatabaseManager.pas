@@ -31,14 +31,16 @@ type
   public
     constructor Create(const aDatabasePath, aSqliteDllPath: string);
     destructor Destroy; override;
+    function GetRepoCount: Integer;
     function Initialize: TDbInitResult;
     function TableExists(const aTableName: string): Boolean;
+    procedure UpsertRepoRoot(const aRootPath: string);
   end;
 
 implementation
 
 uses
-  System.IOUtils, System.SysUtils,
+  System.DateUtils, System.IOUtils, System.SysUtils,
   FireDAC.DApt, FireDAC.Stan.Async, FireDAC.Stan.Def, FireDAC.Stan.Intf, FireDAC.Stan.Option,
   FireDAC.Stan.Param;
 
@@ -214,12 +216,32 @@ begin
   RunMigrations;
 end;
 
+function TDatabaseManager.GetRepoCount: Integer;
+begin
+  Result := QueryScalarInt('SELECT COUNT(1) FROM repos;');
+end;
+
 function TDatabaseManager.TableExists(const aTableName: string): Boolean;
 begin
   Result := QueryScalarInt(
     'SELECT COUNT(1) FROM sqlite_master WHERE type IN (''table'', ''view'') AND name = ' +
     QuotedStr(aTableName) + ';'
   ) > 0;
+end;
+
+procedure TDatabaseManager.UpsertRepoRoot(const aRootPath: string);
+var
+  lUtcNow: TDateTime;
+  lUtcText: string;
+begin
+  lUtcNow := TTimeZone.Local.ToUniversalTime(Now);
+  lUtcText := FormatDateTime('yyyy-mm-dd\"T\"hh:nn:ss\"Z\"', lUtcNow, TFormatSettings.Invariant);
+
+  fConnection.ExecSQL(
+    'INSERT INTO repos(root_path, last_seen_utc) VALUES (:root_path, :last_seen_utc) ' +
+    'ON CONFLICT(root_path) DO UPDATE SET last_seen_utc=excluded.last_seen_utc',
+    [aRootPath, lUtcText]
+  );
 end;
 
 end.
