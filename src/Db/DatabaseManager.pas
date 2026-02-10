@@ -3,7 +3,7 @@ unit DatabaseManager;
 interface
 
 uses
-  FireDAC.Comp.Client, FireDAC.Phys.SQLite;
+  FireDAC.Comp.Client, FireDAC.Phys.SQLite, SkillTypes;
 
 type
   TDbInitResult = record
@@ -25,22 +25,28 @@ type
     procedure ConfigureConnection;
     procedure EnsureDatabaseFolder;
     function QueryScalarInt(const aSql: string): Integer;
+    function QuerySkillIdBySkillFile(const aSkillFile: string): Integer;
     function QueryScalarText(const aSql: string): string;
     procedure RunMigrations;
     procedure VerifyFts5Support;
   public
     constructor Create(const aDatabasePath, aSqliteDllPath: string);
     destructor Destroy; override;
+    property DatabasePath: string read fDatabasePath;
+    property SqliteDllPath: string read fSqliteDllPath;
     function GetRepoCount: Integer;
+    function GetSkillCount: Integer;
     function Initialize: TDbInitResult;
     function TableExists(const aTableName: string): Boolean;
     procedure UpsertRepoRoot(const aRootPath: string);
+    procedure UpsertSkill(const aSkill: TIndexedSkill);
+    procedure WriteBatch(const aRepoRoots: TArray<string>; const aSkills: TArray<TIndexedSkill>);
   end;
 
 implementation
 
 uses
-  System.DateUtils, System.IOUtils, System.SysUtils,
+  System.DateUtils, System.IOUtils, System.SysUtils, Data.DB,
   FireDAC.DApt, FireDAC.Stan.Async, FireDAC.Stan.Def, FireDAC.Stan.Intf, FireDAC.Stan.Option,
   FireDAC.Stan.Param;
 
@@ -117,6 +123,27 @@ begin
   Result := StrToIntDef(lValue, 0);
 end;
 
+function TDatabaseManager.QuerySkillIdBySkillFile(const aSkillFile: string): Integer;
+var
+  lQuery: TFDQuery;
+begin
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text := 'SELECT id FROM skills WHERE skill_file = :skill_file;';
+    lQuery.ParamByName('skill_file').AsString := aSkillFile;
+    lQuery.Open;
+    if lQuery.IsEmpty then
+    begin
+      Result := 0;
+    end else begin
+      Result := lQuery.Fields[0].AsInteger;
+    end;
+  finally
+    lQuery.Free;
+  end;
+end;
+
 procedure TDatabaseManager.ApplyPragmas(var aResult: TDbInitResult);
 begin
   QueryScalarText('PRAGMA journal_mode=WAL;');
@@ -183,13 +210,16 @@ const
     '  description,' +
     '  tags,' +
     '  body_md,' +
-    '  content='''' ,' +
     '  tokenize=''unicode61''' +
     ');';
 begin
   fConnection.StartTransaction;
   try
     fConnection.ExecSQL(cSchemaSql);
+    fConnection.ExecSQL(
+      'INSERT INTO sources(id, path, enabled, last_scan_utc) VALUES (1, ''(auto)'', 1, NULL) ' +
+      'ON CONFLICT(id) DO NOTHING;'
+    );
     fConnection.ExecSQL('INSERT INTO meta(key, value) VALUES (''schema_version'', ''1'') ON CONFLICT(key) DO UPDATE SET value=excluded.value;');
     fConnection.Commit;
   except
@@ -221,6 +251,11 @@ begin
   Result := QueryScalarInt('SELECT COUNT(1) FROM repos;');
 end;
 
+function TDatabaseManager.GetSkillCount: Integer;
+begin
+  Result := QueryScalarInt('SELECT COUNT(1) FROM skills;');
+end;
+
 function TDatabaseManager.TableExists(const aTableName: string): Boolean;
 begin
   Result := QueryScalarInt(
@@ -242,6 +277,98 @@ begin
     'ON CONFLICT(root_path) DO UPDATE SET last_seen_utc=excluded.last_seen_utc',
     [aRootPath, lUtcText]
   );
+end;
+
+procedure TDatabaseManager.UpsertSkill(const aSkill: TIndexedSkill);
+var
+  lQuery: TFDQuery;
+  lSkillId: Integer;
+begin
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'INSERT INTO skills (' +
+      '  source_id, repo_id, skill_root, skill_file, name, description, tags, body_md, body_hash, file_mtime_utc, indexed_utc' +
+      ') VALUES (' +
+      '  :source_id, :repo_id, :skill_root, :skill_file, :name, :description, :tags, :body_md, :body_hash, :file_mtime_utc, :indexed_utc' +
+      ') ON CONFLICT(skill_file) DO UPDATE SET ' +
+      '  source_id=excluded.source_id, ' +
+      '  repo_id=excluded.repo_id, ' +
+      '  skill_root=excluded.skill_root, ' +
+      '  name=excluded.name, ' +
+      '  description=excluded.description, ' +
+      '  tags=excluded.tags, ' +
+      '  body_md=excluded.body_md, ' +
+      '  body_hash=excluded.body_hash, ' +
+      '  file_mtime_utc=excluded.file_mtime_utc, ' +
+      '  indexed_utc=excluded.indexed_utc';
+
+    lQuery.ParamByName('source_id').AsInteger := aSkill.SourceId;
+    if aSkill.RepoId > 0 then
+    begin
+      lQuery.ParamByName('repo_id').AsInteger := aSkill.RepoId;
+    end else begin
+      lQuery.ParamByName('repo_id').DataType := ftInteger;
+      lQuery.ParamByName('repo_id').Clear;
+    end;
+    lQuery.ParamByName('skill_root').AsString := aSkill.SkillRoot;
+    lQuery.ParamByName('skill_file').AsString := aSkill.SkillFile;
+    lQuery.ParamByName('name').AsString := aSkill.Name;
+    lQuery.ParamByName('description').AsString := aSkill.Description;
+    lQuery.ParamByName('tags').AsString := aSkill.Tags;
+    lQuery.ParamByName('body_md').AsString := aSkill.BodyMarkdown;
+    lQuery.ParamByName('body_hash').AsString := aSkill.BodyHash;
+    lQuery.ParamByName('file_mtime_utc').AsString := aSkill.FileMtimeUtc;
+    lQuery.ParamByName('indexed_utc').AsString := aSkill.IndexedUtc;
+    lQuery.ExecSQL;
+  finally
+    lQuery.Free;
+  end;
+
+  lSkillId := QuerySkillIdBySkillFile(aSkill.SkillFile);
+  if lSkillId > 0 then
+  begin
+    fConnection.ExecSQL('DELETE FROM skills_fts WHERE rowid = :rowid', [lSkillId]);
+    fConnection.ExecSQL(
+      'INSERT INTO skills_fts(rowid, name, description, tags, body_md) VALUES(:rowid, :name, :description, :tags, :body_md)',
+      [lSkillId, aSkill.Name, aSkill.Description, aSkill.Tags, aSkill.BodyMarkdown]
+    );
+  end;
+end;
+
+procedure TDatabaseManager.WriteBatch(const aRepoRoots: TArray<string>; const aSkills: TArray<TIndexedSkill>);
+var
+  i: Integer;
+begin
+  if (Length(aRepoRoots) = 0) and (Length(aSkills) = 0) then
+  begin
+    Exit;
+  end;
+
+  fConnection.StartTransaction;
+  try
+    for i := 0 to Pred(Length(aRepoRoots)) do
+    begin
+      UpsertRepoRoot(aRepoRoots[i]);
+    end;
+
+    for i := 0 to Pred(Length(aSkills)) do
+    begin
+      UpsertSkill(aSkills[i]);
+    end;
+
+    fConnection.Commit;
+  except
+    on E: Exception do
+    begin
+      if fConnection.InTransaction then
+      begin
+        fConnection.Rollback;
+      end;
+      raise Exception.CreateFmt('Write batch failed: %s', [E.Message]);
+    end;
+  end;
 end;
 
 end.
