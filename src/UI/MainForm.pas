@@ -86,6 +86,7 @@ uses
 constructor TMainForm.Create(aOwner: TComponent);
 var
   i: Integer;
+  lSemanticOptions: TSemanticSearchOptions;
   lSettings: TSettingsLoadResult;
 begin
   inherited Create(aOwner);
@@ -112,7 +113,18 @@ begin
   fDatabaseManager := TDatabaseManager.Create(fDbPath, GetSqliteDllPath);
   fDatabaseManager.Initialize;
 
-  fSearchService := TSkillSearchService.Create(fDbPath, GetSqliteDllPath, fAppSettings.Search.SnippetMaxChars);
+  lSemanticOptions := DefaultSemanticSearchOptions;
+  lSemanticOptions.Enabled := fAppSettings.Semantic.Enabled;
+  lSemanticOptions.CandidateRerankCount := fAppSettings.Semantic.CandidateRerankCount;
+  lSemanticOptions.Model := fAppSettings.Semantic.Model;
+  lSemanticOptions.OllamaBaseUrl := fAppSettings.Semantic.OllamaBaseUrl;
+
+  fSearchService := TSkillSearchService.Create(
+    fDbPath,
+    GetSqliteDllPath,
+    fAppSettings.Search.SnippetMaxChars,
+    lSemanticOptions
+  );
 
   CreateLayout;
 

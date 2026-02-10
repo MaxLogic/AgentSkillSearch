@@ -150,6 +150,8 @@ var
   lDbPath: string;
   lFixtureRoot: string;
   lResults: TArray<TSkillSearchResult>;
+  lSemanticOptions: TSemanticSearchOptions;
+  lSemanticSearchService: TSkillSearchService;
   lSearchServiceShortSnippet: TSkillSearchService;
   lSearchService: TSkillSearchService;
   lSkillState: TSkillState;
@@ -214,6 +216,22 @@ begin
     AssertTrue(Length(lResults[0].Snippet) <= 80, 'Configured short snippet cap should be enforced');
   finally
     lSearchServiceShortSnippet.Free;
+  end;
+
+  lSemanticOptions := DefaultSemanticSearchOptions;
+  lSemanticOptions.Enabled := True;
+  lSemanticOptions.OllamaBaseUrl := 'http://127.0.0.1:9';
+  lSemanticOptions.Model := 'mxbai-embed-large';
+  lSemanticOptions.CandidateRerankCount := 10;
+
+  lSemanticSearchService := TSkillSearchService.Create(lDbPath, GetSqliteDllPath, 600, lSemanticOptions);
+  try
+    lResults := lSemanticSearchService.Search('retry');
+    AssertTrue(Length(lResults) >= 2, 'Fallback search should still return lexical results');
+    AssertTrue(SameText(lResults[0].Name, 'Retry Patterns'),
+      'Fallback behavior should preserve lexical ordering when semantic provider is unavailable');
+  finally
+    lSemanticSearchService.Free;
   end;
 end;
 
