@@ -15,6 +15,25 @@ type
     Fts5Enabled: Boolean;
   end;
 
+  TRepoPullUpdate = record
+    HeadCommit: string;
+    LastPullDurationMs: Integer;
+    LastPullOutput: string;
+    LastPullStatus: string;
+    LastPullUtc: string;
+    RootPath: string;
+  end;
+
+  TRepoState = record
+    HeadCommit: string;
+    LastPullDurationMs: Integer;
+    LastPullOutput: string;
+    LastPullStatus: string;
+    LastPullUtc: string;
+    LastSeenUtc: string;
+    RootPath: string;
+  end;
+
   TDatabaseManager = class
   private
     fConnection: TFDConnection;
@@ -38,9 +57,13 @@ type
     function GetSkillCount: Integer;
     function Initialize: TDbInitResult;
     function TableExists(const aTableName: string): Boolean;
+    function TryGetRepoState(const aRootPath: string; out aState: TRepoState): Boolean;
     procedure UpsertRepoRoot(const aRootPath: string);
+    procedure UpsertRepoPullResult(const aPull: TRepoPullUpdate);
     procedure UpsertSkill(const aSkill: TIndexedSkill);
     procedure WriteBatch(const aRepoRoots: TArray<string>; const aSkills: TArray<TIndexedSkill>);
+    procedure WriteBatchWithRepoPulls(const aRepoRoots: TArray<string>; const aRepoPulls: TArray<TRepoPullUpdate>;
+      const aSkills: TArray<TIndexedSkill>);
   end;
 
 implementation
@@ -264,6 +287,39 @@ begin
   ) > 0;
 end;
 
+function TDatabaseManager.TryGetRepoState(const aRootPath: string; out aState: TRepoState): Boolean;
+var
+  lQuery: TFDQuery;
+begin
+  aState := Default(TRepoState);
+
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'SELECT root_path, last_pull_utc, last_pull_status, last_pull_output, last_pull_duration_ms, head_commit, last_seen_utc ' +
+      'FROM repos WHERE root_path = :root_path;';
+    lQuery.ParamByName('root_path').AsString := aRootPath;
+    lQuery.Open;
+
+    Result := not lQuery.IsEmpty;
+    if not Result then
+    begin
+      Exit(False);
+    end;
+
+    aState.RootPath := lQuery.FieldByName('root_path').AsString;
+    aState.LastPullUtc := lQuery.FieldByName('last_pull_utc').AsString;
+    aState.LastPullStatus := lQuery.FieldByName('last_pull_status').AsString;
+    aState.LastPullOutput := lQuery.FieldByName('last_pull_output').AsString;
+    aState.LastPullDurationMs := lQuery.FieldByName('last_pull_duration_ms').AsInteger;
+    aState.HeadCommit := lQuery.FieldByName('head_commit').AsString;
+    aState.LastSeenUtc := lQuery.FieldByName('last_seen_utc').AsString;
+  finally
+    lQuery.Free;
+  end;
+end;
+
 procedure TDatabaseManager.UpsertRepoRoot(const aRootPath: string);
 var
   lUtcNow: TDateTime;
@@ -277,6 +333,58 @@ begin
     'ON CONFLICT(root_path) DO UPDATE SET last_seen_utc=excluded.last_seen_utc',
     [aRootPath, lUtcText]
   );
+end;
+
+procedure TDatabaseManager.UpsertRepoPullResult(const aPull: TRepoPullUpdate);
+var
+  lQuery: TFDQuery;
+  lUtcNow: TDateTime;
+  lUtcText: string;
+begin
+  lUtcNow := TTimeZone.Local.ToUniversalTime(Now);
+  lUtcText := FormatDateTime('yyyy-mm-dd\"T\"hh:nn:ss\"Z\"', lUtcNow, TFormatSettings.Invariant);
+
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'INSERT INTO repos(root_path, last_pull_utc, last_pull_status, last_pull_output, last_pull_duration_ms, head_commit, last_seen_utc) ' +
+      'VALUES (:root_path, :last_pull_utc, :last_pull_status, :last_pull_output, :last_pull_duration_ms, :head_commit, :last_seen_utc) ' +
+      'ON CONFLICT(root_path) DO UPDATE SET ' +
+      '  last_pull_utc=COALESCE(excluded.last_pull_utc, repos.last_pull_utc), ' +
+      '  last_pull_status=excluded.last_pull_status, ' +
+      '  last_pull_output=excluded.last_pull_output, ' +
+      '  last_pull_duration_ms=excluded.last_pull_duration_ms, ' +
+      '  head_commit=COALESCE(excluded.head_commit, repos.head_commit), ' +
+      '  last_seen_utc=excluded.last_seen_utc';
+
+    lQuery.ParamByName('root_path').AsString := aPull.RootPath;
+
+    if Trim(aPull.LastPullUtc) <> '' then
+    begin
+      lQuery.ParamByName('last_pull_utc').AsString := aPull.LastPullUtc;
+    end else begin
+      lQuery.ParamByName('last_pull_utc').DataType := ftString;
+      lQuery.ParamByName('last_pull_utc').Clear;
+    end;
+
+    lQuery.ParamByName('last_pull_status').AsString := aPull.LastPullStatus;
+    lQuery.ParamByName('last_pull_output').AsString := aPull.LastPullOutput;
+    lQuery.ParamByName('last_pull_duration_ms').AsInteger := aPull.LastPullDurationMs;
+
+    if Trim(aPull.HeadCommit) <> '' then
+    begin
+      lQuery.ParamByName('head_commit').AsString := aPull.HeadCommit;
+    end else begin
+      lQuery.ParamByName('head_commit').DataType := ftString;
+      lQuery.ParamByName('head_commit').Clear;
+    end;
+
+    lQuery.ParamByName('last_seen_utc').AsString := lUtcText;
+    lQuery.ExecSQL;
+  finally
+    lQuery.Free;
+  end;
 end;
 
 procedure TDatabaseManager.UpsertSkill(const aSkill: TIndexedSkill);
@@ -338,10 +446,16 @@ begin
 end;
 
 procedure TDatabaseManager.WriteBatch(const aRepoRoots: TArray<string>; const aSkills: TArray<TIndexedSkill>);
+begin
+  WriteBatchWithRepoPulls(aRepoRoots, nil, aSkills);
+end;
+
+procedure TDatabaseManager.WriteBatchWithRepoPulls(const aRepoRoots: TArray<string>;
+  const aRepoPulls: TArray<TRepoPullUpdate>; const aSkills: TArray<TIndexedSkill>);
 var
   i: Integer;
 begin
-  if (Length(aRepoRoots) = 0) and (Length(aSkills) = 0) then
+  if (Length(aRepoRoots) = 0) and (Length(aRepoPulls) = 0) and (Length(aSkills) = 0) then
   begin
     Exit;
   end;
@@ -351,6 +465,11 @@ begin
     for i := 0 to Pred(Length(aRepoRoots)) do
     begin
       UpsertRepoRoot(aRepoRoots[i]);
+    end;
+
+    for i := 0 to Pred(Length(aRepoPulls)) do
+    begin
+      UpsertRepoPullResult(aRepoPulls[i]);
     end;
 
     for i := 0 to Pred(Length(aSkills)) do

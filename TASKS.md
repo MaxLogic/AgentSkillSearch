@@ -3,26 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 12 (In Progress: 0, Next Today: 0, Next This Week: 4, Next Later: 4, Blocked: 4)
-Done tasks: 9
+Open tasks: 11 (In Progress: 0, Next Today: 0, Next This Week: 3, Next Later: 4, Blocked: 4)
+Done tasks: 10
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-005 [GIT] Git pull worker with throttling + timeout
-Outcome: Implement git pull pipeline: detect repo roots, consult DB for last_pull_utc, skip if within MinPullIntervalMinutes, else run git pull with GitPullTimeoutSeconds in non-interactive mode; store status/output/duration/head_commit.
-Proof:
-- Command: Scan twice within interval.
-- Expect: Second scan shows "skipped (throttled)" and does not run git; DB updated correctly on first scan.
-- Command: Force one repo pull to fail (for example invalid remote URL) and run scan on multiple repos.
-- Expect: Failed repo is reported, while other repos and skill indexing continue successfully.
-- Command: Run scan against a repo that would require terminal credential prompt.
-- Expect: Worker does not block waiting for prompt; repo is marked failed with logged non-interactive/auth error.
-Touches: src/Git/*.pas, src/Db/*.pas
-Notes: Spec sections 6.1, 7, 5[Git]
 
 ### T-006 [IDX] Skill indexer + FTS upsert
 Outcome: Read SKILL.md, extract name/description/tags deterministically, compute body_hash, upsert into skills + skills_fts, and skip reindex if unchanged.
@@ -126,6 +114,18 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-005 [GIT] Git pull worker with throttling + timeout
+Outcome: Implement git pull pipeline: detect repo roots, consult DB for last_pull_utc, skip if within MinPullIntervalMinutes, else run git pull with GitPullTimeoutSeconds in non-interactive mode; store status/output/duration/head_commit.
+Proof:
+- Command: Scan twice within interval.
+- Expect: Second scan shows "skipped (throttled)" and does not run git; DB updated correctly on first scan.
+- Command: Force one repo pull to fail (for example invalid remote URL) and run scan on multiple repos.
+- Expect: Failed repo is reported, while other repos and skill indexing continue successfully.
+- Command: Run scan against a repo that would require terminal credential prompt.
+- Expect: Worker does not block waiting for prompt; repo is marked failed with logged non-interactive/auth error.
+Touches: src/Git/*.pas, src/Db/*.pas
+Notes: Spec sections 6.1, 7, 5[Git]
 
 ### T-004 [SCAN] Multi-thread scanner with bounded queue
 Outcome: Implement recursive directory scan using MaxScanThreads with a work-queue of directories; discover repo roots and SKILL.md files; apply skip folder rules.
