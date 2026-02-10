@@ -3,22 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 17 (In Progress: 0, Next Today: 0, Next This Week: 13, Next Later: 4, Blocked: 0)
-Done tasks: 4
+Open tasks: 16 (In Progress: 0, Next Today: 0, Next This Week: 12, Next Later: 4, Blocked: 0)
+Done tasks: 5
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-016 [SCAN] Add worktree-aware Git repo detection
-Outcome: Detect repo roots for both `.git` directory and `.git` file pointer formats, respect `TreatWorktreesAsRepos`, and persist stable repo roots for pull scheduling.
-Proof:
-- Command: Run scan on a fixture containing one normal repo and one git worktree.
-- Expect: Both repos are discovered when TreatWorktreesAsRepos=1; worktree repo is skipped when TreatWorktreesAsRepos=0.
-Touches: src/Scanner/*.pas, src/Git/*.pas, tests/ScannerTests.pas
-Notes: Spec section 6.1; reference pattern in RepoPulse src/UGitClient.pas
 
 ### T-017 [PIPE] Implement 3-pool pipeline coordinator + single DB writer
 Outcome: Add a coordinator that wires scan/git/index pools with bounded queues and a single DB writer thread that batches transactions for `repos`, `skills`, and `skills_fts`.
@@ -159,6 +151,14 @@ Notes: Spec sections 3.2, 5, 16
 ## Blocked
 
 ## Done
+
+### T-016 [SCAN] Add worktree-aware Git repo detection
+Outcome: Detect repo roots for both `.git` directory and `.git` file pointer formats, respect `TreatWorktreesAsRepos`, and persist stable repo roots for pull scheduling.
+Proof:
+- Command: Run scan on a fixture containing one normal repo and one git worktree.
+- Expect: Both repos are discovered when TreatWorktreesAsRepos=1; worktree repo is skipped when TreatWorktreesAsRepos=0.
+Touches: src/Scanner/*.pas, src/Git/*.pas, tests/ScannerTests.pas
+Notes: Spec section 6.1; reference pattern in RepoPulse src/UGitClient.pas
 
 ### T-015 [CFG] Implement settings.ini contract + defaults loader
 Outcome: Implement strongly-typed settings loading for all required sections/keys, using portable EXE-folder settings only (`.\settings.ini`, `.\Sources.lst` in our `bin` layout), and persist defaults for missing keys.

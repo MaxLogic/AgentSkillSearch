@@ -1,0 +1,73 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ProjectGuid>{8DBDFD2D-68F0-4D2D-9EA4-575D0CD030D0}</ProjectGuid>
+    <MainSource>..\tests\ScannerTests.dpr</MainSource>
+    <Base>True</Base>
+    <Config Condition="'$(Config)'==''">Debug</Config>
+    <ProjectName Condition="'$(ProjectName)'==''">ScannerTests</ProjectName>
+    <ProjectVersion>20.2</ProjectVersion>
+    <FrameworkType>None</FrameworkType>
+    <AppType>Console</AppType>
+    <Platform Condition="'$(Platform)'==''">Win64</Platform>
+    <TargetedPlatforms>3</TargetedPlatforms>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
+    <Base>true</Base>
+  </PropertyGroup>
+  <PropertyGroup Condition="('$(Platform)'=='Win32' and '$(Base)'=='true') or '$(Base_Win32)'!=''">
+    <Base_Win32>true</Base_Win32>
+    <CfgParent>Base</CfgParent>
+    <Base>true</Base>
+  </PropertyGroup>
+  <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Base)'=='true') or '$(Base_Win64)'!=''">
+    <Base_Win64>true</Base_Win64>
+    <CfgParent>Base</CfgParent>
+    <Base>true</Base>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Base)'!=''">
+    <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
+    <DCC_ExeOutput>..\bin</DCC_ExeOutput>
+    <DCC_E>false</DCC_E>
+    <DCC_F>false</DCC_F>
+    <DCC_K>false</DCC_K>
+    <DCC_N>false</DCC_N>
+    <DCC_S>false</DCC_S>
+    <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
+    <DCC_UnitSearchPath>..\src;..\src\Config;..\src\Db;..\src\Git;..\src\Scanner;..\tests;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+    <SanitizedProjectName>ScannerTests</SanitizedProjectName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <DelphiCompile Include="$(MainSource)">
+      <MainSource>MainSource</MainSource>
+    </DelphiCompile>
+    <DCCReference Include="..\tests\ScannerTests.pas" />
+    <DCCReference Include="..\src\AppPaths.pas" />
+    <DCCReference Include="..\src\Db\DatabaseManager.pas" />
+    <DCCReference Include="..\src\Git\RepoDetection.pas" />
+    <DCCReference Include="..\src\Scanner\RepoScanner.pas" />
+    <BuildConfiguration Include="Base">
+      <Key>Base</Key>
+    </BuildConfiguration>
+  </ItemGroup>
+
+  <ProjectExtensions>
+    <Borland.Personality>Delphi.Personality.12</Borland.Personality>
+    <Borland.ProjectType />
+    <BorlandProject>
+      <Delphi.Personality>
+        <Source>
+          <Source Name="MainSource">..\tests\ScannerTests.dpr</Source>
+        </Source>
+      </Delphi.Personality>
+      <Platforms>
+        <Platform value="Win32">True</Platform>
+        <Platform value="Win64">True</Platform>
+      </Platforms>
+    </BorlandProject>
+  </ProjectExtensions>
+
+  <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="'$(BDS)'!=''" />
+</Project>
