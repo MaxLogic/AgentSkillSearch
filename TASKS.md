@@ -3,20 +3,12 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 19 (In Progress: 0, Next Today: 1, Next This Week: 14, Next Later: 4, Blocked: 0)
-Done tasks: 2
+Open tasks: 18 (In Progress: 0, Next Today: 0, Next This Week: 14, Next Later: 4, Blocked: 0)
+Done tasks: 3
 
 ## In Progress
 
 ## Next – Today
-
-### T-003 [IDX] Implement Sources.lst parser
-Outcome: Parse Sources.lst (UTF-8), ignoring comments (#, ;, //) and empty lines, returning normalized absolute/UNC paths.
-Proof:
-- Command: Run unit tests for parser.
-- Expect: Comments ignored, valid lines returned, invalid paths reported but do not crash.
-Touches: src/SourcesList.pas, tests/SourcesListTests.pas
-Notes: Spec section 4.1
 
 ## Next – This Week
 
@@ -177,6 +169,14 @@ Notes: Spec sections 3.2, 5, 16
 ## Blocked
 
 ## Done
+
+### T-003 [IDX] Implement Sources.lst parser
+Outcome: Parse Sources.lst (UTF-8), ignoring comments (#, ;, //) and empty lines, returning normalized absolute/UNC paths.
+Proof:
+- Command: Run unit tests for parser.
+- Expect: Comments ignored, valid lines returned, invalid paths reported but do not crash.
+Touches: src/SourcesList.pas, tests/SourcesListTests.pas
+Notes: Spec section 4.1
 
 ### T-002 [DB] Bundle SQLite with FTS5 + WAL configuration
 Outcome: Bundle an SQLite DLL with FTS5 enabled and implement a DB layer that opens the cache DB, applies required PRAGMAs (WAL, synchronous NORMAL, temp_store MEMORY, foreign_keys ON), and runs migrations.
