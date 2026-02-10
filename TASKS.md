@@ -3,22 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 13 (In Progress: 0, Next Today: 0, Next This Week: 5, Next Later: 4, Blocked: 4)
-Done tasks: 8
+Open tasks: 12 (In Progress: 0, Next Today: 0, Next This Week: 4, Next Later: 4, Blocked: 4)
+Done tasks: 9
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-004 [SCAN] Multi-thread scanner with bounded queue
-Outcome: Implement recursive directory scan using MaxScanThreads with a work-queue of directories; discover repo roots and SKILL.md files; apply skip folder rules.
-Proof:
-- Command: Run Scan on a source with known repo + skills.
-- Expect: Correct counts: repos discovered, SKILL.md discovered; skip folders are not entered.
-Touches: src/Scanner/*.pas, src/Settings.pas
-Notes: Spec sections 6, 9.1
 
 ### T-005 [GIT] Git pull worker with throttling + timeout
 Outcome: Implement git pull pipeline: detect repo roots, consult DB for last_pull_utc, skip if within MinPullIntervalMinutes, else run git pull with GitPullTimeoutSeconds in non-interactive mode; store status/output/duration/head_commit.
@@ -134,6 +126,14 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-004 [SCAN] Multi-thread scanner with bounded queue
+Outcome: Implement recursive directory scan using MaxScanThreads with a work-queue of directories; discover repo roots and SKILL.md files; apply skip folder rules.
+Proof:
+- Command: Run Scan on a source with known repo + skills.
+- Expect: Correct counts: repos discovered, SKILL.md discovered; skip folders are not entered.
+Touches: src/Scanner/*.pas, src/Settings.pas
+Notes: Spec sections 6, 9.1
 
 ### T-021 [BUILD] Add MaxLogicFoundation via project search path
 Outcome: Configure project/library search path to reference MaxLogicFoundation directly and reuse shared units by reference instead of copying them into this repo.
