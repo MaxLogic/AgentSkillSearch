@@ -83,7 +83,7 @@ implementation
 uses
   System.Classes, System.DateUtils, System.IOUtils, System.Math, System.StrUtils, System.SyncObjs, System.SysUtils,
   System.Threading,
-  RepoDetection, SkillIndexer;
+  Logging, RepoDetection, SkillIndexer;
 
 function DefaultPipelineOptions: TPipelineOptions;
 begin
@@ -124,6 +124,7 @@ end;
 procedure TPipelineCoordinator.AddError(const aMessage: string);
 begin
   TInterlocked.Increment(fErrorCount);
+  RecordPipelineError(aMessage);
   TMonitor.Enter(self);
   try
     if fLastError = '' then
@@ -316,6 +317,7 @@ var
   lReposForGit: TArray<string>;
   lRepoPullUpdates: TList<TRepoPullUpdate>;
   lRepoStateReader: TDatabaseManager;
+  lSummary: TScanSummary;
   lSkillFilesDiscovered: TList<string>;
   lSkillFilesForIndex: TArray<string>;
 begin
@@ -343,216 +345,223 @@ begin
   lRepoPullUpdates := TList<TRepoPullUpdate>.Create;
   lIndexedSkills := TList<TIndexedSkill>.Create;
   try
-    if Length(aSourceRoots) > 0 then
-    begin
-      TParallel.For(
-        0,
-        High(aSourceRoots),
-        procedure(aIndex: Integer)
-        begin
-          try
-            if not fCancelToken.IsCancelled then
-            begin
-              ScanRoot(aSourceRoots[aIndex], lReposDiscovered, lSkillFilesDiscovered);
-            end;
-          except
-            on E: Exception do
-            begin
-              AddError('Scan worker failed: ' + E.Message);
-            end;
-          end;
-        end
-      );
-    end;
-
-    lReposForGit := BuildUniquePaths(lReposDiscovered);
-    lSkillFilesForIndex := BuildUniquePaths(lSkillFilesDiscovered);
-
-    if Length(lReposForGit) > 0 then
-    begin
-      lNowUtc := TTimeZone.Local.ToUniversalTime(Now);
-
-      lRepoStateReader := TDatabaseManager.Create(fDbManager.DatabasePath, fDbManager.SqliteDllPath);
-      try
-        lRepoStateReader.Initialize;
-
-        for i := 0 to Pred(Length(lReposForGit)) do
-        begin
-          if lRepoStateReader.TryGetRepoState(lReposForGit[i], lKnownRepoState) and
-            TGitPullWorker.IsThrottled(lKnownRepoState.LastPullUtc, fOptions.MinPullIntervalMinutes, lNowUtc) then
-          begin
-            AddRepoPullResult(lRepoPullUpdates, BuildThrottledPullUpdate(lReposForGit[i], lKnownRepoState.LastPullUtc));
-            TInterlocked.Increment(fReposThrottled);
-          end else begin
-            lReposToPull.Add(lReposForGit[i]);
-          end;
-        end;
-      finally
-        lRepoStateReader.Free;
-      end;
-
-      if fOptions.PullEnabled and (lReposToPull.Count > 0) then
-      begin
-        lGitOptions.GitExePath := fOptions.GitExePath;
-        lGitOptions.GitPullArgs := fOptions.GitPullArgs;
-        lGitOptions.GitPullTimeoutSeconds := fOptions.GitPullTimeoutSeconds;
-
-        lGitPool := TThreadPool.Create;
-        try
-          lGitPool.SetMinWorkerThreads(1);
-          lGitPool.SetMaxWorkerThreads(Max(1, fOptions.MaxGitPullThreads));
-
-          TParallel.&For(
-            0,
-            lReposToPull.Count - 1,
-            procedure(aIndex: Integer)
-            var
-              lPullResult: TGitPullResult;
-              lPullUpdate: TRepoPullUpdate;
-              lPullWorker: TGitPullWorker;
-              lRepoPath: string;
-            begin
-              lPullWorker := TGitPullWorker.Create;
-              try
-                try
-                  lRepoPath := lReposToPull[aIndex];
-                  lPullResult := lPullWorker.PullRepo(lRepoPath, lGitOptions);
-                  lPullUpdate := BuildPullUpdate(lRepoPath, lPullResult);
-                  AddRepoPullResult(lRepoPullUpdates, lPullUpdate);
-
-                  if SameText(lPullUpdate.LastPullStatus, 'pulled') then
-                  begin
-                    TInterlocked.Increment(fReposPulled);
-                  end else begin
-                    TInterlocked.Increment(fReposFailed);
-                    AddError('Git pull failed for "' + lRepoPath + '": ' + lPullUpdate.LastPullStatus + ' ' +
-                      lPullUpdate.LastPullOutput);
-                  end;
-
-                  if fOptions.SimulationDelayMs > 0 then
-                  begin
-                    Sleep(fOptions.SimulationDelayMs);
-                  end;
-                except
-                  on E: Exception do
-                  begin
-                    TInterlocked.Increment(fReposFailed);
-                    AddError('Git worker failed: ' + E.Message);
-                  end;
-                end;
-              finally
-                lPullWorker.Free;
-              end;
-            end,
-            lGitPool
-          );
-        finally
-          lGitPool.Free;
-        end;
-      end;
-    end;
-
-    if Length(lSkillFilesForIndex) > 0 then
-    begin
-      TParallel.For(
-        0,
-        High(lSkillFilesForIndex),
-        procedure(aIndex: Integer)
-        var
-          lLocalError: string;
-          lLocalSkill: TIndexedSkill;
-        begin
-          try
-            if TryBuildIndexedSkill(lSkillFilesForIndex[aIndex], lLocalSkill, lLocalError) then
-            begin
-              TMonitor.Enter(lIndexedSkills);
-              try
-                lIndexedSkills.Add(lLocalSkill);
-              finally
-                TMonitor.Exit(lIndexedSkills);
-              end;
-            end else begin
-              AddError('Skill indexing failed: ' + lLocalError);
-            end;
-
-            if fOptions.SimulationDelayMs > 0 then
-            begin
-              Sleep(fOptions.SimulationDelayMs);
-            end;
-          except
-            on E: Exception do
-            begin
-              AddError('Index worker failed: ' + E.Message);
-            end;
-          end;
-        end
-      );
-    end;
-
-    lBatchRepos := lReposForGit;
-    lBatchRepoPulls := lRepoPullUpdates.ToArray;
-    lBatchSkills := lIndexedSkills.ToArray;
-
-    lLocalDbManager := TDatabaseManager.Create(fDbManager.DatabasePath, fDbManager.SqliteDllPath);
     try
-      lLocalDbManager.Initialize;
-
-      i := 0;
-      while i < Length(lBatchRepos) do
+      if Length(aSourceRoots) > 0 then
       begin
-        if fCancelToken.IsCancelled and (i > 0) then
-        begin
-          Break;
-        end;
-        if ShouldAutoCancel then
-        begin
-          fCancelToken.Cancel;
-        end;
-
-        lLocalDbManager.WriteBatch(Copy(lBatchRepos, i, fOptions.DbBatchSize), nil);
-        TInterlocked.Add(fReposWritten, Min(fOptions.DbBatchSize, Length(lBatchRepos) - i));
-        i := i + fOptions.DbBatchSize;
+        TParallel.For(
+          0,
+          High(aSourceRoots),
+          procedure(aIndex: Integer)
+          begin
+            try
+              if not fCancelToken.IsCancelled then
+              begin
+                ScanRoot(aSourceRoots[aIndex], lReposDiscovered, lSkillFilesDiscovered);
+              end;
+            except
+              on E: Exception do
+              begin
+                AddError('Scan worker failed: ' + E.Message);
+              end;
+            end;
+          end
+        );
       end;
 
-      i := 0;
-      while i < Length(lBatchRepoPulls) do
+      lReposForGit := BuildUniquePaths(lReposDiscovered);
+      lSkillFilesForIndex := BuildUniquePaths(lSkillFilesDiscovered);
+
+      if Length(lReposForGit) > 0 then
       begin
-        if fCancelToken.IsCancelled and (i > 0) then
-        begin
-          Break;
-        end;
-        if ShouldAutoCancel then
-        begin
-          fCancelToken.Cancel;
+        lNowUtc := TTimeZone.Local.ToUniversalTime(Now);
+
+        lRepoStateReader := TDatabaseManager.Create(fDbManager.DatabasePath, fDbManager.SqliteDllPath);
+        try
+          lRepoStateReader.Initialize;
+
+          for i := 0 to Pred(Length(lReposForGit)) do
+          begin
+            if lRepoStateReader.TryGetRepoState(lReposForGit[i], lKnownRepoState) and
+              TGitPullWorker.IsThrottled(lKnownRepoState.LastPullUtc, fOptions.MinPullIntervalMinutes, lNowUtc) then
+            begin
+              AddRepoPullResult(lRepoPullUpdates, BuildThrottledPullUpdate(lReposForGit[i], lKnownRepoState.LastPullUtc));
+              TInterlocked.Increment(fReposThrottled);
+            end else begin
+              lReposToPull.Add(lReposForGit[i]);
+            end;
+          end;
+        finally
+          lRepoStateReader.Free;
         end;
 
-        lLocalDbManager.WriteBatchWithRepoPulls(nil, Copy(lBatchRepoPulls, i, fOptions.DbBatchSize), nil);
-        i := i + fOptions.DbBatchSize;
+        if fOptions.PullEnabled and (lReposToPull.Count > 0) then
+        begin
+          lGitOptions.GitExePath := fOptions.GitExePath;
+          lGitOptions.GitPullArgs := fOptions.GitPullArgs;
+          lGitOptions.GitPullTimeoutSeconds := fOptions.GitPullTimeoutSeconds;
+
+          lGitPool := TThreadPool.Create;
+          try
+            lGitPool.SetMinWorkerThreads(1);
+            lGitPool.SetMaxWorkerThreads(Max(1, fOptions.MaxGitPullThreads));
+
+            TParallel.&For(
+              0,
+              lReposToPull.Count - 1,
+              procedure(aIndex: Integer)
+              var
+                lPullResult: TGitPullResult;
+                lPullUpdate: TRepoPullUpdate;
+                lPullWorker: TGitPullWorker;
+                lRepoPath: string;
+              begin
+                lPullWorker := TGitPullWorker.Create;
+                try
+                  try
+                    lRepoPath := lReposToPull[aIndex];
+                    lPullResult := lPullWorker.PullRepo(lRepoPath, lGitOptions);
+                    lPullUpdate := BuildPullUpdate(lRepoPath, lPullResult);
+                    AddRepoPullResult(lRepoPullUpdates, lPullUpdate);
+
+                    if SameText(lPullUpdate.LastPullStatus, 'pulled') then
+                    begin
+                      TInterlocked.Increment(fReposPulled);
+                    end else begin
+                      TInterlocked.Increment(fReposFailed);
+                      AddError('Git pull failed for "' + lRepoPath + '": ' + lPullUpdate.LastPullStatus + ' ' +
+                        lPullUpdate.LastPullOutput);
+                    end;
+
+                    if fOptions.SimulationDelayMs > 0 then
+                    begin
+                      Sleep(fOptions.SimulationDelayMs);
+                    end;
+                  except
+                    on E: Exception do
+                    begin
+                      TInterlocked.Increment(fReposFailed);
+                      AddError('Git worker failed: ' + E.Message);
+                    end;
+                  end;
+                finally
+                  lPullWorker.Free;
+                end;
+              end,
+              lGitPool
+            );
+          finally
+            lGitPool.Free;
+          end;
+        end;
       end;
 
-      i := 0;
-      while i < Length(lBatchSkills) do
+      if Length(lSkillFilesForIndex) > 0 then
       begin
-        if fCancelToken.IsCancelled and (i > 0) then
+        TParallel.For(
+          0,
+          High(lSkillFilesForIndex),
+          procedure(aIndex: Integer)
+          var
+            lLocalError: string;
+            lLocalSkill: TIndexedSkill;
+          begin
+            try
+              if TryBuildIndexedSkill(lSkillFilesForIndex[aIndex], lLocalSkill, lLocalError) then
+              begin
+                TMonitor.Enter(lIndexedSkills);
+                try
+                  lIndexedSkills.Add(lLocalSkill);
+                finally
+                  TMonitor.Exit(lIndexedSkills);
+                end;
+              end else begin
+                AddError('Skill indexing failed for "' + lSkillFilesForIndex[aIndex] + '": ' + lLocalError);
+              end;
+
+              if fOptions.SimulationDelayMs > 0 then
+              begin
+                Sleep(fOptions.SimulationDelayMs);
+              end;
+            except
+              on E: Exception do
+              begin
+                AddError('Index worker failed: ' + E.Message);
+              end;
+            end;
+          end
+        );
+      end;
+
+      lBatchRepos := lReposForGit;
+      lBatchRepoPulls := lRepoPullUpdates.ToArray;
+      lBatchSkills := lIndexedSkills.ToArray;
+
+      lLocalDbManager := TDatabaseManager.Create(fDbManager.DatabasePath, fDbManager.SqliteDllPath);
+      try
+        lLocalDbManager.Initialize;
+
+        i := 0;
+        while i < Length(lBatchRepos) do
         begin
-          Break;
-        end;
-        if ShouldAutoCancel then
-        begin
-          fCancelToken.Cancel;
+          if fCancelToken.IsCancelled and (i > 0) then
+          begin
+            Break;
+          end;
+          if ShouldAutoCancel then
+          begin
+            fCancelToken.Cancel;
+          end;
+
+          lLocalDbManager.WriteBatch(Copy(lBatchRepos, i, fOptions.DbBatchSize), nil);
+          TInterlocked.Add(fReposWritten, Min(fOptions.DbBatchSize, Length(lBatchRepos) - i));
+          i := i + fOptions.DbBatchSize;
         end;
 
-        lLocalDbManager.WriteBatch(nil, Copy(lBatchSkills, i, fOptions.DbBatchSize));
-        TInterlocked.Add(fSkillsWritten, Min(fOptions.DbBatchSize, Length(lBatchSkills) - i));
-        i := i + fOptions.DbBatchSize;
+        i := 0;
+        while i < Length(lBatchRepoPulls) do
+        begin
+          if fCancelToken.IsCancelled and (i > 0) then
+          begin
+            Break;
+          end;
+          if ShouldAutoCancel then
+          begin
+            fCancelToken.Cancel;
+          end;
+
+          lLocalDbManager.WriteBatchWithRepoPulls(nil, Copy(lBatchRepoPulls, i, fOptions.DbBatchSize), nil);
+          i := i + fOptions.DbBatchSize;
+        end;
+
+        i := 0;
+        while i < Length(lBatchSkills) do
+        begin
+          if fCancelToken.IsCancelled and (i > 0) then
+          begin
+            Break;
+          end;
+          if ShouldAutoCancel then
+          begin
+            fCancelToken.Cancel;
+          end;
+
+          lLocalDbManager.WriteBatch(nil, Copy(lBatchSkills, i, fOptions.DbBatchSize));
+          TInterlocked.Add(fSkillsWritten, Min(fOptions.DbBatchSize, Length(lBatchSkills) - i));
+          i := i + fOptions.DbBatchSize;
+        end;
+      except
+        on E: Exception do
+        begin
+          AddError('DB writer failed: ' + E.Message);
+        end;
       end;
+      lLocalDbManager.Free;
     except
       on E: Exception do
       begin
-        AddError('DB writer failed: ' + E.Message);
+        AddError('Pipeline run failed: ' + E.Message);
       end;
     end;
-    lLocalDbManager.Free;
 
     Result.Cancelled := fCancelToken.IsCancelled;
     Result.ReposFailed := fReposFailed;
@@ -564,6 +573,18 @@ begin
     Result.SkillsWritten := fSkillsWritten;
     Result.ErrorCount := fErrorCount;
     Result.LastError := fLastError;
+
+    lSummary := Default(TScanSummary);
+    lSummary.CompletedUtc := FormatDateTime('yyyy-mm-dd"T"hh:nn:ss"Z"', TTimeZone.Local.ToUniversalTime(Now),
+      TFormatSettings.Invariant);
+    lSummary.ReposFound := Result.ReposQueued;
+    lSummary.ReposPulled := Result.ReposPulled;
+    lSummary.ReposThrottled := Result.ReposThrottled;
+    lSummary.ReposFailed := Result.ReposFailed;
+    lSummary.SkillsQueued := Result.SkillsQueued;
+    lSummary.SkillsWritten := Result.SkillsWritten;
+    lSummary.ErrorCount := Result.ErrorCount;
+    RecordScanSummary(lSummary);
   finally
     lIndexedSkills.Free;
     lRepoPullUpdates.Free;

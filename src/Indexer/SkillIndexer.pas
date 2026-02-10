@@ -188,6 +188,19 @@ begin
   end;
 end;
 
+function HasLeadingFrontMatterFence(const aBody: string): Boolean;
+var
+  lBody: string;
+begin
+  lBody := aBody;
+  if StartsStr(#$EF#$BB#$BF, lBody) then
+  begin
+    lBody := Copy(lBody, 4, MaxInt);
+  end;
+
+  Result := StartsStr('---', lBody);
+end;
+
 function ExtractSkillName(const aBody: string; const aFallback: string): string;
 var
   i: Integer;
@@ -486,7 +499,14 @@ begin
   end;
 
   lBodyForParsing := lBody;
-  TryExtractFrontMatter(lBody, lFrontMatterName, lFrontMatterDescription, lFrontMatterTags, lBodyForParsing);
+  if not TryExtractFrontMatter(lBody, lFrontMatterName, lFrontMatterDescription, lFrontMatterTags, lBodyForParsing) then
+  begin
+    if HasLeadingFrontMatterFence(lBody) then
+    begin
+      aError := 'Malformed frontmatter (missing closing fence)';
+      Exit(False);
+    end;
+  end;
 
   lFallbackName := ExtractFileName(ExcludeTrailingPathDelimiter(ExtractFileDir(aSkillFilePath)));
   lMtimeUtc := TFile.GetLastWriteTimeUtc(aSkillFilePath);

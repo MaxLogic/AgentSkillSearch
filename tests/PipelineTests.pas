@@ -9,7 +9,7 @@ implementation
 uses
   System.Classes, System.IOUtils, System.StrUtils, System.SysUtils,
   Winapi.Windows,
-  AppPaths, DatabaseManager, PipelineCoordinator;
+  AppPaths, DatabaseManager, Logging, PipelineCoordinator;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -248,6 +248,7 @@ procedure TestGitPullFailureDoesNotBlockOtherRepos;
 var
   lCoordinator: TPipelineCoordinator;
   lDbManager: TDatabaseManager;
+  lDiagnostics: string;
   lDbPath: string;
   lFixtureRoot: string;
   lGoodRepoPath: string;
@@ -289,6 +290,10 @@ begin
 
     AssertTrue(lDbManager.TryGetRepoState(lBadRepoPath, lBadState), 'Bad repo state missing');
     AssertTrue(AnsiStartsText('failed', lBadState.LastPullStatus), 'Bad repo should be marked failed');
+
+    lDiagnostics := BuildDiagnosticsText;
+    AssertTrue(ContainsText(lDiagnostics, 'Git pull failed for "'), 'Diagnostics should include git failure details');
+    AssertTrue(ContainsText(lDiagnostics, 'repo-bad'), 'Diagnostics should mention failed repo path');
   finally
     lDbManager.Free;
   end;
