@@ -5,7 +5,7 @@ interface
 uses
   System.Classes, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
-  DatabaseManager, SkillSearchService;
+  DatabaseManager, SearchController, SkillSearchService;
 
 type
   TMainForm = class(TForm)
@@ -24,19 +24,22 @@ type
     fResultsListView: TListView;
     fSearchAsYouTypeCheckBox: TCheckBox;
     fSearchButton: TButton;
+    fSearchController: TSearchController;
     fSearchEdit: TEdit;
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
     fStatusBar: TStatusBar;
+    procedure ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
+    function BuildEffectiveQuery: string;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
     procedure CreateLayout;
-    procedure ExecuteSearch;
     function EscapeHtml(const aText: string): string;
     function GetSelectedSkillFile: string;
     function IsResultSelectionValid: Boolean;
     procedure OpenSelectedSkillFile;
     procedure OpenSelectedSkillFolder;
+    procedure QueueSearch(const aImmediate: Boolean);
     procedure RenderPreview(const aResult: TSkillSearchResult);
     procedure ShowEmptyPreview;
     procedure UpdateStatus(const aText: string);
@@ -50,6 +53,8 @@ type
     procedure HandleResultKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleResultSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);
     procedure HandleSearchButtonClick(Sender: TObject);
+    procedure HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
+      const aError: string);
     procedure HandleSearchEditChange(Sender: TObject);
     procedure HandleSearchEditKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
   public
@@ -64,7 +69,7 @@ implementation
 
 uses
   System.IOUtils, System.StrUtils, System.SysUtils,
-  Winapi.Messages, Winapi.ShellAPI, Winapi.Windows,
+  Winapi.ShellAPI, Winapi.Windows,
   Vcl.Clipbrd,
   AppPaths, Settings;
 
@@ -90,11 +95,24 @@ begin
   fSearchService := TSkillSearchService.Create(fDbPath, GetSqliteDllPath);
 
   CreateLayout;
-  ExecuteSearch;
+
+  fSearchAsYouTypeCheckBox.Checked := lSettings.Settings.Search.SearchAsYouType;
+
+  fSearchController := TSearchController.Create(
+    function(const aQuery: string): TArray<TSkillSearchResult>
+    begin
+      Result := fSearchService.Search(aQuery);
+    end,
+    lSettings.Settings.Search.SearchDebounceMs
+  );
+  fSearchController.OnCompleted := HandleSearchCompleted;
+
+  QueueSearch(True);
 end;
 
 destructor TMainForm.Destroy;
 begin
+  fSearchController.Free;
   fSearchService.Free;
   fDatabaseManager.Free;
   inherited Destroy;
@@ -316,24 +334,40 @@ begin
   fStatusBar.Panels[0].Text := aText;
 end;
 
-procedure TMainForm.ExecuteSearch;
+function TMainForm.BuildEffectiveQuery: string;
+begin
+  Result := Trim(fSearchEdit.Text);
+  if fHasScriptsCheckBox.Checked and (not ContainsText(Result, 'has:scripts')) and
+    (not ContainsText(Result, '-has:scripts')) then
+  begin
+    if Result <> '' then
+    begin
+      Result := Result + ' ';
+    end;
+    Result := Result + 'has:scripts';
+  end;
+end;
+
+procedure TMainForm.QueueSearch(const aImmediate: Boolean);
+var
+  lQuery: string;
+begin
+  lQuery := BuildEffectiveQuery;
+  if aImmediate then
+  begin
+    fSearchController.QueueSearch(lQuery, 0);
+  end else begin
+    fSearchController.QueueSearch(lQuery);
+  end;
+  UpdateStatus('Searching...');
+end;
+
+procedure TMainForm.ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
 var
   i: Integer;
-  lQuery: string;
   lItem: TListItem;
 begin
-  lQuery := Trim(fSearchEdit.Text);
-  if fHasScriptsCheckBox.Checked and (not ContainsText(lQuery, 'has:scripts')) and
-    (not ContainsText(lQuery, '-has:scripts')) then
-  begin
-    if lQuery <> '' then
-    begin
-      lQuery := lQuery + ' ';
-    end;
-    lQuery := lQuery + 'has:scripts';
-  end;
-
-  fResults := fSearchService.Search(lQuery);
+  fResults := aResults;
 
   fResultsListView.Items.BeginUpdate;
   try
@@ -359,7 +393,7 @@ begin
     ShowEmptyPreview;
   end;
 
-  UpdateStatus(Format('Results: %d | Query: %s', [Length(fResults), lQuery]));
+  UpdateStatus(Format('Results: %d | Query: %s', [Length(fResults), BuildEffectiveQuery]));
 end;
 
 procedure TMainForm.OpenSelectedSkillFile;
@@ -406,14 +440,37 @@ end;
 
 procedure TMainForm.HandleSearchButtonClick(Sender: TObject);
 begin
-  ExecuteSearch;
+  QueueSearch(True);
+end;
+
+procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
+  const aError: string);
+begin
+  if GetCurrentThreadId <> MainThreadID then
+  begin
+    TThread.Queue(nil,
+      procedure
+      begin
+        HandleSearchCompleted(aGenerationId, aResults, aError);
+      end
+    );
+    Exit;
+  end;
+
+  if aError <> '' then
+  begin
+    UpdateStatus('Search failed: ' + aError);
+    Exit;
+  end;
+
+  ApplySearchResults(aResults);
 end;
 
 procedure TMainForm.HandleSearchEditChange(Sender: TObject);
 begin
   if fSearchAsYouTypeCheckBox.Checked then
   begin
-    ExecuteSearch;
+    QueueSearch(False);
   end;
 end;
 
@@ -421,7 +478,7 @@ procedure TMainForm.HandleSearchEditKeyDown(Sender: TObject; var Key: Word; Shif
 begin
   if Key = VK_RETURN then
   begin
-    ExecuteSearch;
+    QueueSearch(True);
     Key := 0;
   end;
 end;
@@ -489,13 +546,14 @@ begin
 
   if Key = VK_F5 then
   begin
-    ExecuteSearch;
+    QueueSearch(True);
     Key := 0;
     Exit;
   end;
 
   if Key = VK_ESCAPE then
   begin
+    fSearchController.CancelCurrent;
     UpdateStatus('Search cancelled by user.');
     Key := 0;
   end;
@@ -518,7 +576,7 @@ end;
 
 procedure TMainForm.HandleHasScriptsClick(Sender: TObject);
 begin
-  ExecuteSearch;
+  QueueSearch(False);
 end;
 
 end.

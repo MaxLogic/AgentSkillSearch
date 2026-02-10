@@ -12,6 +12,9 @@
     <Projects Include="SearchTests.dproj">
       <Dependencies />
     </Projects>
+    <Projects Include="SearchControllerTests.dproj">
+      <Dependencies />
+    </Projects>
     <Projects Include="ScannerTests.dproj">
       <Dependencies />
     </Projects>
