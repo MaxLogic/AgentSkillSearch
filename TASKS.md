@@ -3,8 +3,8 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 5 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 1, Blocked: 4)
-Done tasks: 16
+Open tasks: 4 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 4)
+Done tasks: 17
 
 ## In Progress
 
@@ -13,14 +13,6 @@ Done tasks: 16
 ## Next – This Week
 
 ## Next – Later
-
-### T-014 [PKG] Runtime packaging (sqlite dll, settings template)
-Outcome: Package EXE with sqlite3.dll (FTS5) and vec0.dll in `bin\`, default settings.ini and Sources.lst beside the EXE, and ensure relative paths work in portable mode.
-Proof:
-- Command: Copy output folder to another machine/user profile and run.
-- Expect: App starts; can create DB; scan works.
-Touches: installer scripts or build output layout
-Notes: Spec sections 3.2, 5, 16
 
 ## Blocked
 
@@ -66,6 +58,14 @@ Notes:
 - Deferred until core index upsert flow is finalized.
 
 ## Done
+
+### T-014 [PKG] Runtime packaging (sqlite dll, settings template)
+Outcome: Package EXE with sqlite3.dll (FTS5) and vec0.dll in `bin\`, default settings.ini and Sources.lst beside the EXE, and ensure relative paths work in portable mode.
+Proof:
+- Command: Copy output folder to another machine/user profile and run.
+- Expect: App starts; can create DB; scan works.
+Touches: installer scripts or build output layout
+Notes: Spec sections 3.2, 5, 16
 
 ### T-013 [OPS] Logging, diagnostics, and error surfacing
 Outcome: Add robust logging and a simple diagnostics dialog showing last scan summary + last errors (git failures, index parse errors).
