@@ -3,22 +3,14 @@
 Next task ID: T-022
 
 ## Summary
-Open tasks: 16 (In Progress: 0, Next Today: 0, Next This Week: 12, Next Later: 4, Blocked: 0)
-Done tasks: 5
+Open tasks: 15 (In Progress: 0, Next Today: 0, Next This Week: 11, Next Later: 4, Blocked: 0)
+Done tasks: 6
 
 ## In Progress
 
 ## Next – Today
 
 ## Next – This Week
-
-### T-017 [PIPE] Implement 3-pool pipeline coordinator + single DB writer
-Outcome: Add a coordinator that wires scan/git/index pools with bounded queues and a single DB writer thread that batches transactions for `repos`, `skills`, and `skills_fts`.
-Proof:
-- Command: Run scan/index against a large source set and cancel midway.
-- Expect: No DB lock/write contention errors; cancellation drains safely; partial progress is committed atomically per batch.
-Touches: src/Pipeline/*.pas, src/Db/*.pas, src/Scanner/*.pas, src/Git/*.pas, src/Indexer/*.pas
-Notes: Spec sections 9.1, 9.2, 9.4; reuse candidates in MaxLogicFoundation (CancelToken/maxAsync)
 
 ### T-018 [SEARCH] Add snippets + sanitized preview rendering
 Outcome: Generate query-aware snippets (`snippet()` or fallback extractor), cap by `SnippetMaxChars`, and render sanitized HTML in preview with match highlighting.
@@ -151,6 +143,14 @@ Notes: Spec sections 3.2, 5, 16
 ## Blocked
 
 ## Done
+
+### T-017 [PIPE] Implement 3-pool pipeline coordinator + single DB writer
+Outcome: Add a coordinator that wires scan/git/index pools with bounded queues and a single DB writer thread that batches transactions for `repos`, `skills`, and `skills_fts`.
+Proof:
+- Command: Run scan/index against a large source set and cancel midway.
+- Expect: No DB lock/write contention errors; cancellation drains safely; partial progress is committed atomically per batch.
+Touches: src/Pipeline/*.pas, src/Db/*.pas, src/Scanner/*.pas, src/Git/*.pas, src/Indexer/*.pas
+Notes: Spec sections 9.1, 9.2, 9.4; reuse candidates in MaxLogicFoundation (CancelToken/maxAsync)
 
 ### T-016 [SCAN] Add worktree-aware Git repo detection
 Outcome: Detect repo roots for both `.git` directory and `.git` file pointer formats, respect `TreatWorktreesAsRepos`, and persist stable repo roots for pull scheduling.
