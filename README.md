@@ -100,6 +100,20 @@ Supported query syntax:
 - filters: `name:`, `tag:`, `path:`, `has:scripts`, `-has:scripts`
 - limit: `limit:200`
 
+## Count Semantics
+
+Diagnostics and UI counters use the same definitions:
+- `Found`: `SKILL.md` files discovered during the latest scan run.
+- `Written`: skills inserted/updated in DB during the latest scan run.
+- `Valid`: indexed rows with non-empty `name`, `skill_file`, and `body_md`.
+- `Unique`: valid skills after deduplication by `body_hash`.
+- `Results`: rows currently visible for the active query.
+
+Why visible results can be lower than `Valid`/`Unique`:
+- active query filters (`name:`, `tag:`, `path:`, `has:scripts`, excluded terms)
+- query scope limit (`limit:` in query, otherwise `[Search] MaxResults`)
+- duplicate collapse by `body_hash`
+
 ## Configuration
 
 Main file: `bin/settings.ini`

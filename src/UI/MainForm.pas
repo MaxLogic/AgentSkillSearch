@@ -137,6 +137,7 @@ begin
     fDbPath,
     GetSqliteDllPath,
     fAppSettings.Search.SnippetMaxChars,
+    fAppSettings.Search.MaxResults,
     lSemanticOptions
   );
 

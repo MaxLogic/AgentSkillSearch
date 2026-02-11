@@ -10,6 +10,8 @@ type
     ReposFound: Integer;
     ReposPulled: Integer;
     ReposThrottled: Integer;
+    SkillsUnique: Integer;
+    SkillsValid: Integer;
     SkillsQueued: Integer;
     SkillsWritten: Integer;
   end;
@@ -130,9 +132,9 @@ begin
     AppendLogLine(
       'INFO',
       Format(
-        'scan summary repos(found=%d,pulled=%d,throttled=%d,failed=%d) skills(queued=%d,written=%d) errors=%d',
+        'scan summary repos(found=%d,pulled=%d,throttled=%d,failed=%d) skills(found=%d,written=%d,valid=%d,unique=%d) errors=%d',
         [aSummary.ReposFound, aSummary.ReposPulled, aSummary.ReposThrottled, aSummary.ReposFailed,
-         aSummary.SkillsQueued, aSummary.SkillsWritten, aSummary.ErrorCount]
+         aSummary.SkillsQueued, aSummary.SkillsWritten, aSummary.SkillsValid, aSummary.SkillsUnique, aSummary.ErrorCount]
       )
     );
   finally
@@ -157,7 +159,12 @@ begin
       lOutput.Add('  CompletedUtc: ' + gLastSummary.CompletedUtc);
       lOutput.Add(Format('  Repos Found/Pulled/Throttled/Failed: %d / %d / %d / %d',
         [gLastSummary.ReposFound, gLastSummary.ReposPulled, gLastSummary.ReposThrottled, gLastSummary.ReposFailed]));
-      lOutput.Add(Format('  Skills Queued/Written: %d / %d', [gLastSummary.SkillsQueued, gLastSummary.SkillsWritten]));
+      lOutput.Add(
+        Format(
+          '  Skills Found/Written/Valid/Unique: %d / %d / %d / %d',
+          [gLastSummary.SkillsQueued, gLastSummary.SkillsWritten, gLastSummary.SkillsValid, gLastSummary.SkillsUnique]
+        )
+      );
       lOutput.Add(Format('  Errors: %d', [gLastSummary.ErrorCount]));
       lOutput.Add('');
       lOutput.Add('Recent notices:');

@@ -154,6 +154,7 @@ end;
 procedure TestPipelineCancellationAndBatchWrites;
 var
   lCoordinator: TPipelineCoordinator;
+  lDiagnostics: string;
   lDbManager: TDatabaseManager;
   lDbPath: string;
   lFixtureRoot: string;
@@ -189,6 +190,10 @@ begin
     AssertTrue(lResult.SkillsWritten >= 0, 'Expected deterministic skill write count');
     AssertTrue(lDbManager.GetRepoCount = lResult.ReposWritten, 'Repo write counter mismatch');
     AssertTrue(lDbManager.GetSkillCount = lResult.SkillsWritten, 'Skill write counter mismatch');
+
+    lDiagnostics := BuildDiagnosticsText;
+    AssertTrue(ContainsText(lDiagnostics, 'Skills Found/Written/Valid/Unique'),
+      'Diagnostics should publish unified count semantics');
   finally
     lDbManager.Free;
   end;

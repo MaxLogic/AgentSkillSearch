@@ -83,6 +83,8 @@ type
     property SqliteDllPath: string read fSqliteDllPath;
     function GetRepoCount: Integer;
     function GetSkillCount: Integer;
+    function GetUniqueSkillCount: Integer;
+    function GetValidSkillCount: Integer;
     function Initialize: TDbInitResult;
     function GetChunkStatesBySkillFile(const aSkillFile: string): TArray<TSkillChunkState>;
     function GetSkillFtsBodyBySkillFile(const aSkillFile: string): string;
@@ -367,6 +369,26 @@ end;
 function TDatabaseManager.GetSkillCount: Integer;
 begin
   Result := QueryScalarInt('SELECT COUNT(1) FROM skills;');
+end;
+
+function TDatabaseManager.GetValidSkillCount: Integer;
+begin
+  Result := QueryScalarInt(
+    'SELECT COUNT(1) FROM skills ' +
+    'WHERE TRIM(COALESCE(name, '''')) <> '''' ' +
+    '  AND TRIM(COALESCE(skill_file, '''')) <> '''' ' +
+    '  AND TRIM(COALESCE(body_md, '''')) <> '''';'
+  );
+end;
+
+function TDatabaseManager.GetUniqueSkillCount: Integer;
+begin
+  Result := QueryScalarInt(
+    'SELECT COUNT(DISTINCT body_hash) FROM skills ' +
+    'WHERE TRIM(COALESCE(name, '''')) <> '''' ' +
+    '  AND TRIM(COALESCE(skill_file, '''')) <> '''' ' +
+    '  AND TRIM(COALESCE(body_md, '''')) <> '''';'
+  );
 end;
 
 function TDatabaseManager.GetSkillFtsBodyBySkillFile(const aSkillFile: string): string;

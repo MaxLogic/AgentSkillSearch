@@ -3,20 +3,12 @@
 Next task ID: T-031
 
 ## Summary
-Open tasks: 6 (In Progress: 0, Next Today: 6, Next This Week: 0, Next Later: 0, Blocked: 0)
-Done tasks: 24
+Open tasks: 5 (In Progress: 0, Next Today: 5, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 25
 
 ## In Progress
 
 ## Next – Today
-
-### T-025 [SEARCH] Reconcile diagnostics totals with visible results
-Outcome: Define and implement clear count semantics so diagnostics totals (written/failed) and UI visible results are explainable, including the "many indexed vs 178 shown" case.
-Proof:
-- Command: Run a large scan and then leave query empty on the main screen.
-- Expect: We can account for displayed count using documented rules (validity filters, dedup, and query scope) without ambiguity.
-Touches: src/Search/*.pas, src/UI/MainForm.pas, src/Db/*.pas, README.md
-Notes: Add explicit terminology for found, written, valid, unique, and current query result counts.
 
 ### T-026 [UI] Add status bar counters for found, valid, unique, and results
 Outcome: Extend the bottom status bar to show four counters: skills found, valid skills, unique (post-dedup) skills, and current query results.
@@ -66,6 +58,14 @@ Notes: Keep text short and directly actionable for first-time users.
 ## Blocked
 
 ## Done
+
+### T-025 [SEARCH] Reconcile diagnostics totals with visible results
+Outcome: Define and implement clear count semantics so diagnostics totals (written/failed) and UI visible results are explainable, including the "many indexed vs 178 shown" case.
+Proof:
+- Command: Run a large scan and then leave query empty on the main screen.
+- Expect: We can account for displayed count using documented rules (validity filters, dedup, and query scope) without ambiguity.
+Touches: src/Search/*.pas, src/UI/MainForm.pas, src/Db/*.pas, README.md
+Notes: Add explicit terminology for found, written, valid, unique, and current query result counts.
 
 ### T-024 [IDX] Best-effort repair for missing frontmatter closing fence
 Outcome: Improve SKILL.md parsing with a best-effort recovery path that repairs missing YAML frontmatter closing fences and continues indexing with a warning.
