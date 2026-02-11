@@ -86,3 +86,6 @@ pas-api-map.md
 /bin/logs/*.log
 /tests/bin/*
 !/tests/bin/.gitkeep
+/screenshots
+/projects/*.otares
+/bin/bugreport.txt
