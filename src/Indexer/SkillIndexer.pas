@@ -22,7 +22,8 @@ implementation
 
 uses
   System.Classes, System.DateUtils, System.Generics.Collections, System.Hash, System.IOUtils, System.StrUtils,
-  System.SysUtils;
+  System.SysUtils,
+  Logging;
 
 function UtcDateTimeToIso8601(const aUtc: TDateTime): string;
 begin
@@ -109,7 +110,34 @@ begin
   Result := lJoined;
 end;
 
-function TryExtractFrontMatter(const aBody: string; out aName, aDescription, aTags, aBodyWithoutFrontMatter: string): Boolean;
+function IsLikelyFrontMatterLine(const aLine: string): Boolean;
+var
+  lKey: string;
+  lLine: string;
+  lPos: Integer;
+begin
+  lLine := Trim(aLine);
+  if lLine = '' then
+  begin
+    Exit(True);
+  end;
+  if StartsStr('-', lLine) then
+  begin
+    Exit(True);
+  end;
+
+  lPos := Pos(':', lLine);
+  if lPos <= 1 then
+  begin
+    Exit(False);
+  end;
+
+  lKey := Trim(Copy(lLine, 1, lPos - 1));
+  Result := lKey <> '';
+end;
+
+function TryExtractFrontMatter(const aBody: string; out aName, aDescription, aTags, aBodyWithoutFrontMatter: string;
+  out aFrontMatterRepaired: Boolean): Boolean;
 var
   i: Integer;
   lCloseIndex: Integer;
@@ -123,6 +151,7 @@ begin
   aDescription := '';
   aTags := '';
   aBodyWithoutFrontMatter := aBody;
+  aFrontMatterRepaired := False;
 
   lLines := TStringList.Create;
   try
@@ -144,7 +173,22 @@ begin
 
     if lCloseIndex = -1 then
     begin
-      Exit(False);
+      for i := 1 to Pred(lLines.Count) do
+      begin
+        if IsLikelyFrontMatterLine(lLines[i]) then
+        begin
+          Continue;
+        end;
+
+        lCloseIndex := i - 1;
+        aFrontMatterRepaired := True;
+        Break;
+      end;
+
+      if lCloseIndex = -1 then
+      begin
+        Exit(False);
+      end;
     end;
 
     for i := 1 to Pred(lCloseIndex) do
@@ -483,6 +527,7 @@ var
   lBodyForParsing: string;
   lDescription: string;
   lFallbackName: string;
+  lFrontMatterRepaired: Boolean;
   lFrontMatterDescription: string;
   lFrontMatterName: string;
   lFrontMatterTags: string;
@@ -499,13 +544,23 @@ begin
   end;
 
   lBodyForParsing := lBody;
-  if not TryExtractFrontMatter(lBody, lFrontMatterName, lFrontMatterDescription, lFrontMatterTags, lBodyForParsing) then
+  if not TryExtractFrontMatter(
+    lBody,
+    lFrontMatterName,
+    lFrontMatterDescription,
+    lFrontMatterTags,
+    lBodyForParsing,
+    lFrontMatterRepaired
+  ) then
   begin
     if HasLeadingFrontMatterFence(lBody) then
     begin
       aError := 'Malformed frontmatter (missing closing fence)';
       Exit(False);
     end;
+  end else if lFrontMatterRepaired then
+  begin
+    RecordPipelineNotice('frontmatter repaired: ' + TPath.GetFullPath(aSkillFilePath));
   end;
 
   lFallbackName := ExtractFileName(ExcludeTrailingPathDelimiter(ExtractFileDir(aSkillFilePath)));

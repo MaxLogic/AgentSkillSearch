@@ -3,20 +3,12 @@
 Next task ID: T-031
 
 ## Summary
-Open tasks: 7 (In Progress: 0, Next Today: 7, Next This Week: 0, Next Later: 0, Blocked: 0)
-Done tasks: 23
+Open tasks: 6 (In Progress: 0, Next Today: 6, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 24
 
 ## In Progress
 
 ## Next – Today
-
-### T-024 [IDX] Best-effort repair for missing frontmatter closing fence
-Outcome: Improve SKILL.md parsing with a best-effort recovery path that repairs missing YAML frontmatter closing fences and continues indexing with a warning.
-Proof:
-- Command: Index a fixture SKILL.md that starts frontmatter but omits the closing `---`.
-- Expect: The skill is indexed via repaired parse path, and diagnostics record a non-fatal "frontmatter repaired" warning.
-Touches: src/Indexer/*.pas, tests/IndexerTests.pas, docs/spec-slices/
-Notes: Recovery scope is limited to missing closing fence at file start; malformed content beyond that remains a parse error.
 
 ### T-025 [SEARCH] Reconcile diagnostics totals with visible results
 Outcome: Define and implement clear count semantics so diagnostics totals (written/failed) and UI visible results are explainable, including the "many indexed vs 178 shown" case.
@@ -74,6 +66,14 @@ Notes: Keep text short and directly actionable for first-time users.
 ## Blocked
 
 ## Done
+
+### T-024 [IDX] Best-effort repair for missing frontmatter closing fence
+Outcome: Improve SKILL.md parsing with a best-effort recovery path that repairs missing YAML frontmatter closing fences and continues indexing with a warning.
+Proof:
+- Command: Index a fixture SKILL.md that starts frontmatter but omits the closing `---`.
+- Expect: The skill is indexed via repaired parse path, and diagnostics record a non-fatal "frontmatter repaired" warning.
+Touches: src/Indexer/*.pas, tests/IndexerTests.pas, docs/spec-slices/
+Notes: Recovery scope is limited to missing closing fence at file start; malformed content beyond that remains a parse error.
 
 ### T-023 [SCAN] Add excludes list for scan/index pipeline
 Outcome: Add exclude-list support so scan/index skips obvious test-harness skill paths, and ship a ready-to-use `excludes.lst` seeded from the latest diagnostics failures.
