@@ -128,6 +128,13 @@ bash projects/build-win64.sh
 
 This builds and packages runtime templates into `bin/`.
 
+Output layout:
+- app runtime: `bin/` (`AgentSkillSearch.exe`, SQLite DLLs, runtime templates)
+- tests/check binaries: `tests/bin/`
+- test runtime dependencies (`sqlite3.dll`, `vec0.dll`, `settings.ini`, `Sources.lst`) are copied to `tests/bin/`
+
+This keeps `bin/` focused on day-to-day app usage instead of test executables.
+
 Win32 is intentionally unsupported (x64 SQLite runtime only):
 
 ```bash
