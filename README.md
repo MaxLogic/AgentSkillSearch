@@ -89,6 +89,7 @@ If Ollama is down, search still works with lexical ranking (no crash).
 ## How to Use the App
 
 - `Ctrl+L`: focus search box
+- `Syntax` button near search box: opens quick query syntax help
 - `Enter`: open selected `SKILL.md`
 - `Ctrl+Enter`: open containing folder
 - `F5`: scan/update
