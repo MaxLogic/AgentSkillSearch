@@ -24,8 +24,9 @@ Everything is portable and runs from the `bin/` folder.
 1. Edit `bin/Sources.lst` and add one local path per line.
 2. (Optional but recommended) Start Ollama Docker for semantic rerank (see next section).
 3. Run `bin/AgentSkillSearch.exe`.
-4. Press `F5` (`Scan/Update`) to discover repos and index skills (an indeterminate progress bar is shown during scan).
-5. Use the search box to query skills.
+4. Use `Start GPU` (optional) to launch the configured Docker GPU stack from the app.
+5. Press `F5` (`Scan/Update`) to discover repos and index skills (an indeterminate progress bar is shown during scan).
+6. Use the search box to query skills.
 
 ## First 5 Minutes Example
 
@@ -37,12 +38,13 @@ F:\projects\3rdParty\AI-Related
 ```
 
 2. Start `bin/AgentSkillSearch.exe`.
-3. Press `F5` and wait for scan/index to finish (watch the scan progress bar and status bar).
-4. In search, try:
+3. Optional: click `Start GPU` to launch Ollama docker stack from configured command.
+4. Press `F5` and wait for scan/index to finish (watch the scan progress bar and status bar).
+5. In search, try:
    - `embedding`
    - `"rate limit" has:scripts`
    - `name:ollama tag:docker`
-5. Select a result and verify:
+6. Select a result and verify:
    - preview snippet is shown with highlights
    - `Enter` opens `SKILL.md`
    - `Ctrl+Enter` opens containing folder
@@ -122,6 +124,7 @@ Main file: `bin/settings.ini`
 Important keys:
 - `[General] SourcesListPath`, `ExcludesListPath`, `CacheDbPath`, `LogPath`
 - `[Git] PullEnabled`, `MinPullIntervalMinutes`, `GitPullTimeoutSeconds`
+- `[Docker] StartGpuCommand`, `HealthCheckCommand`
 - `[Search] SearchDebounceMs`, `MaxResults`, `SnippetMaxChars`
 - `[Semantic] Enabled`, `OllamaBaseUrl`, `Model`, `CandidateRerankCount`
 
@@ -134,6 +137,7 @@ Use it to skip test harness fixtures before git/indexing.
 
 - Open `Diagnostics` in the app to see last scan summary and recent errors.
 - Open `Diagnostics` in the app to see last scan summary, exclusion notices, and recent errors.
+- Docker status is polled every 10 seconds; the health label updates automatically.
 - Check log file from `[General] LogPath` (default `bin/logs/AgentSkillSearch.log`).
 - If semantic results do not appear, verify Ollama container and model availability.
 - If no items are found, verify `Sources.lst` paths are valid and reachable.

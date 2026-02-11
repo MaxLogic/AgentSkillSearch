@@ -51,6 +51,11 @@ type
     Provider: string;
   end;
 
+  TDockerSettings = record
+    HealthCheckCommand: string;
+    StartGpuCommand: string;
+  end;
+
   TUiSettings = record
     OpenFileOnEnter: Boolean;
     ShowPreviewPane: Boolean;
@@ -60,6 +65,7 @@ type
     General: TGeneralSettings;
     Git: TGitSettings;
     Index: TIndexSettings;
+    Docker: TDockerSettings;
     Search: TSearchSettings;
     Semantic: TSemanticSettings;
     Ui: TUiSettings;
@@ -95,6 +101,10 @@ begin
   Result.Index.HasScriptsMaxFilesToScan := 5000;
   Result.Index.HasScriptsSkipFolders := '.git;node_modules;bin;obj;dist;build;.venv;__pycache__';
   Result.Index.NormalizeLineEndings := True;
+
+  Result.Docker.StartGpuCommand :=
+    'docker start ollama || docker run -d --name ollama --gpus=all -p 11434:11434 -v ollama:/root/.ollama ollama/ollama';
+  Result.Docker.HealthCheckCommand := 'docker info --format "{{.ServerVersion}}"';
 
   Result.Search.SearchAsYouType := False;
   Result.Search.SearchDebounceMs := 2000;

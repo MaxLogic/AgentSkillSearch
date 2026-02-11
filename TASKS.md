@@ -3,29 +3,12 @@
 Next task ID: T-031
 
 ## Summary
-Open tasks: 3 (In Progress: 0, Next Today: 3, Next This Week: 0, Next Later: 0, Blocked: 0)
-Done tasks: 27
+Open tasks: 1 (In Progress: 0, Next Today: 1, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 29
 
 ## In Progress
 
 ## Next – Today
-
-### T-028 [OPS] Add button to start Docker GPU stack
-Outcome: Add a UI button that starts the configured Docker GPU stack from the app and surfaces command success/failure in diagnostics/log output.
-Proof:
-- Command: Click the new Docker GPU start button with Docker installed and daemon running.
-- Expect: The configured docker command is launched non-interactively and UI feedback confirms start request success or failure.
-Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, src/Docker/*.pas, README.md
-Notes: Keep command configurable and aligned with README setup instructions.
-
-### T-029 [OPS] Add Docker health indicator with 10s polling thread
-Outcome: Add a Docker health indicator refreshed every 10 seconds by a background thread, with all VCL updates marshaled through `TThread.Queue`.
-Proof:
-- Command: Run app with Docker stopped, then start Docker while app is open.
-- Expect: Indicator shows unhealthy first, then flips to healthy within one polling interval, with no cross-thread VCL access errors.
-Touches: src/UI/MainForm.pas, src/Docker/*.pas, src/Logging.pas
-Deps: T-028
-Notes: Polling thread must stop cleanly on app shutdown or scan cancel.
 
 ### T-030 [UI] Add search syntax help button near search box
 Outcome: Add a help button beside the search bar that displays concise query syntax guidance consistent with README examples.
@@ -42,6 +25,23 @@ Notes: Keep text short and directly actionable for first-time users.
 ## Blocked
 
 ## Done
+
+### T-029 [OPS] Add Docker health indicator with 10s polling thread
+Outcome: Add a Docker health indicator refreshed every 10 seconds by a background thread, with all VCL updates marshaled through `TThread.Queue`.
+Proof:
+- Command: Run app with Docker stopped, then start Docker while app is open.
+- Expect: Indicator shows unhealthy first, then flips to healthy within one polling interval, with no cross-thread VCL access errors.
+Touches: src/UI/MainForm.pas, src/Docker/*.pas, src/Logging.pas
+Deps: T-028
+Notes: Polling thread must stop cleanly on app shutdown or scan cancel.
+
+### T-028 [OPS] Add button to start Docker GPU stack
+Outcome: Add a UI button that starts the configured Docker GPU stack from the app and surfaces command success/failure in diagnostics/log output.
+Proof:
+- Command: Click the new Docker GPU start button with Docker installed and daemon running.
+- Expect: The configured docker command is launched non-interactively and UI feedback confirms start request success or failure.
+Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, src/Docker/*.pas, README.md
+Notes: Keep command configurable and aligned with README setup instructions.
 
 ### T-027 [UI] Show scan progress bar as documented
 Outcome: Implement or restore a visible progress bar during scan so runtime behavior matches README expectations.
