@@ -12,11 +12,13 @@ bash /home/pawel/.codex/skills/build-delphi/scripts/build-delphi.sh "$PROJECT_FI
 cp "$RUNTIME_TEMPLATE_DIR/settings.ini" "$OUTPUT_DIR/settings.ini"
 cp "$RUNTIME_TEMPLATE_DIR/Sources.lst" "$OUTPUT_DIR/Sources.lst"
 cp "$RUNTIME_TEMPLATE_DIR/excludes.lst" "$OUTPUT_DIR/excludes.lst"
+cp "$RUNTIME_TEMPLATE_DIR/search-syntax-help-64.png" "$OUTPUT_DIR/search-syntax-help-64.png"
 
 mkdir -p "$TEST_OUTPUT_DIR"
 cp "$RUNTIME_TEMPLATE_DIR/settings.ini" "$TEST_OUTPUT_DIR/settings.ini"
 cp "$RUNTIME_TEMPLATE_DIR/Sources.lst" "$TEST_OUTPUT_DIR/Sources.lst"
 cp "$RUNTIME_TEMPLATE_DIR/excludes.lst" "$TEST_OUTPUT_DIR/excludes.lst"
+cp "$RUNTIME_TEMPLATE_DIR/search-syntax-help-64.png" "$TEST_OUTPUT_DIR/search-syntax-help-64.png"
 
 for dll in sqlite3.dll vec0.dll; do
   if [[ ! -f "$OUTPUT_DIR/$dll" ]]; then

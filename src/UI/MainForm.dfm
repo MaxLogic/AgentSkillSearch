@@ -106,10 +106,10 @@ object AppMainForm: TMainForm
       TabOrder = 0
       object fSearchEdit: TEdit
         Left = 0
-        Top = 17
-        Width = 737
-        Height = 51
-        Align = alClient
+        Top = 34
+        Width = 744
+        Height = 25
+        Anchors = [akLeft, akTop, akRight]
         TabOrder = 0
         TextHint = 'Search skills (supports name:, tag:, path:, has:scripts, limit:)'
         OnChange = HandleSearchEditChange
@@ -126,18 +126,16 @@ object AppMainForm: TMainForm
         Caption = 'Search query'
         TabStop = False
       end
-      object fSearchHelpButton: TButton
-        AlignWithMargins = True
-        Left = 745
-        Top = 25
-        Width = 78
-        Height = 35
-        Margins.Left = 8
-        Margins.Top = 8
-        Margins.Bottom = 8
-        Align = alRight
-        Caption = '&Syntax'
-        TabOrder = 1
+      object fSearchHelpImage: TImage
+        Left = 759
+        Top = 2
+        Width = 64
+        Height = 64
+        Cursor = crHandPoint
+        Anchors = [akTop, akRight]
+        Center = True
+        Proportional = True
+        Stretch = True
         OnClick = HandleSearchHelpButtonClick
       end
     end
@@ -177,18 +175,17 @@ object AppMainForm: TMainForm
       AutoSize = False
       BorderStyle = sbsNone
       Caption = 'Docker: checking...'
-      Layout = tlCenter
       TabStop = False
     end
     object fDockerGpuButton: TButton
       AlignWithMargins = True
-      Left = 944
+      Left = 902
       Top = 8
-      Width = 86
+      Width = 128
       Height = 28
       Margins.Right = 8
       Align = alRight
-      Caption = 'Start GPU'
+      Caption = 'Start Docker Stack'
       TabOrder = 1
       OnClick = HandleDockerGpuButtonClick
     end

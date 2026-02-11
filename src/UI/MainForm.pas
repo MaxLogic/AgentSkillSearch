@@ -16,7 +16,7 @@ type
     fSearchFieldPanel: TPanel;
     fSearchEdit: TEdit;
     fSearchEditLabel: TStaticText;
-    fSearchHelpButton: TButton;
+    fSearchHelpImage: TImage;
     fSearchButton: TButton;
     fScanButton: TButton;
     fScanProgressBar: TProgressBar;
@@ -53,9 +53,11 @@ type
     fResults: TArray<TSkillSearchResult>;
     fScanCancelToken: TPipelineCancellationToken;
     fScanInProgress: Boolean;
+    fScanHourGlass: IInterface;
     fDockerHealthMonitor: TDockerHealthMonitor;
     fDockerHealthState: TDockerHealthState;
     fDockerStartInProgress: Boolean;
+    fDockerStartHourGlass: IInterface;
     fSearchController: TSearchController;
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
@@ -71,6 +73,8 @@ type
     procedure HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
     procedure HandleDockerStartCompleted(const aResult: TDockerCommandResult);
     procedure EndScanProgress;
+    procedure LoadSearchHelpImage;
+    function ResolveSearchHelpImagePath: string;
     function ExecuteScanUpdate(const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
       out aStatusText: string): Boolean;
     function BuildEffectiveQuery: string;
@@ -123,7 +127,8 @@ uses
   Winapi.ShellAPI, Winapi.Windows,
   Vcl.Clipbrd,
   Vcl.Dialogs,
-  AppPaths, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings, SourcesList;
+  Vcl.Imaging.pngimage,
+  AppPaths, AutoHourGlass, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings, SourcesList;
 
 {$R *.dfm}
 
@@ -178,6 +183,7 @@ begin
   );
 
   ConfigureColumns;
+  LoadSearchHelpImage;
 
   fSearchAsYouTypeCheckBox.Checked := fAppSettings.Search.SearchAsYouType;
   fStatusBar.Panels[cStatusPanelCache].Text := 'Cache: ' + fDbPath;
@@ -346,6 +352,61 @@ begin
   fSkillsUniqueCount := fDatabaseManager.GetUniqueSkillCount;
 end;
 
+function TMainForm.ResolveSearchHelpImagePath: string;
+const
+  cImageFileName = 'search-syntax-help-64.png';
+var
+  i: Integer;
+  lCandidate: string;
+  lDir: string;
+  lParent: string;
+begin
+  Result := '';
+  lDir := ExcludeTrailingPathDelimiter(GetExeDirectory);
+  for i := 0 to 6 do
+  begin
+    lCandidate := TPath.Combine(lDir, cImageFileName);
+    if TFile.Exists(lCandidate) then
+    begin
+      Exit(lCandidate);
+    end;
+
+    lCandidate := TPath.Combine(TPath.Combine(TPath.Combine(lDir, 'assets'), 'runtime'), cImageFileName);
+    if TFile.Exists(lCandidate) then
+    begin
+      Exit(lCandidate);
+    end;
+
+    lParent := ExtractFileDir(lDir);
+    if SameText(lParent, lDir) then
+    begin
+      Break;
+    end;
+    lDir := lParent;
+  end;
+end;
+
+procedure TMainForm.LoadSearchHelpImage;
+var
+  lImagePath: string;
+begin
+  lImagePath := ResolveSearchHelpImagePath;
+  if lImagePath = '' then
+  begin
+    RecordPipelineNotice('Search syntax help image not found.');
+    Exit;
+  end;
+
+  try
+    fSearchHelpImage.Picture.LoadFromFile(lImagePath);
+  except
+    on E: Exception do
+    begin
+      RecordPipelineError('Failed to load search syntax help image "' + lImagePath + '": ' + E.Message);
+    end;
+  end;
+end;
+
 function TMainForm.BuildEffectiveQuery: string;
 begin
   Result := Trim(fSearchEdit.Text);
@@ -421,6 +482,7 @@ end;
 procedure TMainForm.BeginScanProgress;
 begin
   fScanInProgress := True;
+  fScanHourGlass := AutoHourGlass.MakeCHG;
   fScanButton.Enabled := False;
   fScanProgressBar.Visible := True;
   fScanProgressBar.Style := pbstMarquee;
@@ -431,18 +493,21 @@ end;
 procedure TMainForm.BeginDockerStart;
 begin
   fDockerStartInProgress := True;
+  fDockerStartHourGlass := AutoHourGlass.MakeCHG;
   fDockerGpuButton.Enabled := False;
-  UpdateStatus('Starting Docker GPU stack...');
+  UpdateStatus('Starting Docker stack...');
 end;
 
 procedure TMainForm.EndDockerStart;
 begin
+  fDockerStartHourGlass := nil;
   fDockerGpuButton.Enabled := True;
   fDockerStartInProgress := False;
 end;
 
 procedure TMainForm.EndScanProgress;
 begin
+  fScanHourGlass := nil;
   fScanProgressBar.Visible := False;
   fScanButton.Enabled := True;
   fScanInProgress := False;
@@ -504,7 +569,7 @@ begin
   try
     if aResult.Success then
     begin
-      lMessage := 'Docker GPU stack start request succeeded.';
+      lMessage := 'Docker stack start request succeeded.';
       RecordPipelineNotice(lMessage);
       UpdateStatus(lMessage);
       Exit;
@@ -512,9 +577,9 @@ begin
 
     if aResult.TimedOut then
     begin
-      lMessage := 'Docker GPU start request timed out.';
+      lMessage := 'Docker stack start request timed out.';
     end else begin
-      lMessage := Format('Docker GPU start failed (exit=%d).', [aResult.ExitCode]);
+      lMessage := Format('Docker stack start failed (exit=%d).', [aResult.ExitCode]);
     end;
 
     if Trim(aResult.OutputText) <> '' then
