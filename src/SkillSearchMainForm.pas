@@ -24,7 +24,7 @@ uses
 
 constructor TSkillSearchMainForm.Create(aOwner: TComponent);
 begin
-  inherited Create(aOwner);
+  inherited CreateNew(aOwner);
   Caption := 'Agent Skill Search';
   Width := 960;
   Height := 640;

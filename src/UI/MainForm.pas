@@ -9,37 +9,51 @@ uses
 
 type
   TMainForm = class(TForm)
-  private
-    fAppSettings: TAppSettings;
-    fCopyPathMenuItem: TMenuItem;
-    fDatabaseManager: TDatabaseManager;
-    fDbPath: string;
+  published
+    fSearchPanel: TPanel;
+    fSearchActionsPanel: TPanel;
+    fSearchFieldPanel: TPanel;
+    fSearchEdit: TEdit;
+    fSearchEditLabel: TStaticText;
+    fSearchButton: TButton;
+    fScanButton: TButton;
     fDiagnosticsButton: TButton;
-    fDuplicateInfoMemo: TMemo;
-    fDuplicateInfoPanel: TPanel;
+    fSearchAsYouTypeCheckBox: TCheckBox;
+    fFiltersPanel: TPanel;
     fHasScriptsCheckBox: TCheckBox;
-    fLogPath: string;
+    fMainPanel: TPanel;
+    fResultsPanePanel: TPanel;
+    fResultsListView: TListView;
+    fResultsPreviewSplitter: TSplitter;
+    fPreviewHostPanel: TPanel;
+    fPreviewInfoSplitter: TSplitter;
+    fPreviewPanel: TPanel;
+    fPreviewLabel: TStaticText;
+    fDuplicateInfoPanel: TPanel;
+    fDuplicateInfoMemo: TMemo;
+    fDuplicateInfoLabel: TStaticText;
+    fResultsListLabel: TStaticText;
+    fPreviewBrowser: TTMSFNCWebBrowser;
+    fStatusBar: TStatusBar;
+    fPopupMenu: TPopupMenu;
     fOpenFileMenuItem: TMenuItem;
     fOpenFolderMenuItem: TMenuItem;
-    fPopupMenu: TPopupMenu;
-    fPreviewBrowser: TTMSFNCWebBrowser;
+    fCopyPathMenuItem: TMenuItem;
+  private
+    fAppSettings: TAppSettings;
+    fDatabaseManager: TDatabaseManager;
+    fDbPath: string;
+    fLogPath: string;
     fResults: TArray<TSkillSearchResult>;
-    fResultsListView: TListView;
-    fScanButton: TButton;
-    fSearchAsYouTypeCheckBox: TCheckBox;
-    fSearchButton: TButton;
     fSearchController: TSearchController;
-    fSearchEdit: TEdit;
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
     fSourcesListPath: string;
-    fStatusBar: TStatusBar;
     procedure ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
     function BuildPipelineOptions: TPipelineOptions;
     function BuildEffectiveQuery: string;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
-    procedure CreateLayout;
     function EscapeHtml(const aText: string): string;
     function GetSelectedSkillFile: string;
     function IsResultSelectionValid: Boolean;
@@ -51,7 +65,7 @@ type
     procedure ShowEmptyPreview;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
     procedure UpdateStatus(const aText: string);
-
+  published
     procedure HandleCopyPathClick(Sender: TObject);
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -83,6 +97,10 @@ uses
   Vcl.Clipbrd,
   AppPaths, DiagnosticsForm, Logging, PreviewRenderer, Settings, SourcesList;
 
+{$R *.dfm}
+
+{ TMainForm }
+
 constructor TMainForm.Create(aOwner: TComponent);
 var
   i: Integer;
@@ -90,12 +108,6 @@ var
   lSettings: TSettingsLoadResult;
 begin
   inherited Create(aOwner);
-  Caption := 'Agent Skill Search';
-  Width := 1400;
-  Height := 860;
-  Position := poScreenCenter;
-  KeyPreview := True;
-  OnKeyDown := HandleFormKeyDown;
 
   lSettings := LoadOrCreateSettings(GetSettingsFilePath);
   fAppSettings := lSettings.Settings;
@@ -126,9 +138,10 @@ begin
     lSemanticOptions
   );
 
-  CreateLayout;
+  ConfigureColumns;
 
   fSearchAsYouTypeCheckBox.Checked := fAppSettings.Search.SearchAsYouType;
+  fStatusBar.Panels[2].Text := 'Cache: ' + fDbPath;
 
   fSearchController := TSearchController.Create(
     function(const aQuery: string): TArray<TSkillSearchResult>
@@ -149,145 +162,6 @@ begin
   fSearchService.Free;
   fDatabaseManager.Free;
   inherited Destroy;
-end;
-
-procedure TMainForm.CreateLayout;
-var
-  lFiltersPanel: TPanel;
-  lMainPanel: TPanel;
-  lPreviewHostPanel: TPanel;
-  lSearchPanel: TPanel;
-  lSplitter: TSplitter;
-begin
-  lSearchPanel := TPanel.Create(self);
-  lSearchPanel.Parent := self;
-  lSearchPanel.Align := alTop;
-  lSearchPanel.Height := 52;
-  lSearchPanel.BevelOuter := bvNone;
-
-  fSearchEdit := TEdit.Create(self);
-  fSearchEdit.Parent := lSearchPanel;
-  fSearchEdit.Align := alClient;
-  fSearchEdit.Margins.Left := 8;
-  fSearchEdit.Margins.Top := 8;
-  fSearchEdit.Margins.Right := 8;
-  fSearchEdit.Margins.Bottom := 8;
-  fSearchEdit.TextHint := 'Search skills (supports name:, tag:, path:, has:scripts, limit:)';
-  fSearchEdit.OnChange := HandleSearchEditChange;
-  fSearchEdit.OnKeyDown := HandleSearchEditKeyDown;
-
-  fSearchButton := TButton.Create(self);
-  fSearchButton.Parent := lSearchPanel;
-  fSearchButton.Align := alRight;
-  fSearchButton.Width := 100;
-  fSearchButton.Caption := 'Search';
-  fSearchButton.OnClick := HandleSearchButtonClick;
-
-  fScanButton := TButton.Create(self);
-  fScanButton.Parent := lSearchPanel;
-  fScanButton.Align := alRight;
-  fScanButton.Width := 110;
-  fScanButton.Caption := 'Scan/Update';
-  fScanButton.OnClick := HandleScanButtonClick;
-
-  fDiagnosticsButton := TButton.Create(self);
-  fDiagnosticsButton.Parent := lSearchPanel;
-  fDiagnosticsButton.Align := alRight;
-  fDiagnosticsButton.Width := 110;
-  fDiagnosticsButton.Caption := 'Diagnostics';
-  fDiagnosticsButton.OnClick := HandleDiagnosticsButtonClick;
-
-  fSearchAsYouTypeCheckBox := TCheckBox.Create(self);
-  fSearchAsYouTypeCheckBox.Parent := lSearchPanel;
-  fSearchAsYouTypeCheckBox.Align := alRight;
-  fSearchAsYouTypeCheckBox.Width := 150;
-  fSearchAsYouTypeCheckBox.Caption := 'Search as you type';
-  fSearchAsYouTypeCheckBox.Checked := False;
-
-  lFiltersPanel := TPanel.Create(self);
-  lFiltersPanel.Parent := self;
-  lFiltersPanel.Align := alTop;
-  lFiltersPanel.Height := 34;
-  lFiltersPanel.BevelOuter := bvNone;
-
-  fHasScriptsCheckBox := TCheckBox.Create(self);
-  fHasScriptsCheckBox.Parent := lFiltersPanel;
-  fHasScriptsCheckBox.Align := alLeft;
-  fHasScriptsCheckBox.Width := 160;
-  fHasScriptsCheckBox.Caption := 'Has scripts';
-  fHasScriptsCheckBox.OnClick := HandleHasScriptsClick;
-
-  lMainPanel := TPanel.Create(self);
-  lMainPanel.Parent := self;
-  lMainPanel.Align := alClient;
-  lMainPanel.BevelOuter := bvNone;
-
-  fResultsListView := TListView.Create(self);
-  fResultsListView.Parent := lMainPanel;
-  fResultsListView.Align := alLeft;
-  fResultsListView.Width := 730;
-  fResultsListView.ViewStyle := vsReport;
-  fResultsListView.ReadOnly := True;
-  fResultsListView.RowSelect := True;
-  fResultsListView.HideSelection := False;
-  fResultsListView.OnDblClick := HandleResultDoubleClick;
-  fResultsListView.OnKeyDown := HandleResultKeyDown;
-  fResultsListView.OnSelectItem := HandleResultSelectItem;
-  ConfigureColumns;
-
-  fPopupMenu := TPopupMenu.Create(self);
-  fOpenFileMenuItem := TMenuItem.Create(fPopupMenu);
-  fOpenFileMenuItem.Caption := 'Open Skill File';
-  fOpenFileMenuItem.OnClick := HandleOpenFileClick;
-  fPopupMenu.Items.Add(fOpenFileMenuItem);
-
-  fOpenFolderMenuItem := TMenuItem.Create(fPopupMenu);
-  fOpenFolderMenuItem.Caption := 'Open Containing Folder';
-  fOpenFolderMenuItem.OnClick := HandleOpenFolderClick;
-  fPopupMenu.Items.Add(fOpenFolderMenuItem);
-
-  fCopyPathMenuItem := TMenuItem.Create(fPopupMenu);
-  fCopyPathMenuItem.Caption := 'Copy Skill Path';
-  fCopyPathMenuItem.OnClick := HandleCopyPathClick;
-  fPopupMenu.Items.Add(fCopyPathMenuItem);
-
-  fResultsListView.PopupMenu := fPopupMenu;
-
-  lSplitter := TSplitter.Create(self);
-  lSplitter.Parent := lMainPanel;
-  lSplitter.Align := alLeft;
-
-  lPreviewHostPanel := TPanel.Create(self);
-  lPreviewHostPanel.Parent := lMainPanel;
-  lPreviewHostPanel.Align := alClient;
-  lPreviewHostPanel.BevelOuter := bvNone;
-
-  fDuplicateInfoPanel := TPanel.Create(self);
-  fDuplicateInfoPanel.Parent := lPreviewHostPanel;
-  fDuplicateInfoPanel.Align := alRight;
-  fDuplicateInfoPanel.Width := 220;
-  fDuplicateInfoPanel.Caption := 'Duplicate Info';
-
-  fDuplicateInfoMemo := TMemo.Create(self);
-  fDuplicateInfoMemo.Parent := fDuplicateInfoPanel;
-  fDuplicateInfoMemo.Align := alClient;
-  fDuplicateInfoMemo.ReadOnly := True;
-  fDuplicateInfoMemo.Lines.Text := 'No duplicate details available.';
-
-  fPreviewBrowser := TTMSFNCWebBrowser.Create(self);
-  fPreviewBrowser.Parent := lPreviewHostPanel;
-  fPreviewBrowser.Align := alClient;
-
-  fStatusBar := TStatusBar.Create(self);
-  fStatusBar.Parent := self;
-  fStatusBar.Align := alBottom;
-  fStatusBar.SimplePanel := False;
-  fStatusBar.Panels.Add.Text := 'Ready';
-  fStatusBar.Panels.Add.Text := 'Last scan: n/a';
-  fStatusBar.Panels.Add.Text := 'Cache: ' + fDbPath;
-  fStatusBar.Panels[0].Width := 420;
-  fStatusBar.Panels[1].Width := 220;
-  fStatusBar.Panels[2].Width := 640;
 end;
 
 procedure TMainForm.ConfigureColumns;
