@@ -3,20 +3,12 @@
 Next task ID: T-031
 
 ## Summary
-Open tasks: 9 (In Progress: 0, Next Today: 9, Next This Week: 0, Next Later: 0, Blocked: 0)
-Done tasks: 21
+Open tasks: 8 (In Progress: 0, Next Today: 8, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 22
 
 ## In Progress
 
 ## Next – Today
-
-### T-022 [UI] Close diagnostics dialog on Esc
-Outcome: Make the Diagnostics dialog close immediately when Esc is pressed, matching standard modal dialog keyboard behavior.
-Proof:
-- Command: Open Diagnostics from the main form and press Esc.
-- Expect: The dialog closes without errors and focus returns to the main form.
-Touches: src/UI/DiagnosticsForm.pas, src/UI/DiagnosticsForm.dfm
-Notes: Maintainer request from diagnostics review.
 
 ### T-023 [SCAN] Add excludes list for scan/index pipeline
 Outcome: Add exclude-list support so scan/index skips obvious test-harness skill paths, and ship a ready-to-use `excludes.lst` seeded from the latest diagnostics failures.
@@ -90,6 +82,14 @@ Notes: Keep text short and directly actionable for first-time users.
 ## Blocked
 
 ## Done
+
+### T-022 [UI] Close diagnostics dialog on Esc
+Outcome: Make the Diagnostics dialog close immediately when Esc is pressed, matching standard modal dialog keyboard behavior.
+Proof:
+- Command: Open Diagnostics from the main form and press Esc.
+- Expect: The dialog closes without errors and focus returns to the main form.
+Touches: src/UI/DiagnosticsForm.pas, src/UI/DiagnosticsForm.dfm
+Notes: Maintainer request from diagnostics review.
 
 ### T-009 [SEM] Ollama client + embeddings rerank (hybrid)
 Outcome: Add local-first semantic rerank via Ollama (/api/embeddings): embed query, rerank top CandidateRerankCount candidates using cosine similarity over chunk vectors, and combine lex+sem into final score.
