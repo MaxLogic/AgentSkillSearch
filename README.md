@@ -24,7 +24,7 @@ Everything is portable and runs from the `bin/` folder.
 1. Edit `bin/Sources.lst` and add one local path per line.
 2. (Optional but recommended) Start Ollama Docker for semantic rerank (see next section).
 3. Run `bin/AgentSkillSearch.exe`.
-4. Press `F5` (`Scan/Update`) to discover repos and index skills.
+4. Press `F5` (`Scan/Update`) to discover repos and index skills (an indeterminate progress bar is shown during scan).
 5. Use the search box to query skills.
 
 ## First 5 Minutes Example
@@ -37,7 +37,7 @@ F:\projects\3rdParty\AI-Related
 ```
 
 2. Start `bin/AgentSkillSearch.exe`.
-3. Press `F5` and wait for scan/index to finish (watch the status bar).
+3. Press `F5` and wait for scan/index to finish (watch the scan progress bar and status bar).
 4. In search, try:
    - `embedding`
    - `"rate limit" has:scripts`

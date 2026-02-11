@@ -29,6 +29,7 @@
 ### Changed
 - Unified count semantics across diagnostics/search (`Found`, `Written`, `Valid`, `Unique`, `Results`) and aligned default query scope to `[Search] MaxResults` (`T-025`).
 - Expanded the bottom status bar with live `Found`, `Valid`, `Unique`, and `Results` counters while keeping scan totals stable across query changes (`T-026`).
+- Scan now runs with a visible indeterminate progress bar and supports safe cancellation requests via `Esc` while in progress (`T-027`).
 
 ### Fixed
 - Diagnostics modal now closes on `Esc` via standard cancel-button behavior, restoring expected keyboard dismiss flow (`T-022`).
