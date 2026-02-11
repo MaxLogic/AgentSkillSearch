@@ -8,7 +8,7 @@ implementation
 
 uses
   System.Classes, System.IOUtils, System.StrUtils, System.SysUtils,
-  AppPaths, DatabaseManager, SkillIndexer, SkillTypes;
+  AppPaths, DatabaseManager, Logging, SkillIndexer, SkillTypes;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -185,7 +185,51 @@ begin
   end;
 end;
 
-procedure TestIndexerRejectsMalformedFrontMatter;
+procedure TestIndexerRepairsMissingClosingFrontMatterFence;
+var
+  lFixtureRoot: string;
+  lDiagnostics: string;
+  lSkill: TIndexedSkill;
+  lSkillFile: string;
+  lSkillRoot: string;
+  lError: string;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchIndexerFrontmatterRepairFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-invalid-frontmatter');
+  ForceDirectories(lSkillRoot);
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  TFile.WriteAllText(
+    lSkillFile,
+    '---' + sLineBreak +
+    'name: Repaired Skill' + sLineBreak +
+    'description: missing terminating fence' + sLineBreak +
+    'tags: [repair,test]' + sLineBreak +
+    '# Heading that should parse after repair' + sLineBreak + sLineBreak +
+    'Body line after repaired fence.' + sLineBreak,
+    TEncoding.UTF8
+  );
+
+  AssertTrue(
+    TryBuildIndexedSkill(lSkillFile, lSkill, lError),
+    'Recoverable frontmatter should index successfully: ' + lError
+  );
+  AssertEqualText('Repaired Skill', lSkill.Name, 'Expected repaired frontmatter to preserve name');
+  AssertEqualText('repair;test', lSkill.Tags, 'Expected repaired frontmatter tags');
+  AssertTrue(ContainsText(lSkill.BodyMarkdown, '# Heading that should parse after repair'),
+    'Expected markdown body to remain intact');
+
+  lDiagnostics := BuildDiagnosticsText;
+  AssertTrue(ContainsText(lDiagnostics, 'frontmatter repaired'),
+    'Diagnostics should include non-fatal frontmatter repair notice');
+end;
+
+procedure TestIndexerRejectsUnrecoverableFrontMatter;
 var
   lError: string;
   lFixtureRoot: string;
@@ -208,13 +252,13 @@ begin
     '---' + sLineBreak +
     'name: Broken Skill' + sLineBreak +
     'description: missing terminating fence' + sLineBreak +
-    '# Heading that should not parse' + sLineBreak,
+    'tags: [invalid,test]' + sLineBreak,
     TEncoding.UTF8
   );
 
   AssertTrue(
     not TryBuildIndexedSkill(lSkillFile, lSkill, lError),
-    'Malformed frontmatter should fail deterministic indexing'
+    'Unrecoverable frontmatter should fail deterministic indexing'
   );
   AssertTrue(ContainsText(lError, 'Malformed frontmatter'), 'Expected explicit frontmatter parse error');
 end;
@@ -288,7 +332,8 @@ procedure RunIndexerTests;
 begin
   TestIndexerUpsertAndSkipUnchanged;
   TestIndexerDetectsScriptChangesEvenWhenSkillMarkdownIsUnchanged;
-  TestIndexerRejectsMalformedFrontMatter;
+  TestIndexerRepairsMissingClosingFrontMatterFence;
+  TestIndexerRejectsUnrecoverableFrontMatter;
   TestChunkVectorsAreUpdatedIncrementallyByChunkHash;
 end;
 
