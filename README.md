@@ -92,6 +92,7 @@ If Ollama is down, search still works with lexical ranking (no crash).
 - `F5`: scan/update
 - `Esc`: cancel active search
 - `Shift+F10` or `Apps`: result context menu
+- Status bar counters: `Found`, `Valid`, `Unique`, `Results`
 
 Supported query syntax:
 - words: `retry backoff`

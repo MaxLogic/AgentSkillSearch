@@ -49,6 +49,9 @@ type
     fSearchController: TSearchController;
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
+    fSkillsFoundCount: Integer;
+    fSkillsUniqueCount: Integer;
+    fSkillsValidCount: Integer;
     fSourcesListPath: string;
     procedure ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
     function BuildPipelineOptions: TPipelineOptions;
@@ -61,6 +64,8 @@ type
     procedure OpenSelectedSkillFile;
     procedure OpenSelectedSkillFolder;
     procedure QueueSearch(const aImmediate: Boolean);
+    procedure RefreshCountPanels;
+    procedure RefreshInventoryCounters;
     procedure RunScanUpdate;
     procedure RenderPreview(const aResult: TSkillSearchResult);
     procedure ShowEmptyPreview;
@@ -99,6 +104,15 @@ uses
   AppPaths, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings, SourcesList;
 
 {$R *.dfm}
+
+const
+  cStatusPanelStatus = 0;
+  cStatusPanelFound = 1;
+  cStatusPanelValid = 2;
+  cStatusPanelUnique = 3;
+  cStatusPanelResults = 4;
+  cStatusPanelLastScan = 5;
+  cStatusPanelCache = 6;
 
 { TMainForm }
 
@@ -144,7 +158,11 @@ begin
   ConfigureColumns;
 
   fSearchAsYouTypeCheckBox.Checked := fAppSettings.Search.SearchAsYouType;
-  fStatusBar.Panels[2].Text := 'Cache: ' + fDbPath;
+  fStatusBar.Panels[cStatusPanelCache].Text := 'Cache: ' + fDbPath;
+  fStatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: n/a';
+  fSkillsFoundCount := 0;
+  RefreshInventoryCounters;
+  RefreshCountPanels;
 
   fSearchController := TSearchController.Create(
     function(const aQuery: string): TArray<TSkillSearchResult>
@@ -266,7 +284,21 @@ end;
 
 procedure TMainForm.UpdateStatus(const aText: string);
 begin
-  fStatusBar.Panels[0].Text := aText;
+  fStatusBar.Panels[cStatusPanelStatus].Text := aText;
+end;
+
+procedure TMainForm.RefreshCountPanels;
+begin
+  fStatusBar.Panels[cStatusPanelFound].Text := Format('Found: %d', [fSkillsFoundCount]);
+  fStatusBar.Panels[cStatusPanelValid].Text := Format('Valid: %d', [fSkillsValidCount]);
+  fStatusBar.Panels[cStatusPanelUnique].Text := Format('Unique: %d', [fSkillsUniqueCount]);
+  fStatusBar.Panels[cStatusPanelResults].Text := Format('Results: %d', [Length(fResults)]);
+end;
+
+procedure TMainForm.RefreshInventoryCounters;
+begin
+  fSkillsValidCount := fDatabaseManager.GetValidSkillCount;
+  fSkillsUniqueCount := fDatabaseManager.GetUniqueSkillCount;
 end;
 
 function TMainForm.BuildEffectiveQuery: string;
@@ -381,7 +413,10 @@ begin
   end;
 
   UpdateStatus(lStatusText);
-  fStatusBar.Panels[1].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
+  fSkillsFoundCount := lResult.SkillsQueued;
+  RefreshInventoryCounters;
+  RefreshCountPanels;
+  fStatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
   QueueSearch(True);
 end;
 
@@ -430,6 +465,7 @@ begin
     ShowEmptyPreview;
   end;
 
+  RefreshCountPanels;
   UpdateStatus(Format('Results: %d | Query: %s', [Length(fResults), BuildEffectiveQuery]));
 end;
 
