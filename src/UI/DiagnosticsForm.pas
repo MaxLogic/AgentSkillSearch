@@ -47,6 +47,7 @@ begin
   fCloseButton.Align := alRight;
   fCloseButton.Width := 100;
   fCloseButton.Caption := 'Close';
+  fCloseButton.Cancel := True;
   fCloseButton.OnClick := HandleCloseClick;
 
   fRefreshButton := TButton.Create(self);
