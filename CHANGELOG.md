@@ -26,6 +26,9 @@
 - Configured all project builds to resolve shared units directly from sibling `MaxLogicFoundation` search paths (`T-021`).
 - Scan/index path exclusions via configurable `excludes.lst`, including seeded OpenClaw fixture rules and diagnostics notices for excluded paths (`T-023`).
 
+### Changed
+- Unified count semantics across diagnostics/search (`Found`, `Written`, `Valid`, `Unique`, `Results`) and aligned default query scope to `[Search] MaxResults` (`T-025`).
+
 ### Fixed
 - Diagnostics modal now closes on `Esc` via standard cancel-button behavior, restoring expected keyboard dismiss flow (`T-022`).
 - Indexing now repairs missing frontmatter closing fences at file start (within defined scope) and records a non-fatal diagnostics notice (`T-024`).

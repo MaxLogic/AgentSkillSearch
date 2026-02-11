@@ -14,8 +14,10 @@ type
   end;
 
 function DefaultSearchQuery: TSearchQuery;
+function DefaultSearchQuery(const aDefaultLimit: Integer): TSearchQuery; overload;
 function BuildFtsMatchExpression(const aQuery: TSearchQuery): string;
 function ParseSearchQuery(const aRawQuery: string): TSearchQuery;
+function ParseSearchQuery(const aRawQuery: string; const aDefaultLimit: Integer): TSearchQuery; overload;
 
 implementation
 
@@ -24,9 +26,22 @@ uses
 
 function DefaultSearchQuery: TSearchQuery;
 begin
+  Result := DefaultSearchQuery(200);
+end;
+
+function DefaultSearchQuery(const aDefaultLimit: Integer): TSearchQuery;
+var
+  lLimit: Integer;
+begin
+  lLimit := aDefaultLimit;
+  if lLimit <= 0 then
+  begin
+    lLimit := 200;
+  end;
+
   Result := Default(TSearchQuery);
   Result.HasScriptsFilter := -1;
-  Result.Limit := 200;
+  Result.Limit := lLimit;
 end;
 
 procedure AddToken(var aItems: TArray<string>; const aValue: string);
@@ -138,13 +153,18 @@ begin
 end;
 
 function ParseSearchQuery(const aRawQuery: string): TSearchQuery;
+begin
+  Result := ParseSearchQuery(aRawQuery, 200);
+end;
+
+function ParseSearchQuery(const aRawQuery: string; const aDefaultLimit: Integer): TSearchQuery;
 var
   i: Integer;
   lToken: string;
   lTokens: TArray<string>;
   lValue: Integer;
 begin
-  Result := DefaultSearchQuery;
+  Result := DefaultSearchQuery(aDefaultLimit);
   lTokens := TokenizeQuery(aRawQuery);
 
   for i := 0 to Pred(Length(lTokens)) do

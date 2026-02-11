@@ -371,6 +371,7 @@ var
   lSkillFilesDiscovered: TList<string>;
   lSkillFilesForIndex: TArray<string>;
 begin
+  lLocalDbManager := nil;
   fReposFailed := 0;
   fReposPulled := 0;
   fReposQueued := 0;
@@ -633,6 +634,13 @@ begin
     lSummary.ReposFailed := Result.ReposFailed;
     lSummary.SkillsQueued := Result.SkillsQueued;
     lSummary.SkillsWritten := Result.SkillsWritten;
+    lSummary.SkillsValid := 0;
+    lSummary.SkillsUnique := 0;
+    if Assigned(lLocalDbManager) then
+    begin
+      lSummary.SkillsValid := lLocalDbManager.GetValidSkillCount;
+      lSummary.SkillsUnique := lLocalDbManager.GetUniqueSkillCount;
+    end;
     lSummary.ErrorCount := Result.ErrorCount;
     RecordScanSummary(lSummary);
   finally

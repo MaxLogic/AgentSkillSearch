@@ -35,6 +35,7 @@ type
     fConnection: TFDConnection;
     fDatabasePath: string;
     fDriverLink: TFDPhysSQLiteDriverLink;
+    fDefaultMaxResults: Integer;
     fSemanticOptions: TSemanticSearchOptions;
     fSnippetMaxChars: Integer;
     fSqliteDllPath: string;
@@ -55,6 +56,8 @@ type
     function TryRequestEmbedding(const aText: string; out aVector: TArray<Single>): Boolean;
   public
     constructor Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer;
+      const aSemanticOptions: TSemanticSearchOptions); overload;
+    constructor Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars, aDefaultMaxResults: Integer;
       const aSemanticOptions: TSemanticSearchOptions); overload;
     constructor Create(const aDatabasePath, aSqliteDllPath: string); overload;
     constructor Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer); overload;
@@ -178,20 +181,27 @@ end;
 
 constructor TSkillSearchService.Create(const aDatabasePath, aSqliteDllPath: string);
 begin
-  Create(aDatabasePath, aSqliteDllPath, 600);
+  Create(aDatabasePath, aSqliteDllPath, 600, 200, DefaultSemanticSearchOptions);
 end;
 
 constructor TSkillSearchService.Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer);
 begin
-  Create(aDatabasePath, aSqliteDllPath, aSnippetMaxChars, DefaultSemanticSearchOptions);
+  Create(aDatabasePath, aSqliteDllPath, aSnippetMaxChars, 200, DefaultSemanticSearchOptions);
 end;
 
 constructor TSkillSearchService.Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer;
   const aSemanticOptions: TSemanticSearchOptions);
 begin
+  Create(aDatabasePath, aSqliteDllPath, aSnippetMaxChars, 200, aSemanticOptions);
+end;
+
+constructor TSkillSearchService.Create(const aDatabasePath, aSqliteDllPath: string;
+  const aSnippetMaxChars, aDefaultMaxResults: Integer; const aSemanticOptions: TSemanticSearchOptions);
+begin
   inherited Create;
   fDatabasePath := aDatabasePath;
   fSqliteDllPath := aSqliteDllPath;
+  fDefaultMaxResults := Max(1, aDefaultMaxResults);
   fSnippetMaxChars := Max(64, aSnippetMaxChars);
   fSemanticOptions := aSemanticOptions;
   ConfigureConnection;
@@ -637,7 +647,7 @@ var
 begin
   Result := nil;
   lDuplicateByBodyHash := TDictionary<string, Integer>.Create;
-  lSearchQuery := ParseSearchQuery(aRawQuery);
+  lSearchQuery := ParseSearchQuery(aRawQuery, fDefaultMaxResults);
   lFtsMatch := BuildFtsMatchExpression(lSearchQuery);
 
   lSql := TStringBuilder.Create;

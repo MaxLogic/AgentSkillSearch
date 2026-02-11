@@ -136,6 +136,9 @@ procedure TestQueryParserUnderstandsHasScriptsFlag;
 var
   lParsed: TSearchQuery;
 begin
+  lParsed := ParseSearchQuery('retry', 500);
+  AssertEqualInt(500, lParsed.Limit, 'Expected settings-driven default query limit');
+
   lParsed := ParseSearchQuery('retry has:scripts limit:20');
   AssertEqualInt(1, lParsed.HasScriptsFilter, 'Expected has:scripts include flag');
   AssertEqualInt(20, lParsed.Limit, 'Expected custom query limit');
@@ -173,6 +176,8 @@ begin
       'Expected seeded network basics skill row'
     );
     AssertEqualInt(0, lSkillState.HasScripts, 'Seeded non-script skill should keep has_scripts=0');
+    AssertEqualInt(4, lDbManager.GetValidSkillCount, 'Expected valid skills count to include all seeded rows');
+    AssertEqualInt(3, lDbManager.GetUniqueSkillCount, 'Expected unique skills count after body_hash dedup');
   finally
     lDbManager.Free;
   end;
