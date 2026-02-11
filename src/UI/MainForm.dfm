@@ -106,10 +106,10 @@ object AppMainForm: TMainForm
       TabOrder = 0
       object fSearchEdit: TEdit
         Left = 0
-        Top = 34
-        Width = 823
-        Height = 34
-        Align = alBottom
+        Top = 17
+        Width = 737
+        Height = 51
+        Align = alClient
         TabOrder = 0
         TextHint = 'Search skills (supports name:, tag:, path:, has:scripts, limit:)'
         OnChange = HandleSearchEditChange
@@ -125,6 +125,20 @@ object AppMainForm: TMainForm
         BorderStyle = sbsNone
         Caption = 'Search query'
         TabStop = False
+      end
+      object fSearchHelpButton: TButton
+        AlignWithMargins = True
+        Left = 745
+        Top = 25
+        Width = 78
+        Height = 35
+        Margins.Left = 8
+        Margins.Top = 8
+        Margins.Bottom = 8
+        Align = alRight
+        Caption = '&Syntax'
+        TabOrder = 1
+        OnClick = HandleSearchHelpButtonClick
       end
     end
   end

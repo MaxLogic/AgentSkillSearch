@@ -3,20 +3,12 @@
 Next task ID: T-031
 
 ## Summary
-Open tasks: 1 (In Progress: 0, Next Today: 1, Next This Week: 0, Next Later: 0, Blocked: 0)
-Done tasks: 29
+Open tasks: 0 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 30
 
 ## In Progress
 
 ## Next – Today
-
-### T-030 [UI] Add search syntax help button near search box
-Outcome: Add a help button beside the search bar that displays concise query syntax guidance consistent with README examples.
-Proof:
-- Command: Click the search help button on the main form.
-- Expect: A help dialog/popup opens and explains supported syntax (`"phrase"`, `-exclude`, `name:`, `tag:`, `path:`, `has:scripts`, `limit:`).
-Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, README.md
-Notes: Keep text short and directly actionable for first-time users.
 
 ## Next – This Week
 
@@ -25,6 +17,14 @@ Notes: Keep text short and directly actionable for first-time users.
 ## Blocked
 
 ## Done
+
+### T-030 [UI] Add search syntax help button near search box
+Outcome: Add a help button beside the search bar that displays concise query syntax guidance consistent with README examples.
+Proof:
+- Command: Click the search help button on the main form.
+- Expect: A help dialog/popup opens and explains supported syntax (`"phrase"`, `-exclude`, `name:`, `tag:`, `path:`, `has:scripts`, `limit:`).
+Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, README.md
+Notes: Keep text short and directly actionable for first-time users.
 
 ### T-029 [OPS] Add Docker health indicator with 10s polling thread
 Outcome: Add a Docker health indicator refreshed every 10 seconds by a background thread, with all VCL updates marshaled through `TThread.Queue`.

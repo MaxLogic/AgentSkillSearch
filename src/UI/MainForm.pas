@@ -16,6 +16,7 @@ type
     fSearchFieldPanel: TPanel;
     fSearchEdit: TEdit;
     fSearchEditLabel: TStaticText;
+    fSearchHelpButton: TButton;
     fSearchButton: TButton;
     fScanButton: TButton;
     fScanProgressBar: TProgressBar;
@@ -105,6 +106,7 @@ type
       const aError: string);
     procedure HandleSearchEditChange(Sender: TObject);
     procedure HandleSearchEditKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure HandleSearchHelpButtonClick(Sender: TObject);
     procedure HandleScanButtonClick(Sender: TObject);
   public
     constructor Create(aOwner: TComponent); override;
@@ -120,6 +122,7 @@ uses
   System.IOUtils, System.StrUtils, System.SysUtils,
   Winapi.ShellAPI, Winapi.Windows,
   Vcl.Clipbrd,
+  Vcl.Dialogs,
   AppPaths, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings, SourcesList;
 
 {$R *.dfm}
@@ -662,6 +665,22 @@ end;
 procedure TMainForm.HandleSearchButtonClick(Sender: TObject);
 begin
   QueueSearch(True);
+end;
+
+procedure TMainForm.HandleSearchHelpButtonClick(Sender: TObject);
+const
+  cSearchHelpText =
+    'Search syntax:' + sLineBreak +
+    '- words: retry backoff' + sLineBreak +
+    '- phrase: "rate limit"' + sLineBreak +
+    '- exclude: -jwt' + sLineBreak +
+    '- name filter: name:ollama' + sLineBreak +
+    '- tag filter: tag:docker' + sLineBreak +
+    '- path filter: path:openclaw' + sLineBreak +
+    '- scripts filter: has:scripts / -has:scripts' + sLineBreak +
+    '- result limit: limit:200';
+begin
+  MessageDlg(cSearchHelpText, TMsgDlgType.mtInformation, [TMsgDlgBtn.mbOK], 0);
 end;
 
 procedure TMainForm.HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
