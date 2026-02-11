@@ -46,6 +46,16 @@ begin
     '# Example: \\server\share\skills' + sLineBreak;
 end;
 
+function GetDefaultExcludesListTemplate: string;
+begin
+  Result :=
+    '# Agent Skill Search exclusion patterns' + sLineBreak +
+    '# Lines are case-insensitive substring or wildcard (*, ?) matches against full paths.' + sLineBreak +
+    '# Seeded from diagnostics scan report 2026-02-11 (OpenClaw harness fixtures).' + sLineBreak +
+    '*\OpenClaw\skills\skills\oakencore\skillvet\tests\fixtures\*' + sLineBreak +
+    '*\OpenClaw\skills\skills\*\tmp\credentials-backup-*\*' + sLineBreak;
+end;
+
 procedure EnsureSourcesListTemplate(const aSourcesListPath: string);
 begin
   if TFile.Exists(aSourcesListPath) then
@@ -55,6 +65,17 @@ begin
 
   ForceDirectories(ExtractFilePath(aSourcesListPath));
   TFile.WriteAllText(aSourcesListPath, GetDefaultSourcesListTemplate, TEncoding.UTF8);
+end;
+
+procedure EnsureExcludesListTemplate(const aExcludesListPath: string);
+begin
+  if TFile.Exists(aExcludesListPath) then
+  begin
+    Exit;
+  end;
+
+  ForceDirectories(ExtractFilePath(aExcludesListPath));
+  TFile.WriteAllText(aExcludesListPath, GetDefaultExcludesListTemplate, TEncoding.UTF8);
 end;
 
 procedure AddRestoredKey(var aResult: TSettingsLoadResult; const aSection, aKey: string);
@@ -236,6 +257,8 @@ begin
       lDefault.General.SourcesListPath);
     Result.Settings.General.CacheDbPath := ReadRequiredString(lIni, Result, 'General', 'CacheDbPath',
       lDefault.General.CacheDbPath);
+    Result.Settings.General.ExcludesListPath := ReadRequiredString(lIni, Result, 'General', 'ExcludesListPath',
+      lDefault.General.ExcludesListPath);
     Result.Settings.General.LogPath := ReadRequiredString(lIni, Result, 'General', 'LogPath',
       lDefault.General.LogPath);
     Result.Settings.General.MaxScanThreads := ReadRequiredInteger(lIni, Result, 'General', 'MaxScanThreads',
@@ -309,6 +332,7 @@ begin
   end;
 
   EnsureSourcesListTemplate(ResolveSettingsPath(Result.Settings.General.SourcesListPath, lSettingsDir));
+  EnsureExcludesListTemplate(ResolveSettingsPath(Result.Settings.General.ExcludesListPath, lSettingsDir));
   WriteSettingsRecoveryLog(Result.Settings, lSettingsDir, Result.RestoredKeys);
 end;
 

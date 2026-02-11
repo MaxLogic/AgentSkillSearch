@@ -18,6 +18,7 @@ procedure InitLogging(const aLogPath: string);
 procedure LogError(const aMessage: string);
 procedure LogInfo(const aMessage: string);
 procedure RecordPipelineError(const aMessage: string);
+procedure RecordPipelineNotice(const aMessage: string);
 procedure RecordScanSummary(const aSummary: TScanSummary);
 function BuildDiagnosticsText: string;
 
@@ -30,6 +31,7 @@ var
   gLock: TCriticalSection;
   gLastSummary: TScanSummary;
   gLogPath: string;
+  gRecentNotices: TStringList;
   gRecentErrors: TStringList;
 
 function UtcNowIso8601: string;
@@ -60,6 +62,15 @@ begin
   while gRecentErrors.Count > 40 do
   begin
     gRecentErrors.Delete(0);
+  end;
+end;
+
+procedure PushRecentNotice(const aMessage: string);
+begin
+  gRecentNotices.Add(Format('%s %s', [UtcNowIso8601, aMessage]));
+  while gRecentNotices.Count > 40 do
+  begin
+    gRecentNotices.Delete(0);
   end;
 end;
 
@@ -100,6 +111,17 @@ begin
   LogError('pipeline: ' + aMessage);
 end;
 
+procedure RecordPipelineNotice(const aMessage: string);
+begin
+  gLock.Enter;
+  try
+    AppendLogLine('INFO', 'pipeline: ' + aMessage);
+    PushRecentNotice(aMessage);
+  finally
+    gLock.Leave;
+  end;
+end;
+
 procedure RecordScanSummary(const aSummary: TScanSummary);
 begin
   gLock.Enter;
@@ -138,6 +160,17 @@ begin
       lOutput.Add(Format('  Skills Queued/Written: %d / %d', [gLastSummary.SkillsQueued, gLastSummary.SkillsWritten]));
       lOutput.Add(Format('  Errors: %d', [gLastSummary.ErrorCount]));
       lOutput.Add('');
+      lOutput.Add('Recent notices:');
+      if gRecentNotices.Count = 0 then
+      begin
+        lOutput.Add('  (none)');
+      end else begin
+        for i := Pred(gRecentNotices.Count) downto 0 do
+        begin
+          lOutput.Add('  ' + gRecentNotices[i]);
+        end;
+      end;
+      lOutput.Add('');
       lOutput.Add('Recent errors:');
       if gRecentErrors.Count = 0 then
       begin
@@ -160,11 +193,13 @@ end;
 
 initialization
   gLock := TCriticalSection.Create;
+  gRecentNotices := TStringList.Create;
   gRecentErrors := TStringList.Create;
   gLastSummary := Default(TScanSummary);
   gLogPath := '';
 
 finalization
+  gRecentNotices.Free;
   gRecentErrors.Free;
   gLock.Free;
 

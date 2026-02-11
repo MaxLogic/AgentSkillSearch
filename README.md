@@ -14,6 +14,7 @@ It scans paths from `Sources.lst`, indexes content into a local SQLite cache, an
 - `bin/AgentSkillSearch.exe`
 - `bin/sqlite3.dll` and `bin/vec0.dll`
 - `bin/settings.ini` and `bin/Sources.lst`
+- `bin/excludes.lst` (optional path exclusions for scan/index)
 - Git installed and available as `git.exe` (for pull/update stage)
 
 Everything is portable and runs from the `bin/` folder.
@@ -104,16 +105,20 @@ Supported query syntax:
 Main file: `bin/settings.ini`
 
 Important keys:
-- `[General] SourcesListPath`, `CacheDbPath`, `LogPath`
+- `[General] SourcesListPath`, `ExcludesListPath`, `CacheDbPath`, `LogPath`
 - `[Git] PullEnabled`, `MinPullIntervalMinutes`, `GitPullTimeoutSeconds`
 - `[Search] SearchDebounceMs`, `MaxResults`, `SnippetMaxChars`
 - `[Semantic] Enabled`, `OllamaBaseUrl`, `Model`, `CandidateRerankCount`
 
 Defaults are auto-created for missing keys.
 
+`bin/excludes.lst` supports case-insensitive substring and wildcard (`*`, `?`) rules against full scanned paths.
+Use it to skip test harness fixtures before git/indexing.
+
 ## Troubleshooting
 
 - Open `Diagnostics` in the app to see last scan summary and recent errors.
+- Open `Diagnostics` in the app to see last scan summary, exclusion notices, and recent errors.
 - Check log file from `[General] LogPath` (default `bin/logs/AgentSkillSearch.log`).
 - If semantic results do not appear, verify Ollama container and model availability.
 - If no items are found, verify `Sources.lst` paths are valid and reachable.

@@ -5,6 +5,7 @@ interface
 type
   TGeneralSettings = record
     CacheDbPath: string;
+    ExcludesListPath: string;
     LogPath: string;
     MaxGitPullThreads: Integer;
     MaxIndexThreads: Integer;
@@ -72,6 +73,7 @@ function DefaultAppSettings: TAppSettings;
 begin
   Result.General.SourcesListPath := 'Sources.lst';
   Result.General.CacheDbPath := 'cache\SkillCache.db';
+  Result.General.ExcludesListPath := 'excludes.lst';
   Result.General.LogPath := 'logs\AgentSkillSearch.log';
   Result.General.MaxScanThreads := 6;
   Result.General.MaxGitPullThreads := 3;

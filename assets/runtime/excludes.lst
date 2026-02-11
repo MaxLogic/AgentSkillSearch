@@ -1,0 +1,5 @@
+# Agent Skill Search exclusion patterns
+# Case-insensitive substring/wildcard matches against full scanned paths.
+# Seeded from diagnostics scan report 2026-02-11 (OpenClaw harness fixtures).
+*\OpenClaw\skills\skills\oakencore\skillvet\tests\fixtures\*
+*\OpenClaw\skills\skills\*\tmp\credentials-backup-*\*
