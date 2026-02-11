@@ -28,7 +28,7 @@
 
   <PropertyGroup Condition="'$(Base)'!=''">
     <DCC_DcuOutput>.\$(Platform)\$(Config)</DCC_DcuOutput>
-    <DCC_ExeOutput>..\bin</DCC_ExeOutput>
+    <DCC_ExeOutput>..\tests\bin</DCC_ExeOutput>
     <DCC_E>false</DCC_E>
     <DCC_F>false</DCC_F>
     <DCC_K>false</DCC_K>
