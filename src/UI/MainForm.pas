@@ -17,6 +17,7 @@ type
     fSearchEditLabel: TStaticText;
     fSearchButton: TButton;
     fScanButton: TButton;
+    fScanProgressBar: TProgressBar;
     fDiagnosticsButton: TButton;
     fSearchAsYouTypeCheckBox: TCheckBox;
     fFiltersPanel: TPanel;
@@ -46,6 +47,8 @@ type
     fExcludesListPath: string;
     fLogPath: string;
     fResults: TArray<TSkillSearchResult>;
+    fScanCancelToken: TPipelineCancellationToken;
+    fScanInProgress: Boolean;
     fSearchController: TSearchController;
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
@@ -55,6 +58,10 @@ type
     fSourcesListPath: string;
     procedure ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
     function BuildPipelineOptions: TPipelineOptions;
+    procedure BeginScanProgress;
+    procedure EndScanProgress;
+    function ExecuteScanUpdate(const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
+      out aStatusText: string): Boolean;
     function BuildEffectiveQuery: string;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
@@ -66,7 +73,6 @@ type
     procedure QueueSearch(const aImmediate: Boolean);
     procedure RefreshCountPanels;
     procedure RefreshInventoryCounters;
-    procedure RunScanUpdate;
     procedure RenderPreview(const aResult: TSkillSearchResult);
     procedure ShowEmptyPreview;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
@@ -76,6 +82,8 @@ type
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleHasScriptsClick(Sender: TObject);
+    procedure HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
+      aFailure: string);
     procedure HandleOpenFileClick(Sender: TObject);
     procedure HandleOpenFolderClick(Sender: TObject);
     procedure HandleResultDoubleClick(Sender: TObject);
@@ -178,6 +186,18 @@ end;
 
 destructor TMainForm.Destroy;
 begin
+  AppMainForm := nil;
+
+  if Assigned(fScanCancelToken) then
+  begin
+    fScanCancelToken.Cancel;
+    if not fScanInProgress then
+    begin
+      fScanCancelToken.Free;
+      fScanCancelToken := nil;
+    end;
+  end;
+
   LogInfo('Application shutdown.');
   fSearchController.Free;
   fSearchService.Free;
@@ -373,51 +393,70 @@ begin
   Result := Length(aSourceRoots) > 0;
 end;
 
-procedure TMainForm.RunScanUpdate;
+procedure TMainForm.BeginScanProgress;
+begin
+  fScanInProgress := True;
+  fScanButton.Enabled := False;
+  fScanProgressBar.Visible := True;
+  fScanProgressBar.Style := pbstMarquee;
+  fScanProgressBar.MarqueeInterval := 30;
+  UpdateStatus('Scan running... (indeterminate)');
+end;
+
+procedure TMainForm.EndScanProgress;
+begin
+  fScanProgressBar.Visible := False;
+  fScanButton.Enabled := True;
+  fScanInProgress := False;
+
+  if Assigned(fScanCancelToken) then
+  begin
+    fScanCancelToken.Free;
+    fScanCancelToken := nil;
+  end;
+end;
+
+function TMainForm.ExecuteScanUpdate(const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
+  out aStatusText: string): Boolean;
 var
   lCoordinator: TPipelineCoordinator;
   lOptions: TPipelineOptions;
-  lResult: TPipelineRunResult;
   lSourceRoots: TArray<string>;
-  lStatusText: string;
 begin
+  aResult := Default(TPipelineRunResult);
+  aStatusText := '';
+
   if not TryLoadSourceRoots(lSourceRoots) then
   begin
-    UpdateStatus('Scan skipped: no valid source paths.');
-    Exit;
+    aStatusText := 'Scan skipped: no valid source paths.';
+    Exit(False);
   end;
 
   lOptions := BuildPipelineOptions;
-  UpdateStatus('Scanning and indexing...');
   LogInfo('Scan started from UI. Sources=' + IntToStr(Length(lSourceRoots)));
 
   lCoordinator := TPipelineCoordinator.Create(fDatabaseManager, lOptions);
   try
-    lResult := lCoordinator.Run(lSourceRoots, nil);
+    aResult := lCoordinator.Run(lSourceRoots, aCancelToken);
   finally
     lCoordinator.Free;
   end;
 
-  lStatusText := Format(
+  aStatusText := Format(
     'Scan complete. Repos queued/pulled/throttled/failed: %d/%d/%d/%d | Skills queued/written: %d/%d | Errors: %d',
-    [lResult.ReposQueued, lResult.ReposPulled, lResult.ReposThrottled, lResult.ReposFailed, lResult.SkillsQueued,
-     lResult.SkillsWritten, lResult.ErrorCount]
+    [aResult.ReposQueued, aResult.ReposPulled, aResult.ReposThrottled, aResult.ReposFailed, aResult.SkillsQueued,
+     aResult.SkillsWritten, aResult.ErrorCount]
   );
-  if lResult.Cancelled then
+  if aResult.Cancelled then
   begin
-    lStatusText := lStatusText + ' | Cancelled';
+    aStatusText := aStatusText + ' | Cancelled';
   end;
-  if Trim(lResult.LastError) <> '' then
+  if Trim(aResult.LastError) <> '' then
   begin
-    lStatusText := lStatusText + ' | Last error: ' + lResult.LastError;
+    aStatusText := aStatusText + ' | Last error: ' + aResult.LastError;
   end;
 
-  UpdateStatus(lStatusText);
-  fSkillsFoundCount := lResult.SkillsQueued;
-  RefreshInventoryCounters;
-  RefreshCountPanels;
-  fStatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
-  QueueSearch(True);
+  Result := True;
 end;
 
 procedure TMainForm.QueueSearch(const aImmediate: Boolean);
@@ -516,17 +555,79 @@ begin
   QueueSearch(True);
 end;
 
-procedure TMainForm.HandleScanButtonClick(Sender: TObject);
+procedure TMainForm.HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
+  aFailure: string);
 begin
   try
-    RunScanUpdate;
-  except
-    on E: Exception do
+    if aFailure <> '' then
     begin
-      RecordPipelineError('Scan failed: ' + E.Message);
-      UpdateStatus('Scan failed: ' + E.Message);
+      RecordPipelineError('Scan failed: ' + aFailure);
+      UpdateStatus('Scan failed: ' + aFailure);
+      Exit;
     end;
+
+    if not aExecuted then
+    begin
+      UpdateStatus(aStatusText);
+      Exit;
+    end;
+
+    UpdateStatus(aStatusText);
+    fSkillsFoundCount := aResult.SkillsQueued;
+    RefreshInventoryCounters;
+    RefreshCountPanels;
+    fStatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
+    QueueSearch(True);
+  finally
+    EndScanProgress;
   end;
+end;
+
+procedure TMainForm.HandleScanButtonClick(Sender: TObject);
+begin
+  if fScanInProgress then
+  begin
+    Exit;
+  end;
+
+  BeginScanProgress;
+  fScanCancelToken := TPipelineCancellationToken.Create;
+
+  TThread.CreateAnonymousThread(
+    procedure
+    var
+      lResult: TPipelineRunResult;
+      lStatusText: string;
+      lExecuted: Boolean;
+      lFailure: string;
+    begin
+      lExecuted := False;
+      lFailure := '';
+      try
+        lExecuted := ExecuteScanUpdate(fScanCancelToken, lResult, lStatusText);
+      except
+        on E: Exception do
+        begin
+          lFailure := E.Message;
+        end;
+      end;
+
+      TThread.Queue(nil,
+        procedure
+        var
+          lForm: TMainForm;
+        begin
+          lForm := AppMainForm;
+          if not Assigned(lForm) then
+          begin
+            Exit;
+          end;
+
+          lForm.HandleScanCompleted(lExecuted, lResult, lStatusText, lFailure);
+        end
+      );
+    end
+  ).Start;
 end;
 
 procedure TMainForm.HandleDiagnosticsButtonClick(Sender: TObject);
@@ -644,6 +745,14 @@ begin
 
   if Key = VK_ESCAPE then
   begin
+    if fScanInProgress and Assigned(fScanCancelToken) then
+    begin
+      fScanCancelToken.Cancel;
+      UpdateStatus('Scan cancellation requested...');
+      Key := 0;
+      Exit;
+    end;
+
     fSearchController.CancelCurrent;
     UpdateStatus('Search cancelled by user.');
     Key := 0;

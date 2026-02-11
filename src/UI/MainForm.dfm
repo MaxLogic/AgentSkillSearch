@@ -152,6 +152,18 @@ object AppMainForm: TMainForm
       TabOrder = 0
       OnClick = HandleHasScriptsClick
     end
+    object fScanProgressBar: TProgressBar
+      AlignWithMargins = True
+      Left = 1038
+      Top = 8
+      Width = 330
+      Height = 28
+      Align = alRight
+      MarqueeInterval = 30
+      Style = pbstMarquee
+      TabOrder = 1
+      Visible = False
+    end
   end
   object fMainPanel: TPanel
     Left = 0

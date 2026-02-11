@@ -3,20 +3,12 @@
 Next task ID: T-031
 
 ## Summary
-Open tasks: 4 (In Progress: 0, Next Today: 4, Next This Week: 0, Next Later: 0, Blocked: 0)
-Done tasks: 26
+Open tasks: 3 (In Progress: 0, Next Today: 3, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 27
 
 ## In Progress
 
 ## Next – Today
-
-### T-027 [UI] Show scan progress bar as documented
-Outcome: Implement or restore a visible progress bar during scan so runtime behavior matches README expectations.
-Proof:
-- Command: Start a scan on a medium or large source list.
-- Expect: A progress bar is visible during scan, updates throughout work, and resets/hides correctly when scan completes or is canceled.
-Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, README.md
-Notes: If exact totals are unknown, use an explicit indeterminate mode with phase text.
 
 ### T-028 [OPS] Add button to start Docker GPU stack
 Outcome: Add a UI button that starts the configured Docker GPU stack from the app and surfaces command success/failure in diagnostics/log output.
@@ -50,6 +42,14 @@ Notes: Keep text short and directly actionable for first-time users.
 ## Blocked
 
 ## Done
+
+### T-027 [UI] Show scan progress bar as documented
+Outcome: Implement or restore a visible progress bar during scan so runtime behavior matches README expectations.
+Proof:
+- Command: Start a scan on a medium or large source list.
+- Expect: A progress bar is visible during scan, updates throughout work, and resets/hides correctly when scan completes or is canceled.
+Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, README.md
+Notes: If exact totals are unknown, use an explicit indeterminate mode with phase text.
 
 ### T-026 [UI] Add status bar counters for found, valid, unique, and results
 Outcome: Extend the bottom status bar to show four counters: skills found, valid skills, unique (post-dedup) skills, and current query results.
