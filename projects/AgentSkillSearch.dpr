@@ -5,6 +5,12 @@ program AgentSkillSearch;
 {$ENDIF}
 
 uses
+  madExcept,
+  madLinkDisAsm,
+  madListHardware,
+  madListProcesses,
+  madListModules,
+  FireDAC.VCLUI.Wait,
   Vcl.Forms,
   MainForm in '..\src\UI\MainForm.pas';
 
