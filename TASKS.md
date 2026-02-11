@@ -3,20 +3,12 @@
 Next task ID: T-031
 
 ## Summary
-Open tasks: 8 (In Progress: 0, Next Today: 8, Next This Week: 0, Next Later: 0, Blocked: 0)
-Done tasks: 22
+Open tasks: 7 (In Progress: 0, Next Today: 7, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 23
 
 ## In Progress
 
 ## Next – Today
-
-### T-023 [SCAN] Add excludes list for scan/index pipeline
-Outcome: Add exclude-list support so scan/index skips obvious test-harness skill paths, and ship a ready-to-use `excludes.lst` seeded from the latest diagnostics failures.
-Proof:
-- Command: Add one known fixture/test-harness path from `excludes.lst` under a scanned source and run Scan.
-- Expect: The path is skipped before git/index work, and diagnostics/logs show it as excluded instead of failed.
-Touches: excludes.lst, src/Scanner/*.pas, src/Settings.pas, README.md
-Notes: Seed patterns from scan report dated 2026-02-11 (OpenClaw test fixtures and similar harness paths).
 
 ### T-024 [IDX] Best-effort repair for missing frontmatter closing fence
 Outcome: Improve SKILL.md parsing with a best-effort recovery path that repairs missing YAML frontmatter closing fences and continues indexing with a warning.
@@ -82,6 +74,14 @@ Notes: Keep text short and directly actionable for first-time users.
 ## Blocked
 
 ## Done
+
+### T-023 [SCAN] Add excludes list for scan/index pipeline
+Outcome: Add exclude-list support so scan/index skips obvious test-harness skill paths, and ship a ready-to-use `excludes.lst` seeded from the latest diagnostics failures.
+Proof:
+- Command: Add one known fixture/test-harness path from `excludes.lst` under a scanned source and run Scan.
+- Expect: The path is skipped before git/index work, and diagnostics/logs show it as excluded instead of failed.
+Touches: excludes.lst, src/Scanner/*.pas, src/Settings.pas, README.md
+Notes: Seed patterns from scan report dated 2026-02-11 (OpenClaw test fixtures and similar harness paths).
 
 ### T-022 [UI] Close diagnostics dialog on Esc
 Outcome: Make the Diagnostics dialog close immediately when Esc is pressed, matching standard modal dialog keyboard behavior.

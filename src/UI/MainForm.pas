@@ -43,6 +43,7 @@ type
     fAppSettings: TAppSettings;
     fDatabaseManager: TDatabaseManager;
     fDbPath: string;
+    fExcludesListPath: string;
     fLogPath: string;
     fResults: TArray<TSkillSearchResult>;
     fSearchController: TSearchController;
@@ -95,7 +96,7 @@ uses
   System.IOUtils, System.StrUtils, System.SysUtils,
   Winapi.ShellAPI, Winapi.Windows,
   Vcl.Clipbrd,
-  AppPaths, DiagnosticsForm, Logging, PreviewRenderer, Settings, SourcesList;
+  AppPaths, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings, SourcesList;
 
 {$R *.dfm}
 
@@ -113,6 +114,7 @@ begin
   fAppSettings := lSettings.Settings;
   fSettingsPath := lSettings.SettingsPath;
   fDbPath := ResolveSettingsPath(fAppSettings.General.CacheDbPath, GetExeDirectory);
+  fExcludesListPath := ResolveSettingsPath(fAppSettings.General.ExcludesListPath, GetExeDirectory);
   fLogPath := ResolveSettingsPath(fAppSettings.General.LogPath, GetExeDirectory);
   fSourcesListPath := ResolveSettingsPath(fAppSettings.General.SourcesListPath, GetExeDirectory);
   InitLogging(fLogPath);
@@ -281,6 +283,9 @@ begin
 end;
 
 function TMainForm.BuildPipelineOptions: TPipelineOptions;
+var
+  i: Integer;
+  lExclusions: TPathExclusionsParseResult;
 begin
   Result := DefaultPipelineOptions;
   Result.GitExePath := fAppSettings.Git.GitExePath;
@@ -294,6 +299,18 @@ begin
   Result.SkipFolders := fAppSettings.Git.SkipFolders;
   Result.SkillFileName := fAppSettings.Index.SkillFileName;
   Result.TreatWorktreesAsRepos := fAppSettings.Git.TreatWorktreesAsRepos;
+  lExclusions := ParsePathExclusionsFile(fExcludesListPath);
+  Result.ExcludePathPatterns := lExclusions.Patterns;
+
+  for i := 0 to Pred(Length(lExclusions.Issues)) do
+  begin
+    RecordPipelineError(
+      Format(
+        'Excludes list issue line %d "%s": %s',
+        [lExclusions.Issues[i].LineNumber, Trim(lExclusions.Issues[i].RawLine), lExclusions.Issues[i].Reason]
+      )
+    );
+  end;
 end;
 
 function TMainForm.TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;

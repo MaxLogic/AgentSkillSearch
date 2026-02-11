@@ -8,7 +8,7 @@ implementation
 
 uses
   System.IOUtils, System.SysUtils,
-  ScanEngine;
+  PathExclusions, ScanEngine;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -42,6 +42,54 @@ begin
   ForceDirectories(lPath);
   ForceDirectories(TPath.Combine(aRootPath, 'node_modules\ignored\repo-hidden\skill-hidden'));
   TFile.WriteAllText(TPath.Combine(aRootPath, 'node_modules\ignored\repo-hidden\skill-hidden\SKILL.md'), '# Hidden', TEncoding.UTF8);
+end;
+
+procedure TestPathExclusionsSkipOpenClawFixtures;
+var
+  lExcludesFile: string;
+  lFixtureRoot: string;
+  lParse: TPathExclusionsParseResult;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchExclusionsFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lExcludesFile := TPath.Combine(lFixtureRoot, 'excludes.lst');
+  TFile.WriteAllText(
+    lExcludesFile,
+    '# comment' + sLineBreak +
+    '*\OpenClaw\skills\skills\oakencore\skillvet\tests\fixtures\*' + sLineBreak +
+    '*\OpenClaw\skills\skills\*\tmp\credentials-backup-*\*' + sLineBreak,
+    TEncoding.UTF8
+  );
+
+  lParse := ParsePathExclusionsFile(lExcludesFile);
+  AssertEqualInt(2, Length(lParse.Patterns), 'Expected two exclusion patterns from fixture list');
+  AssertEqualInt(0, Length(lParse.Issues), 'Expected no parse issues in exclusion fixture');
+  AssertTrue(
+    IsPathExcluded(
+      'F:\projects\3rdParty\AI-Related\OpenClaw\skills\skills\oakencore\skillvet\tests\fixtures\trigger-x\SKILL.md',
+      lParse.Patterns
+    ),
+    'Expected fixture skill path to match exclusion rules'
+  );
+  AssertTrue(
+    IsPathExcluded(
+      'F:\projects\3rdParty\AI-Related\OpenClaw\skills\skills\cyberengage\secure-sync\tmp\credentials-backup-1770193226\SKILL.md',
+      lParse.Patterns
+    ),
+    'Expected temporary backup skill path to match exclusion rules'
+  );
+  AssertTrue(
+    not IsPathExcluded(
+      'F:\projects\3rdParty\AI-Related\OpenClaw\skills\skills\real-skill\SKILL.md',
+      lParse.Patterns
+    ),
+    'Non-fixture OpenClaw skill path should not be excluded by default template'
+  );
 end;
 
 procedure TestScannerHonorsSkipFoldersAndFindsReposAndSkills;
@@ -82,6 +130,7 @@ end;
 procedure RunScanEngineTests;
 begin
   TestScannerHonorsSkipFoldersAndFindsReposAndSkills;
+  TestPathExclusionsSkipOpenClawFixtures;
 end;
 
 end.

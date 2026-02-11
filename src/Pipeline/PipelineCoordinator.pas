@@ -10,6 +10,7 @@ type
   TPipelineOptions = record
     AutoCancelAfterMs: Integer;
     DbBatchSize: Integer;
+    ExcludePathPatterns: TArray<string>;
     GitExePath: string;
     GitPullArgs: string;
     GitPullTimeoutSeconds: Integer;
@@ -50,6 +51,7 @@ type
     fCancelToken: TPipelineCancellationToken;
     fDbManager: TDatabaseManager;
     fErrorCount: Integer;
+    fExcludedPaths: TDictionary<string, Byte>;
     fLastError: string;
     fOptions: TPipelineOptions;
     fReposFailed: Integer;
@@ -62,17 +64,20 @@ type
     fSkipFolderNames: TArray<string>;
     fStopwatch: TStopwatch;
     procedure AddError(const aMessage: string);
+    procedure AddExcludedPath(const aPath: string);
     procedure AddRepoDiscovered(aRepos: TList<string>; const aRepoPath: string);
     procedure AddRepoPullResult(aRepoPulls: TList<TRepoPullUpdate>; const aPullResult: TRepoPullUpdate);
     procedure AddSkillDiscovered(aSkills: TList<string>; const aSkillFilePath: string);
     function BuildPullUpdate(const aRepoPath: string; const aPullResult: TGitPullResult): TRepoPullUpdate;
     function BuildThrottledPullUpdate(const aRepoPath, aLastPullUtc: string): TRepoPullUpdate;
     function BuildUniquePaths(const aInput: TList<string>): TArray<string>;
+    function IsExcludedPath(const aPath: string): Boolean;
     function IsSkippedDirectory(const aDirectoryPath: string): Boolean;
     function ShouldAutoCancel: Boolean;
     procedure ScanRoot(const aRootPath: string; aRepos: TList<string>; aSkills: TList<string>);
   public
     constructor Create(aDbManager: TDatabaseManager; const aOptions: TPipelineOptions);
+    destructor Destroy; override;
     function Run(const aSourceRoots: TArray<string>; aCancelToken: TPipelineCancellationToken): TPipelineRunResult;
   end;
 
@@ -83,7 +88,7 @@ implementation
 uses
   System.Classes, System.DateUtils, System.IOUtils, System.Math, System.StrUtils, System.SyncObjs, System.SysUtils,
   System.Threading,
-  Logging, RepoDetection, SkillIndexer;
+  Logging, PathExclusions, RepoDetection, SkillIndexer;
 
 function DefaultPipelineOptions: TPipelineOptions;
 begin
@@ -118,7 +123,14 @@ begin
   inherited Create;
   fDbManager := aDbManager;
   fOptions := aOptions;
+  fExcludedPaths := TDictionary<string, Byte>.Create;
   fSkipFolderNames := SplitString(fOptions.SkipFolders, ';');
+end;
+
+destructor TPipelineCoordinator.Destroy;
+begin
+  fExcludedPaths.Free;
+  inherited Destroy;
 end;
 
 procedure TPipelineCoordinator.AddError(const aMessage: string);
@@ -134,6 +146,22 @@ begin
   finally
     TMonitor.Exit(self);
   end;
+end;
+
+procedure TPipelineCoordinator.AddExcludedPath(const aPath: string);
+begin
+  TMonitor.Enter(fExcludedPaths);
+  try
+    if fExcludedPaths.ContainsKey(aPath) then
+    begin
+      Exit;
+    end;
+    fExcludedPaths.Add(aPath, 1);
+  finally
+    TMonitor.Exit(fExcludedPaths);
+  end;
+
+  RecordPipelineNotice('Excluded path: ' + aPath);
 end;
 
 procedure TPipelineCoordinator.AddRepoDiscovered(aRepos: TList<string>; const aRepoPath: string);
@@ -210,6 +238,11 @@ begin
   end;
 end;
 
+function TPipelineCoordinator.IsExcludedPath(const aPath: string): Boolean;
+begin
+  Result := IsPathExcluded(aPath, fOptions.ExcludePathPatterns);
+end;
+
 function TPipelineCoordinator.IsSkippedDirectory(const aDirectoryPath: string): Boolean;
 var
   i: Integer;
@@ -262,6 +295,12 @@ begin
         Continue;
       end;
 
+      if IsExcludedPath(lCurrentDir) then
+      begin
+        AddExcludedPath(lCurrentDir);
+        Continue;
+      end;
+
       if IsGitRepoRoot(lCurrentDir, fOptions.TreatWorktreesAsRepos, lIsWorktree) then
       begin
         AddRepoDiscovered(aRepos, lCurrentDir);
@@ -270,7 +309,12 @@ begin
       lSkillFile := TPath.Combine(lCurrentDir, fOptions.SkillFileName);
       if TFile.Exists(lSkillFile) then
       begin
-        AddSkillDiscovered(aSkills, lSkillFile);
+        if IsExcludedPath(lSkillFile) then
+        begin
+          AddExcludedPath(lSkillFile);
+        end else begin
+          AddSkillDiscovered(aSkills, lSkillFile);
+        end;
       end;
 
       try
@@ -284,6 +328,12 @@ begin
 
       for lSubDir in lDirs do
       begin
+        if IsExcludedPath(lSubDir) then
+        begin
+          AddExcludedPath(lSubDir);
+          Continue;
+        end;
+
         if not IsSkippedDirectory(lSubDir) then
         begin
           lPending.Add(lSubDir);

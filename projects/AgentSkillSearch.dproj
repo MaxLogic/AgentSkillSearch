@@ -105,7 +105,7 @@
         <VerInfo_Locale>1045</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=;FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=;ProductVersion=1.0.0.0;Comments=;CFBundleName=</VerInfo_Keys>
         <DCC_ExeOutput>..\bin</DCC_ExeOutput>
-        <DCC_UnitSearchPath>..\..\MaxLogicFoundation;..\src;..\src\Config;..\src\Db;..\src\Git;..\src\Indexer;..\src\Pipeline;..\src\Search;..\src\Semantic;..\src\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\..\MaxLogicFoundation;..\src;..\src\Config;..\src\Db;..\src\Git;..\src\Indexer;..\src\Pipeline;..\src\Scanner;..\src\Search;..\src\Semantic;..\src\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <CfgDependentOn>..\..\MaxLogicFoundation\MaxLogicDefault.optset</CfgDependentOn>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Android64)'!=''">

@@ -24,6 +24,7 @@
 - Multi-stage scan/git/index pipeline coordinator with cancellable processing and single-writer batched DB commits (`T-017`).
 - Enforced Win64-only build/runtime path for bundled SQLite with explicit Win32 fatal guard and verified FTS5 runtime checks (`T-020`).
 - Configured all project builds to resolve shared units directly from sibling `MaxLogicFoundation` search paths (`T-021`).
+- Scan/index path exclusions via configurable `excludes.lst`, including seeded OpenClaw fixture rules and diagnostics notices for excluded paths (`T-023`).
 
 ### Fixed
 - Diagnostics modal now closes on `Esc` via standard cancel-button behavior, restoring expected keyboard dismiss flow (`T-022`).
