@@ -29,7 +29,7 @@ constructor TDiagnosticsForm.Create(aOwner: TComponent);
 var
   lButtonsPanel: TPanel;
 begin
-  inherited Create(aOwner);
+  inherited CreateNew(aOwner);
   Caption := 'Diagnostics';
   Width := 900;
   Height := 620;
