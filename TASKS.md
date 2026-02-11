@@ -3,20 +3,12 @@
 Next task ID: T-031
 
 ## Summary
-Open tasks: 5 (In Progress: 0, Next Today: 5, Next This Week: 0, Next Later: 0, Blocked: 0)
-Done tasks: 25
+Open tasks: 4 (In Progress: 0, Next Today: 4, Next This Week: 0, Next Later: 0, Blocked: 0)
+Done tasks: 26
 
 ## In Progress
 
 ## Next – Today
-
-### T-026 [UI] Add status bar counters for found, valid, unique, and results
-Outcome: Extend the bottom status bar to show four counters: skills found, valid skills, unique (post-dedup) skills, and current query results.
-Proof:
-- Command: Complete a scan and execute at least one filtered search query.
-- Expect: All four counters are visible, scan totals stay stable, and only query results counter changes as filters change.
-Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm
-Deps: T-025
 
 ### T-027 [UI] Show scan progress bar as documented
 Outcome: Implement or restore a visible progress bar during scan so runtime behavior matches README expectations.
@@ -58,6 +50,14 @@ Notes: Keep text short and directly actionable for first-time users.
 ## Blocked
 
 ## Done
+
+### T-026 [UI] Add status bar counters for found, valid, unique, and results
+Outcome: Extend the bottom status bar to show four counters: skills found, valid skills, unique (post-dedup) skills, and current query results.
+Proof:
+- Command: Complete a scan and execute at least one filtered search query.
+- Expect: All four counters are visible, scan totals stay stable, and only query results counter changes as filters change.
+Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm
+Deps: T-025
 
 ### T-025 [SEARCH] Reconcile diagnostics totals with visible results
 Outcome: Define and implement clear count semantics so diagnostics totals (written/failed) and UI visible results are explainable, including the "many indexed vs 178 shown" case.

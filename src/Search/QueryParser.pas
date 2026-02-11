@@ -13,10 +13,10 @@ type
     TagFilters: TArray<string>;
   end;
 
-function DefaultSearchQuery: TSearchQuery;
+function DefaultSearchQuery: TSearchQuery; overload;
 function DefaultSearchQuery(const aDefaultLimit: Integer): TSearchQuery; overload;
 function BuildFtsMatchExpression(const aQuery: TSearchQuery): string;
-function ParseSearchQuery(const aRawQuery: string): TSearchQuery;
+function ParseSearchQuery(const aRawQuery: string): TSearchQuery; overload;
 function ParseSearchQuery(const aRawQuery: string; const aDefaultLimit: Integer): TSearchQuery; overload;
 
 implementation

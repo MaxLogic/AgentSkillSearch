@@ -304,15 +304,31 @@ object AppMainForm: TMainForm
     Panels = <
       item
         Text = 'Ready'
-        Width = 420
+        Width = 300
+      end
+      item
+        Text = 'Found: 0'
+        Width = 120
+      end
+      item
+        Text = 'Valid: 0'
+        Width = 120
+      end
+      item
+        Text = 'Unique: 0'
+        Width = 120
+      end
+      item
+        Text = 'Results: 0'
+        Width = 120
       end
       item
         Text = 'Last scan: n/a'
-        Width = 220
+        Width = 190
       end
       item
         Text = 'Cache: n/a'
-        Width = 640
+        Width = 414
       end>
     SimplePanel = False
   end
