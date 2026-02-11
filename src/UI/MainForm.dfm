@@ -152,6 +152,32 @@ object AppMainForm: TMainForm
       TabOrder = 0
       OnClick = HandleHasScriptsClick
     end
+    object fDockerHealthLabel: TStaticText
+      AlignWithMargins = True
+      Left = 810
+      Top = 8
+      Width = 126
+      Height = 28
+      Margins.Right = 8
+      Align = alRight
+      AutoSize = False
+      BorderStyle = sbsNone
+      Caption = 'Docker: checking...'
+      Layout = tlCenter
+      TabStop = False
+    end
+    object fDockerGpuButton: TButton
+      AlignWithMargins = True
+      Left = 944
+      Top = 8
+      Width = 86
+      Height = 28
+      Margins.Right = 8
+      Align = alRight
+      Caption = 'Start GPU'
+      TabOrder = 1
+      OnClick = HandleDockerGpuButtonClick
+    end
     object fScanProgressBar: TProgressBar
       AlignWithMargins = True
       Left = 1038
@@ -161,7 +187,7 @@ object AppMainForm: TMainForm
       Align = alRight
       MarqueeInterval = 30
       Style = pbstMarquee
-      TabOrder = 1
+      TabOrder = 2
       Visible = False
     end
   end

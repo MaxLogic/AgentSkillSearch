@@ -5,7 +5,8 @@ interface
 uses
   System.Classes, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
-  DatabaseManager, PipelineCoordinator, SearchController, SettingsModel, SkillSearchService;
+  DatabaseManager, DockerHealthMonitor, DockerOps, PipelineCoordinator, SearchController, SettingsModel,
+  SkillSearchService;
 
 type
   TMainForm = class(TForm)
@@ -20,7 +21,9 @@ type
     fScanProgressBar: TProgressBar;
     fDiagnosticsButton: TButton;
     fSearchAsYouTypeCheckBox: TCheckBox;
+    fDockerGpuButton: TButton;
     fFiltersPanel: TPanel;
+    fDockerHealthLabel: TStaticText;
     fHasScriptsCheckBox: TCheckBox;
     fMainPanel: TPanel;
     fResultsPanePanel: TPanel;
@@ -49,6 +52,9 @@ type
     fResults: TArray<TSkillSearchResult>;
     fScanCancelToken: TPipelineCancellationToken;
     fScanInProgress: Boolean;
+    fDockerHealthMonitor: TDockerHealthMonitor;
+    fDockerHealthState: TDockerHealthState;
+    fDockerStartInProgress: Boolean;
     fSearchController: TSearchController;
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
@@ -59,6 +65,10 @@ type
     procedure ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
     function BuildPipelineOptions: TPipelineOptions;
     procedure BeginScanProgress;
+    procedure BeginDockerStart;
+    procedure EndDockerStart;
+    procedure HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
+    procedure HandleDockerStartCompleted(const aResult: TDockerCommandResult);
     procedure EndScanProgress;
     function ExecuteScanUpdate(const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
       out aStatusText: string): Boolean;
@@ -80,6 +90,7 @@ type
   published
     procedure HandleCopyPathClick(Sender: TObject);
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
+    procedure HandleDockerGpuButtonClick(Sender: TObject);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleHasScriptsClick(Sender: TObject);
     procedure HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
@@ -180,6 +191,16 @@ begin
     fAppSettings.Search.SearchDebounceMs
   );
   fSearchController.OnCompleted := HandleSearchCompleted;
+  fDockerStartInProgress := False;
+  fDockerHealthState := TDockerHealthState.dhsUnknown;
+  fDockerHealthLabel.Caption := 'Docker: checking...';
+  fDockerHealthLabel.Hint := '';
+  fDockerHealthMonitor := TDockerHealthMonitor.Create(
+    fAppSettings.Docker.HealthCheckCommand,
+    10000,
+    HandleDockerHealthPolled
+  );
+  fDockerHealthMonitor.Start;
 
   QueueSearch(True);
 end;
@@ -199,6 +220,7 @@ begin
   end;
 
   LogInfo('Application shutdown.');
+  fDockerHealthMonitor.Free;
   fSearchController.Free;
   fSearchService.Free;
   fDatabaseManager.Free;
@@ -403,6 +425,19 @@ begin
   UpdateStatus('Scan running... (indeterminate)');
 end;
 
+procedure TMainForm.BeginDockerStart;
+begin
+  fDockerStartInProgress := True;
+  fDockerGpuButton.Enabled := False;
+  UpdateStatus('Starting Docker GPU stack...');
+end;
+
+procedure TMainForm.EndDockerStart;
+begin
+  fDockerGpuButton.Enabled := True;
+  fDockerStartInProgress := False;
+end;
+
 procedure TMainForm.EndScanProgress;
 begin
   fScanProgressBar.Visible := False;
@@ -413,6 +448,80 @@ begin
   begin
     fScanCancelToken.Free;
     fScanCancelToken := nil;
+  end;
+end;
+
+procedure TMainForm.HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
+const
+  cHealthyCaption = 'Docker: healthy';
+  cUnhealthyCaption = 'Docker: unhealthy';
+  cUnknownCaption = 'Docker: unknown';
+begin
+  if aState <> fDockerHealthState then
+  begin
+    fDockerHealthState := aState;
+    case aState of
+      TDockerHealthState.dhsHealthy:
+        begin
+          RecordPipelineNotice('Docker health: healthy');
+        end;
+      TDockerHealthState.dhsUnhealthy:
+        begin
+          RecordPipelineNotice('Docker health: unhealthy');
+        end;
+    else
+      begin
+        RecordPipelineNotice('Docker health: unknown');
+      end;
+    end;
+  end;
+
+  case aState of
+    TDockerHealthState.dhsHealthy:
+      begin
+        fDockerHealthLabel.Caption := cHealthyCaption;
+      end;
+    TDockerHealthState.dhsUnhealthy:
+      begin
+        fDockerHealthLabel.Caption := cUnhealthyCaption;
+      end;
+  else
+    begin
+      fDockerHealthLabel.Caption := cUnknownCaption;
+    end;
+  end;
+
+  fDockerHealthLabel.Hint := aDetail;
+end;
+
+procedure TMainForm.HandleDockerStartCompleted(const aResult: TDockerCommandResult);
+var
+  lMessage: string;
+begin
+  try
+    if aResult.Success then
+    begin
+      lMessage := 'Docker GPU stack start request succeeded.';
+      RecordPipelineNotice(lMessage);
+      UpdateStatus(lMessage);
+      Exit;
+    end;
+
+    if aResult.TimedOut then
+    begin
+      lMessage := 'Docker GPU start request timed out.';
+    end else begin
+      lMessage := Format('Docker GPU start failed (exit=%d).', [aResult.ExitCode]);
+    end;
+
+    if Trim(aResult.OutputText) <> '' then
+    begin
+      lMessage := lMessage + ' ' + aResult.OutputText;
+    end;
+    RecordPipelineError(lMessage);
+    UpdateStatus(lMessage);
+  finally
+    EndDockerStart;
   end;
 end;
 
@@ -633,6 +742,38 @@ end;
 procedure TMainForm.HandleDiagnosticsButtonClick(Sender: TObject);
 begin
   ShowDiagnosticsDialog(self);
+end;
+
+procedure TMainForm.HandleDockerGpuButtonClick(Sender: TObject);
+begin
+  if fDockerStartInProgress then
+  begin
+    Exit;
+  end;
+
+  BeginDockerStart;
+  TThread.CreateAnonymousThread(
+    procedure
+    var
+      lResult: TDockerCommandResult;
+    begin
+      lResult := StartDockerGpuStack(fAppSettings.Docker.StartGpuCommand, 45);
+      TThread.Queue(nil,
+        procedure
+        var
+          lForm: TMainForm;
+        begin
+          lForm := AppMainForm;
+          if not Assigned(lForm) then
+          begin
+            Exit;
+          end;
+
+          lForm.HandleDockerStartCompleted(lResult);
+        end
+      );
+    end
+  ).Start;
 end;
 
 procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;

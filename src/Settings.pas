@@ -298,6 +298,11 @@ begin
     Result.Settings.Index.NormalizeLineEndings := ReadRequiredBool(lIni, Result, 'Index', 'NormalizeLineEndings',
       lDefault.Index.NormalizeLineEndings);
 
+    Result.Settings.Docker.StartGpuCommand := ReadRequiredString(lIni, Result, 'Docker', 'StartGpuCommand',
+      lDefault.Docker.StartGpuCommand);
+    Result.Settings.Docker.HealthCheckCommand := ReadRequiredString(lIni, Result, 'Docker', 'HealthCheckCommand',
+      lDefault.Docker.HealthCheckCommand);
+
     Result.Settings.Search.SearchAsYouType := ReadRequiredBool(lIni, Result, 'Search', 'SearchAsYouType',
       lDefault.Search.SearchAsYouType);
     Result.Settings.Search.SearchDebounceMs := ReadRequiredInteger(lIni, Result, 'Search', 'SearchDebounceMs',
