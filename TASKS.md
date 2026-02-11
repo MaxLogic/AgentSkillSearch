@@ -1,14 +1,87 @@
 # Tasks
 
-Next task ID: T-022
+Next task ID: T-031
 
 ## Summary
-Open tasks: 0 (In Progress: 0, Next Today: 0, Next This Week: 0, Next Later: 0, Blocked: 0)
+Open tasks: 9 (In Progress: 0, Next Today: 9, Next This Week: 0, Next Later: 0, Blocked: 0)
 Done tasks: 21
 
 ## In Progress
 
 ## Next – Today
+
+### T-022 [UI] Close diagnostics dialog on Esc
+Outcome: Make the Diagnostics dialog close immediately when Esc is pressed, matching standard modal dialog keyboard behavior.
+Proof:
+- Command: Open Diagnostics from the main form and press Esc.
+- Expect: The dialog closes without errors and focus returns to the main form.
+Touches: src/UI/DiagnosticsForm.pas, src/UI/DiagnosticsForm.dfm
+Notes: Maintainer request from diagnostics review.
+
+### T-023 [SCAN] Add excludes list for scan/index pipeline
+Outcome: Add exclude-list support so scan/index skips obvious test-harness skill paths, and ship a ready-to-use `excludes.lst` seeded from the latest diagnostics failures.
+Proof:
+- Command: Add one known fixture/test-harness path from `excludes.lst` under a scanned source and run Scan.
+- Expect: The path is skipped before git/index work, and diagnostics/logs show it as excluded instead of failed.
+Touches: excludes.lst, src/Scanner/*.pas, src/Settings.pas, README.md
+Notes: Seed patterns from scan report dated 2026-02-11 (OpenClaw test fixtures and similar harness paths).
+
+### T-024 [IDX] Best-effort repair for missing frontmatter closing fence
+Outcome: Improve SKILL.md parsing with a best-effort recovery path that repairs missing YAML frontmatter closing fences and continues indexing with a warning.
+Proof:
+- Command: Index a fixture SKILL.md that starts frontmatter but omits the closing `---`.
+- Expect: The skill is indexed via repaired parse path, and diagnostics record a non-fatal "frontmatter repaired" warning.
+Touches: src/Indexer/*.pas, tests/IndexerTests.pas, docs/spec-slices/
+Notes: Recovery scope is limited to missing closing fence at file start; malformed content beyond that remains a parse error.
+
+### T-025 [SEARCH] Reconcile diagnostics totals with visible results
+Outcome: Define and implement clear count semantics so diagnostics totals (written/failed) and UI visible results are explainable, including the "many indexed vs 178 shown" case.
+Proof:
+- Command: Run a large scan and then leave query empty on the main screen.
+- Expect: We can account for displayed count using documented rules (validity filters, dedup, and query scope) without ambiguity.
+Touches: src/Search/*.pas, src/UI/MainForm.pas, src/Db/*.pas, README.md
+Notes: Add explicit terminology for found, written, valid, unique, and current query result counts.
+
+### T-026 [UI] Add status bar counters for found, valid, unique, and results
+Outcome: Extend the bottom status bar to show four counters: skills found, valid skills, unique (post-dedup) skills, and current query results.
+Proof:
+- Command: Complete a scan and execute at least one filtered search query.
+- Expect: All four counters are visible, scan totals stay stable, and only query results counter changes as filters change.
+Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm
+Deps: T-025
+
+### T-027 [UI] Show scan progress bar as documented
+Outcome: Implement or restore a visible progress bar during scan so runtime behavior matches README expectations.
+Proof:
+- Command: Start a scan on a medium or large source list.
+- Expect: A progress bar is visible during scan, updates throughout work, and resets/hides correctly when scan completes or is canceled.
+Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, README.md
+Notes: If exact totals are unknown, use an explicit indeterminate mode with phase text.
+
+### T-028 [OPS] Add button to start Docker GPU stack
+Outcome: Add a UI button that starts the configured Docker GPU stack from the app and surfaces command success/failure in diagnostics/log output.
+Proof:
+- Command: Click the new Docker GPU start button with Docker installed and daemon running.
+- Expect: The configured docker command is launched non-interactively and UI feedback confirms start request success or failure.
+Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, src/Docker/*.pas, README.md
+Notes: Keep command configurable and aligned with README setup instructions.
+
+### T-029 [OPS] Add Docker health indicator with 10s polling thread
+Outcome: Add a Docker health indicator refreshed every 10 seconds by a background thread, with all VCL updates marshaled through `TThread.Queue`.
+Proof:
+- Command: Run app with Docker stopped, then start Docker while app is open.
+- Expect: Indicator shows unhealthy first, then flips to healthy within one polling interval, with no cross-thread VCL access errors.
+Touches: src/UI/MainForm.pas, src/Docker/*.pas, src/Logging.pas
+Deps: T-028
+Notes: Polling thread must stop cleanly on app shutdown or scan cancel.
+
+### T-030 [UI] Add search syntax help button near search box
+Outcome: Add a help button beside the search bar that displays concise query syntax guidance consistent with README examples.
+Proof:
+- Command: Click the search help button on the main form.
+- Expect: A help dialog/popup opens and explains supported syntax (`"phrase"`, `-exclude`, `name:`, `tag:`, `path:`, `has:scripts`, `limit:`).
+Touches: src/UI/MainForm.pas, src/UI/MainForm.dfm, README.md
+Notes: Keep text short and directly actionable for first-time users.
 
 ## Next – This Week
 
