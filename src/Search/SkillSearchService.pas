@@ -40,6 +40,9 @@ type
     fSnippetMaxChars: Integer;
     fSqliteDllPath: string;
     procedure ApplySemanticRerank(const aQuery: string; var aResults: TArray<TSkillSearchResult>);
+    procedure AppendSemanticCandidates(const aQueryVector: TArray<Single>; const aPositiveTerms, aNameFilters,
+      aTagFilters, aPathFilters, aExcludedTerms: TArray<string>; const aHasScriptsFilter, aMaxAppend: Integer;
+      var aResults: TArray<TSkillSearchResult>);
     function BuildFallbackSnippet(const aBody: string; const aTerms: TArray<string>): string;
     function CosineSimilarity(const aLeft, aRight: TArray<Single>): Double;
     function ClampSnippet(const aValue: string): string;
@@ -543,18 +546,255 @@ begin
   Result := (aValue - aMin) / (aMax - aMin);
 end;
 
+procedure TSkillSearchService.AppendSemanticCandidates(const aQueryVector: TArray<Single>; const aPositiveTerms,
+  aNameFilters, aTagFilters, aPathFilters, aExcludedTerms: TArray<string>; const aHasScriptsFilter, aMaxAppend: Integer;
+  var aResults: TArray<TSkillSearchResult>);
+var
+  i: Integer;
+  lAppendCount: Integer;
+  lCandidate: TSkillSearchResult;
+  lCandidates: TArray<TSkillSearchResult>;
+  lCandidatesByHash: TDictionary<string, Integer>;
+  lCurrent: TSkillSearchResult;
+  lCurrentIndex: Integer;
+  lDuplicatePaths: TArray<string>;
+  lKnownFile: string;
+  lScore: Double;
+  lSemanticQuery: TFDQuery;
+  lSemanticSql: TStringBuilder;
+  lSkillFileSet: TDictionary<string, Boolean>;
+  lTermVector: TArray<Single>;
+  lBodyHash: string;
+begin
+  if (aMaxAppend <= 0) or (Length(aQueryVector) = 0) then
+  begin
+    Exit;
+  end;
+
+  lSkillFileSet := TDictionary<string, Boolean>.Create;
+  lCandidatesByHash := TDictionary<string, Integer>.Create;
+  lSemanticSql := TStringBuilder.Create;
+  lSemanticQuery := TFDQuery.Create(nil);
+  try
+    for i := 0 to Pred(Length(aResults)) do
+    begin
+      lKnownFile := Trim(aResults[i].SkillFile);
+      if lKnownFile <> '' then
+      begin
+        lSkillFileSet.AddOrSetValue(lKnownFile, True);
+      end;
+
+      if Trim(aResults[i].DuplicatePaths) = '' then
+      begin
+        Continue;
+      end;
+
+      lDuplicatePaths := SplitString(aResults[i].DuplicatePaths, sLineBreak);
+      for lKnownFile in lDuplicatePaths do
+      begin
+        if Trim(lKnownFile) = '' then
+        begin
+          Continue;
+        end;
+        lSkillFileSet.AddOrSetValue(Trim(lKnownFile), True);
+      end;
+    end;
+
+    lSemanticSql.AppendLine(
+      'SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.body_hash, s.has_scripts, s.scripts_count,'
+    );
+    lSemanticSql.AppendLine(
+      '  s.scripts_exts, s.body_md, COALESCE(v.model, '''') AS model, v.vec'
+    );
+    lSemanticSql.AppendLine('FROM skills s');
+    lSemanticSql.AppendLine('JOIN skill_chunks c ON c.skill_id = s.id AND c.chunk_index = 0');
+    lSemanticSql.AppendLine('JOIN chunk_vec v ON v.chunk_id = c.id');
+    lSemanticSql.AppendLine('WHERE v.model = :semantic_model');
+
+    for i := 0 to Pred(Length(aNameFilters)) do
+    begin
+      lSemanticSql.AppendLine(Format('AND LOWER(s.name) LIKE :semantic_name_filter_%d ESCAPE ''\''', [i]));
+    end;
+
+    for i := 0 to Pred(Length(aTagFilters)) do
+    begin
+      lSemanticSql.AppendLine(Format('AND LOWER(COALESCE(s.tags, '''')) LIKE :semantic_tag_filter_%d ESCAPE ''\''', [i]));
+    end;
+
+    for i := 0 to Pred(Length(aPathFilters)) do
+    begin
+      lSemanticSql.AppendLine(Format('AND LOWER(s.skill_root) LIKE :semantic_path_filter_%d ESCAPE ''\''', [i]));
+    end;
+
+    if aHasScriptsFilter = 1 then
+    begin
+      lSemanticSql.AppendLine('AND s.has_scripts = 1');
+    end else if aHasScriptsFilter = 0 then
+    begin
+      lSemanticSql.AppendLine('AND s.has_scripts = 0');
+    end;
+
+    for i := 0 to Pred(Length(aExcludedTerms)) do
+    begin
+      lSemanticSql.AppendLine(Format('AND (LOWER(s.name) NOT LIKE :semantic_exclude_%d ESCAPE ''\''', [i]));
+      lSemanticSql.AppendLine(Format('  AND LOWER(COALESCE(s.description, '''')) NOT LIKE :semantic_exclude_%d ESCAPE ''\''', [i]));
+      lSemanticSql.AppendLine(Format('  AND LOWER(COALESCE(s.tags, '''')) NOT LIKE :semantic_exclude_%d ESCAPE ''\''', [i]));
+      lSemanticSql.AppendLine(Format('  AND LOWER(COALESCE(s.body_md, '''')) NOT LIKE :semantic_exclude_%d ESCAPE ''\'')', [i]));
+    end;
+
+    lSemanticSql.AppendLine('ORDER BY s.id ASC');
+
+    lSemanticQuery.Connection := fConnection;
+    lSemanticQuery.SQL.Text := lSemanticSql.ToString;
+    lSemanticQuery.ParamByName('semantic_model').AsString := fSemanticOptions.Model;
+
+    for i := 0 to Pred(Length(aNameFilters)) do
+    begin
+      lSemanticQuery.ParamByName(Format('semantic_name_filter_%d', [i])).AsString := LowerLikePattern(aNameFilters[i]);
+    end;
+
+    for i := 0 to Pred(Length(aTagFilters)) do
+    begin
+      lSemanticQuery.ParamByName(Format('semantic_tag_filter_%d', [i])).AsString := LowerLikePattern(aTagFilters[i]);
+    end;
+
+    for i := 0 to Pred(Length(aPathFilters)) do
+    begin
+      lSemanticQuery.ParamByName(Format('semantic_path_filter_%d', [i])).AsString := LowerLikePattern(aPathFilters[i]);
+    end;
+
+    for i := 0 to Pred(Length(aExcludedTerms)) do
+    begin
+      lSemanticQuery.ParamByName(Format('semantic_exclude_%d', [i])).AsString := LowerLikePattern(aExcludedTerms[i]);
+    end;
+
+    lSemanticQuery.Open;
+    while not lSemanticQuery.Eof do
+    begin
+      lKnownFile := Trim(lSemanticQuery.FieldByName('skill_file').AsString);
+      if (lKnownFile = '') or lSkillFileSet.ContainsKey(lKnownFile) then
+      begin
+        lSemanticQuery.Next;
+        Continue;
+      end;
+
+      if not TryLoadChunkVector(fSemanticOptions.Model, lSemanticQuery, lTermVector) then
+      begin
+        lSemanticQuery.Next;
+        Continue;
+      end;
+
+      lScore := CosineSimilarity(aQueryVector, lTermVector);
+      if lScore <= 0.0 then
+      begin
+        lSemanticQuery.Next;
+        Continue;
+      end;
+
+      lBodyHash := Trim(lSemanticQuery.FieldByName('body_hash').AsString);
+      if lBodyHash = '' then
+      begin
+        lBodyHash := lKnownFile;
+      end;
+
+      if lCandidatesByHash.TryGetValue(lBodyHash, lCurrentIndex) then
+      begin
+        lCurrent := lCandidates[lCurrentIndex];
+        Inc(lCurrent.DuplicateCount);
+        if lCurrent.DuplicatePaths = '' then
+        begin
+          lCurrent.DuplicatePaths := lKnownFile;
+        end else begin
+          lCurrent.DuplicatePaths := lCurrent.DuplicatePaths + sLineBreak + lKnownFile;
+        end;
+        if lScore > lCurrent.SemanticScore then
+        begin
+          lCurrent.SemanticScore := lScore;
+          lCurrent.FinalScore := lScore;
+        end;
+        lCandidates[lCurrentIndex] := lCurrent;
+        lSemanticQuery.Next;
+        Continue;
+      end;
+
+      lCandidate.Name := lSemanticQuery.FieldByName('name').AsString;
+      lCandidate.Description := lSemanticQuery.FieldByName('description').AsString;
+      lCandidate.Tags := lSemanticQuery.FieldByName('tags').AsString;
+      lCandidate.SkillFile := lKnownFile;
+      lCandidate.SkillRoot := lSemanticQuery.FieldByName('skill_root').AsString;
+      lCandidate.DuplicateCount := 1;
+      lCandidate.DuplicatePaths := '';
+      lCandidate.HasScripts := lSemanticQuery.FieldByName('has_scripts').AsInteger;
+      lCandidate.ScriptsCount := lSemanticQuery.FieldByName('scripts_count').AsInteger;
+      lCandidate.ScriptsExts := lSemanticQuery.FieldByName('scripts_exts').AsString;
+      lCandidate.LexScore := 0.0;
+      lCandidate.SemanticScore := lScore;
+      lCandidate.FinalScore := lScore;
+      lCandidate.Snippet := BuildFallbackSnippet(lSemanticQuery.FieldByName('body_md').AsString, aPositiveTerms);
+
+      SetLength(lCandidates, Length(lCandidates) + 1);
+      lCandidates[High(lCandidates)] := lCandidate;
+      lCandidatesByHash.Add(lBodyHash, High(lCandidates));
+      lSemanticQuery.Next;
+    end;
+
+    TArray.Sort<TSkillSearchResult>(
+      lCandidates,
+      TComparer<TSkillSearchResult>.Construct(
+        function(const aLeft, aRight: TSkillSearchResult): Integer
+        begin
+          if aLeft.SemanticScore > aRight.SemanticScore then
+          begin
+            Exit(-1);
+          end;
+          if aLeft.SemanticScore < aRight.SemanticScore then
+          begin
+            Exit(1);
+          end;
+          Result := CompareText(aLeft.Name, aRight.Name);
+        end
+      )
+    );
+
+    lAppendCount := 0;
+    for i := 0 to Pred(Length(lCandidates)) do
+    begin
+      if lAppendCount >= aMaxAppend then
+      begin
+        Break;
+      end;
+
+      if lSkillFileSet.ContainsKey(lCandidates[i].SkillFile) then
+      begin
+        Continue;
+      end;
+
+      SetLength(aResults, Length(aResults) + 1);
+      aResults[High(aResults)] := lCandidates[i];
+      lSkillFileSet.AddOrSetValue(lCandidates[i].SkillFile, True);
+      Inc(lAppendCount);
+    end;
+  finally
+    lSemanticQuery.Free;
+    lSemanticSql.Free;
+    lCandidatesByHash.Free;
+    lSkillFileSet.Free;
+  end;
+end;
+
 procedure TSkillSearchService.ApplySemanticRerank(const aQuery: string; var aResults: TArray<TSkillSearchResult>);
 var
   i: Integer;
   lCandidateCount: Integer;
-  lCandidates: TArray<TSkillSearchResult>;
   lLexMax: Double;
   lLexMin: Double;
   lNormLex: Double;
   lNormSem: Double;
   lQueryVector: TArray<Single>;
+  lSearchQuery: TSearchQuery;
   lSemMax: Double;
   lSemMin: Double;
+  lSemanticAppendLimit: Integer;
 begin
   if not fSemanticOptions.Enabled then
   begin
@@ -578,38 +818,56 @@ begin
     Exit;
   end;
 
+  lSearchQuery := ParseSearchQuery(aQuery, fDefaultMaxResults);
   lCandidateCount := Min(Length(aResults), fSemanticOptions.CandidateRerankCount);
-  SetLength(lCandidates, lCandidateCount);
+  for i := 0 to Pred(lCandidateCount) do
+  begin
+    if not TryComputeSkillSemanticScore(aResults[i].SkillFile, lQueryVector, aResults[i].SemanticScore) then
+    begin
+      aResults[i].SemanticScore := 0.0;
+    end;
+  end;
+
+  for i := lCandidateCount to Pred(Length(aResults)) do
+  begin
+    aResults[i].SemanticScore := 0.0;
+  end;
+
+  lSemanticAppendLimit := Max(1, Min(fSemanticOptions.CandidateRerankCount, lSearchQuery.Limit));
+  AppendSemanticCandidates(
+    lQueryVector,
+    lSearchQuery.PositiveTerms,
+    lSearchQuery.NameFilters,
+    lSearchQuery.TagFilters,
+    lSearchQuery.PathFilters,
+    lSearchQuery.ExcludedTerms,
+    lSearchQuery.HasScriptsFilter,
+    lSemanticAppendLimit,
+    aResults
+  );
 
   lLexMin := MaxDouble;
   lLexMax := -MaxDouble;
   lSemMin := MaxDouble;
   lSemMax := -MaxDouble;
-
-  for i := 0 to Pred(lCandidateCount) do
+  for i := 0 to Pred(Length(aResults)) do
   begin
-    lCandidates[i] := aResults[i];
-    if not TryComputeSkillSemanticScore(lCandidates[i].SkillFile, lQueryVector, lCandidates[i].SemanticScore) then
-    begin
-      lCandidates[i].SemanticScore := 0.0;
-    end;
-
-    lLexMin := Min(lLexMin, lCandidates[i].LexScore);
-    lLexMax := Max(lLexMax, lCandidates[i].LexScore);
-    lSemMin := Min(lSemMin, lCandidates[i].SemanticScore);
-    lSemMax := Max(lSemMax, lCandidates[i].SemanticScore);
+    lLexMin := Min(lLexMin, aResults[i].LexScore);
+    lLexMax := Max(lLexMax, aResults[i].LexScore);
+    lSemMin := Min(lSemMin, aResults[i].SemanticScore);
+    lSemMax := Max(lSemMax, aResults[i].SemanticScore);
   end;
 
-  for i := 0 to Pred(lCandidateCount) do
+  for i := 0 to Pred(Length(aResults)) do
   begin
-    lNormLex := NormalizeScore(lCandidates[i].LexScore, lLexMin, lLexMax);
-    lNormSem := NormalizeScore(lCandidates[i].SemanticScore, lSemMin, lSemMax);
-    lCandidates[i].FinalScore := (0.35 * lNormLex) + (0.65 * lNormSem);
-    lCandidates[i].LexScore := lCandidates[i].FinalScore;
+    lNormLex := NormalizeScore(aResults[i].LexScore, lLexMin, lLexMax);
+    lNormSem := NormalizeScore(aResults[i].SemanticScore, lSemMin, lSemMax);
+    aResults[i].FinalScore := (0.35 * lNormLex) + (0.65 * lNormSem);
+    aResults[i].LexScore := aResults[i].FinalScore;
   end;
 
   TArray.Sort<TSkillSearchResult>(
-    lCandidates,
+    aResults,
     TComparer<TSkillSearchResult>.Construct(
       function(const aLeft, aRight: TSkillSearchResult): Integer
       begin
@@ -626,9 +884,9 @@ begin
     )
   );
 
-  for i := 0 to Pred(lCandidateCount) do
+  if Length(aResults) > lSearchQuery.Limit then
   begin
-    aResults[i] := lCandidates[i];
+    SetLength(aResults, lSearchQuery.Limit);
   end;
 end;
 
