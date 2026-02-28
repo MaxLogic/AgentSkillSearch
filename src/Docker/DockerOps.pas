@@ -14,6 +14,7 @@ type
   end;
 
 function CheckDockerHealth(const aHealthCheckCommand: string; const aTimeoutSeconds: Integer = 8): TDockerCommandResult;
+function CheckOllamaHealth(const aDockerCheckCommand: string; const aTimeoutSeconds: Integer = 8): TDockerCommandResult;
 function RunDockerCommand(const aCommandLine: string; const aTimeoutSeconds: Integer = 30): TDockerCommandResult;
 function StartDockerGpuStack(const aStartCommand: string; const aTimeoutSeconds: Integer = 30): TDockerCommandResult;
 
@@ -21,6 +22,11 @@ implementation
 
 uses
   System.Diagnostics, System.Math, System.SysUtils;
+
+const
+  cInspectOllamaStateCommand =
+    'docker inspect --type container --format "{{if .State.Running}}running{{else}}stopped{{end}}|' +
+    '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" ollama';
 
 procedure DrainPipeOutput(const aPipeHandle: THandle; var aOutput: string);
 var
@@ -178,6 +184,80 @@ end;
 function CheckDockerHealth(const aHealthCheckCommand: string; const aTimeoutSeconds: Integer): TDockerCommandResult;
 begin
   Result := RunDockerCommand(aHealthCheckCommand, aTimeoutSeconds);
+end;
+
+function CheckOllamaHealth(const aDockerCheckCommand: string; const aTimeoutSeconds: Integer): TDockerCommandResult;
+var
+  lContainerHealth: string;
+  lContainerState: string;
+  lDockerResult: TDockerCommandResult;
+  lInspectResult: TDockerCommandResult;
+  lSepPos: Integer;
+begin
+  lInspectResult := RunDockerCommand(cInspectOllamaStateCommand, aTimeoutSeconds);
+  if lInspectResult.Success then
+  begin
+    lContainerState := Trim(lInspectResult.OutputText);
+    lContainerHealth := 'none';
+    lSepPos := Pos('|', lContainerState);
+    if lSepPos > 0 then
+    begin
+      lContainerHealth := Trim(Copy(lContainerState, lSepPos + 1, MaxInt));
+      lContainerState := Trim(Copy(lContainerState, 1, lSepPos - 1));
+    end;
+
+    if SameText(lContainerState, 'running') then
+    begin
+      Result := lInspectResult;
+      Result.Success := SameText(lContainerHealth, 'none') or SameText(lContainerHealth, 'healthy');
+      if Result.Success then
+      begin
+        if SameText(lContainerHealth, 'healthy') then
+        begin
+          Result.OutputText := 'ollama container running (healthy)';
+        end else begin
+          Result.OutputText := 'ollama container running';
+        end;
+      end else begin
+        Result.OutputText := 'ollama container running but unhealthy (' + lContainerHealth + ')';
+      end;
+      Exit;
+    end;
+  end;
+
+  lDockerResult := CheckDockerHealth(aDockerCheckCommand, aTimeoutSeconds);
+  if lDockerResult.Success then
+  begin
+    Result := lInspectResult;
+    Result.Success := False;
+    Result.TimedOut := lInspectResult.TimedOut;
+    Result.ExitCode := lInspectResult.ExitCode;
+    if lInspectResult.TimedOut then
+    begin
+      Result.OutputText := 'ollama container inspection timed out';
+    end else begin
+      Result.OutputText := 'ollama container is not running';
+      if Trim(lInspectResult.OutputText) <> '' then
+      begin
+        Result.OutputText := Result.OutputText + ' (' + lInspectResult.OutputText + ')';
+      end;
+    end;
+    Exit;
+  end;
+
+  Result := lDockerResult;
+  Result.Success := False;
+  if Result.TimedOut then
+  begin
+    Result.OutputText := 'docker availability check timed out';
+  end else begin
+    if Trim(Result.OutputText) = '' then
+    begin
+      Result.OutputText := 'docker is not available';
+    end else begin
+      Result.OutputText := 'docker is not available: ' + Result.OutputText;
+    end;
+  end;
 end;
 
 end.

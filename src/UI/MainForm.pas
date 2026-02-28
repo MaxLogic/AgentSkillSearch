@@ -74,6 +74,7 @@ type
     procedure HandleDockerStartCompleted(const aResult: TDockerCommandResult);
     procedure EndScanProgress;
     procedure LoadSearchHelpImage;
+    procedure StartDockerStackAsync;
     function ResolveSearchHelpImagePath: string;
     function ExecuteScanUpdate(const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
       out aStatusText: string): Boolean;
@@ -150,6 +151,7 @@ var
   lSettings: TSettingsLoadResult;
 begin
   inherited Create(aOwner);
+  AppMainForm := Self;
 
   lSettings := LoadOrCreateSettings(GetSettingsFilePath);
   fAppSettings := lSettings.Settings;
@@ -202,7 +204,7 @@ begin
   fSearchController.OnCompleted := HandleSearchCompleted;
   fDockerStartInProgress := False;
   fDockerHealthState := TDockerHealthState.dhsUnknown;
-  fDockerHealthLabel.Caption := 'Docker: checking...';
+  fDockerHealthLabel.Caption := 'Ollama: checking...';
   fDockerHealthLabel.Hint := '';
   fDockerHealthMonitor := TDockerHealthMonitor.Create(
     fAppSettings.Docker.HealthCheckCommand,
@@ -210,6 +212,7 @@ begin
     HandleDockerHealthPolled
   );
   fDockerHealthMonitor.Start;
+  StartDockerStackAsync;
 
   QueueSearch(True);
 end;
@@ -495,7 +498,7 @@ begin
   fDockerStartInProgress := True;
   fDockerStartHourGlass := AutoHourGlass.MakeCHG;
   fDockerGpuButton.Enabled := False;
-  UpdateStatus('Starting Docker stack...');
+  UpdateStatus('Starting Ollama container...');
 end;
 
 procedure TMainForm.EndDockerStart;
@@ -503,6 +506,38 @@ begin
   fDockerStartHourGlass := nil;
   fDockerGpuButton.Enabled := True;
   fDockerStartInProgress := False;
+end;
+
+procedure TMainForm.StartDockerStackAsync;
+begin
+  if fDockerStartInProgress then
+  begin
+    Exit;
+  end;
+
+  BeginDockerStart;
+  TThread.CreateAnonymousThread(
+    procedure
+    var
+      lResult: TDockerCommandResult;
+    begin
+      lResult := StartDockerGpuStack(fAppSettings.Docker.StartGpuCommand, 45);
+      TThread.Queue(nil,
+        procedure
+        var
+          lForm: TMainForm;
+        begin
+          lForm := AppMainForm;
+          if not Assigned(lForm) then
+          begin
+            Exit;
+          end;
+
+          lForm.HandleDockerStartCompleted(lResult);
+        end
+      );
+    end
+  ).Start;
 end;
 
 procedure TMainForm.EndScanProgress;
@@ -521,9 +556,9 @@ end;
 
 procedure TMainForm.HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
 const
-  cHealthyCaption = 'Docker: healthy';
-  cUnhealthyCaption = 'Docker: unhealthy';
-  cUnknownCaption = 'Docker: unknown';
+  cHealthyCaption = 'Ollama: running';
+  cUnhealthyCaption = 'Ollama: unavailable';
+  cUnknownCaption = 'Ollama: unknown';
 begin
   if aState <> fDockerHealthState then
   begin
@@ -531,15 +566,15 @@ begin
     case aState of
       TDockerHealthState.dhsHealthy:
         begin
-          RecordPipelineNotice('Docker health: healthy');
+          RecordPipelineNotice('Ollama health: healthy');
         end;
       TDockerHealthState.dhsUnhealthy:
         begin
-          RecordPipelineNotice('Docker health: unhealthy');
+          RecordPipelineNotice('Ollama health: unhealthy');
         end;
     else
       begin
-        RecordPipelineNotice('Docker health: unknown');
+        RecordPipelineNotice('Ollama health: unknown');
       end;
     end;
   end;
@@ -569,7 +604,7 @@ begin
   try
     if aResult.Success then
     begin
-      lMessage := 'Docker stack start request succeeded.';
+      lMessage := 'Ollama start request succeeded.';
       RecordPipelineNotice(lMessage);
       UpdateStatus(lMessage);
       Exit;
@@ -577,9 +612,9 @@ begin
 
     if aResult.TimedOut then
     begin
-      lMessage := 'Docker stack start request timed out.';
+      lMessage := 'Ollama start request timed out.';
     end else begin
-      lMessage := Format('Docker stack start failed (exit=%d).', [aResult.ExitCode]);
+      lMessage := Format('Ollama start failed (exit=%d).', [aResult.ExitCode]);
     end;
 
     if Trim(aResult.OutputText) <> '' then
@@ -830,34 +865,7 @@ end;
 
 procedure TMainForm.HandleDockerGpuButtonClick(Sender: TObject);
 begin
-  if fDockerStartInProgress then
-  begin
-    Exit;
-  end;
-
-  BeginDockerStart;
-  TThread.CreateAnonymousThread(
-    procedure
-    var
-      lResult: TDockerCommandResult;
-    begin
-      lResult := StartDockerGpuStack(fAppSettings.Docker.StartGpuCommand, 45);
-      TThread.Queue(nil,
-        procedure
-        var
-          lForm: TMainForm;
-        begin
-          lForm := AppMainForm;
-          if not Assigned(lForm) then
-          begin
-            Exit;
-          end;
-
-          lForm.HandleDockerStartCompleted(lResult);
-        end
-      );
-    end
-  ).Start;
+  StartDockerStackAsync;
 end;
 
 procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
