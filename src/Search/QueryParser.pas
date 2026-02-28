@@ -97,6 +97,8 @@ end;
 
 function NormalizeFtsTerm(const aTerm: string): string;
 var
+  i: Integer;
+  lCanUsePrefixWildcard: Boolean;
   lTerm: string;
 begin
   lTerm := Trim(StringReplace(aTerm, '"', '', [rfReplaceAll]));
@@ -108,6 +110,25 @@ begin
   if Pos(' ', lTerm) > 0 then
   begin
     Result := '"' + lTerm + '"';
+    Exit;
+  end;
+
+  lCanUsePrefixWildcard := lTerm[Length(lTerm)] <> '*';
+  if lCanUsePrefixWildcard then
+  begin
+    for i := 1 to Length(lTerm) do
+    begin
+      if not CharInSet(lTerm[i], ['0'..'9', 'A'..'Z', '_', 'a'..'z']) then
+      begin
+        lCanUsePrefixWildcard := False;
+        Break;
+      end;
+    end;
+  end;
+
+  if lCanUsePrefixWildcard then
+  begin
+    Result := lTerm + '*';
   end else begin
     Result := lTerm;
   end;

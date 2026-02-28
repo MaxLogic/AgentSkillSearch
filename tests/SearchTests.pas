@@ -204,6 +204,11 @@ begin
     AssertTrue(Length(lResults) >= 1, 'Expected retry results with jwt excluded');
     AssertTrue(not ContainsText(lResults[0].Name, 'JWT'), 'Excluded term should remove jwt item from top results');
 
+    lResults := lSearchService.Search('net basi');
+    AssertTrue(Length(lResults) >= 1, 'Prefix query should match network basics skill');
+    AssertTrue(SameText(lResults[0].Name, 'Network Basics'),
+      'Prefix query should rank the network basics name match first');
+
     lResults := lSearchService.Search('"rate limit" limit:1 path:repo-alpha tag:delphi');
     AssertEqualInt(1, Length(lResults), 'Limit/path/tag filters should narrow to one result');
     AssertTrue(ContainsText(lResults[0].SkillRoot, 'repo-alpha'), 'Path filter mismatch');
