@@ -71,7 +71,7 @@ begin
     begin
       while not TThread.CurrentThread.CheckTerminated do
       begin
-        lResult := CheckDockerHealth(fCheckCommand, 8);
+        lResult := CheckOllamaHealth(fCheckCommand, 8);
         if lResult.Success then
         begin
           lState := TDockerHealthState.dhsHealthy;
