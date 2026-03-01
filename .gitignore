@@ -84,6 +84,8 @@ pas-api-map.md
 /bin/cache/*.db
 /bin/cache/*.db-*
 /bin/logs/*.log
+/bin/Sources.lst
+/tests/bin/Sources.lst
 /tests/bin/*
 !/tests/bin/.gitkeep
 /screenshots
