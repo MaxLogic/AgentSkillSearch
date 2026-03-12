@@ -91,3 +91,11 @@ pas-api-map.md
 /screenshots
 /projects/*.otares
 /bin/bugreport.txt
+
+# Local assistant/spec workflow files
+/AGENTS.md
+/TASKS.md
+/conventions.md
+/spec.md
+/.agents/
+/docs/spec-slices/
