@@ -60,6 +60,7 @@ type
   TUiSettings = record
     OpenFileOnEnter: Boolean;
     ShowPreviewPane: Boolean;
+    TrayHotkey: string;
   end;
 
   TUiStateSettings = record
@@ -150,6 +151,7 @@ begin
 
   Result.Ui.ShowPreviewPane := True;
   Result.Ui.OpenFileOnEnter := True;
+  Result.Ui.TrayHotkey := '';
 
   Result.UiState.CurrentPPI := 0;
   Result.UiState.DuplicateInfoWidth := 0;

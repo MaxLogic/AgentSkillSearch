@@ -40,6 +40,7 @@
 - The main window now includes a collapsible tag browser with per-tag skill counts, click-to-filter behavior, and automatic refresh after scans (`T-041`).
 - Semantic-enabled scans now surface embedding warm-up progress and unavailable notices in the status bar, and the preview pane shows a Related list of cosine-ranked similar skills with click-to-select or open behavior (`T-043`, `T-044`).
 - MainForm now exposes an in-app `Edit Sources...` dialog that filters invalid existing entries, supports browse/add/remove/save, and writes `Sources.lst` for the next scan without restarting (`T-036`).
+- Closing the app window now hides it to a tray icon with Show/Exit actions, and an optional `UI.TrayHotkey` setting can restore/focus the window globally when configured with a modifier-backed shortcut (`T-033`).
 - Documented the app’s Ollama auto-start behavior and updated Win64 packaging to build a Release runtime without overwriting existing portable config files in `bin/` (`T-032`).
 
 ### Fixed

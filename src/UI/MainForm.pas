@@ -3,10 +3,12 @@ unit MainForm;
 interface
 
 uses
-  System.Classes, System.Types, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
+  System.Classes, System.Types, Winapi.Messages, Winapi.ShellAPI, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls,
+  Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
   DatabaseManager, DockerHealthMonitor, DockerOps, ExternalTools, PipelineCoordinator, RelatedSkillActions,
-  SearchController, SearchInteraction, SearchResultActions, SettingsModel, SkillSearchService, TagBrowserActions;
+  SearchController, SearchInteraction, SearchResultActions, SettingsModel, SkillSearchService, TagBrowserActions,
+  TrayActions;
 
 type
   TMainForm = class(TForm)
@@ -59,6 +61,10 @@ type
     fOpenFolderMenuItem: TMenuItem;
     fCopyPathMenuItem: TMenuItem;
   private
+    fTrayHotkeyRegistered: Boolean;
+    fTrayIconData: TNotifyIconData;
+    fTrayState: TTrayWindowState;
+    fTrayPopupMenu: TPopupMenu;
     fAppSettings: TAppSettings;
     fDatabaseManager: TDatabaseManager;
     fDbPath: string;
@@ -108,30 +114,39 @@ type
     procedure ExportResultsAsMarkdown;
     function GetSelectedSkillFile: string;
     function GetSelectedSkillRoot: string;
+    procedure HideToTray;
     function IsResultSelectionValid: Boolean;
     procedure LoadUiState;
     procedure OpenSelectedSkillFile;
     procedure OpenSelectedSkillFolder;
+    procedure PopupTrayMenu;
     procedure PopulateExternalToolsMenu;
     procedure QueueSearch(const aImmediate: Boolean);
     procedure RefreshCountPanels;
     procedure RefreshInventoryCounters;
     procedure RefreshRelatedSkills(const aSkillFile: string);
     procedure RefreshTagBrowser;
+    procedure RegisterTrayHotkey;
+    procedure RemoveTrayIcon;
     procedure RenderResultsList(const aPreferredSkillFile: string);
     procedure RenderPreview(const aResult: TSkillSearchResult);
+    procedure RestoreFromTray;
     procedure SaveRuntimeState;
     function ScaleStoredUiValue(const aValue, aStoredPPI: Integer): Integer;
     procedure SelectHistoryQuery(const aQuery: string);
     function SerializeColumnWidths: string;
     procedure SetSortMode(const aSortMode: TSearchSortMode; const aResortResults: Boolean = True);
     procedure ShowEmptyPreview;
+    procedure ShowTrayIcon;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
+    procedure UnregisterTrayHotkey;
     procedure UpdateStatus(const aText: string);
     procedure UpdateTagBrowserUi;
     procedure UpdateSortUi;
     procedure UpdateSearchHistoryMenu;
     procedure WaitForWorkerThread(var aThread: TThread);
+    procedure HandleTrayHotkeyMessage(var Msg: TMessage); message WM_HOTKEY;
+    procedure HandleTrayIconMessage(var Msg: TMessage); message WM_APP + 42;
   published
     procedure HandleCopyPathClick(Sender: TObject);
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
@@ -164,6 +179,8 @@ type
     procedure HandleSortMenuItemClick(Sender: TObject);
     procedure HandleTagListBoxClick(Sender: TObject);
     procedure HandleTagToggleButtonClick(Sender: TObject);
+    procedure HandleTrayExitClick(Sender: TObject);
+    procedure HandleTrayShowClick(Sender: TObject);
   public
     constructor Create(aOwner: TComponent); override;
     destructor Destroy; override;
@@ -176,7 +193,7 @@ implementation
 
 uses
   System.IOUtils, System.StrUtils, System.SysUtils,
-  Winapi.ShellAPI, Winapi.Windows,
+  Winapi.Windows,
   Vcl.Clipbrd,
   Vcl.Dialogs,
   Vcl.Imaging.pngimage,
@@ -193,6 +210,8 @@ const
   cStatusPanelResults = 4;
   cStatusPanelLastScan = 5;
   cStatusPanelCache = 6;
+  cTrayHotkeyId = 1;
+  cTrayIconId = 1;
 
 resourcestring
   rsScanBlockedEditSourcesList = 'Scan blocked: edit Sources.lst and retry.';
@@ -247,11 +266,13 @@ end;
 constructor TMainForm.Create(aOwner: TComponent);
 var
   i: Integer;
+  lMenuItem: TMenuItem;
   lSemanticOptions: TSemanticSearchOptions;
   lSettings: TSettingsLoadResult;
 begin
   inherited Create(aOwner);
   AppMainForm := Self;
+  fTrayState := DefaultTrayWindowState;
 
   lSettings := LoadOrCreateSettings(GetSettingsFilePath);
   fAppSettings := lSettings.Settings;
@@ -339,11 +360,28 @@ begin
   fDockerHealthMonitor.Start;
   StartDockerStackAsync;
 
+  fTrayPopupMenu := TPopupMenu.Create(Self);
+
+  lMenuItem := TMenuItem.Create(fTrayPopupMenu);
+  lMenuItem.Caption := 'Show';
+  lMenuItem.OnClick := HandleTrayShowClick;
+  fTrayPopupMenu.Items.Add(lMenuItem);
+
+  lMenuItem := TMenuItem.Create(fTrayPopupMenu);
+  lMenuItem.Caption := 'Exit';
+  lMenuItem.OnClick := HandleTrayExitClick;
+  fTrayPopupMenu.Items.Add(lMenuItem);
+
+  HandleNeeded;
+  RegisterTrayHotkey;
+
   QueueSearch(True);
 end;
 
 destructor TMainForm.Destroy;
 begin
+  RemoveTrayIcon;
+  UnregisterTrayHotkey;
   AppMainForm := nil;
 
   if Assigned(fScanCancelToken) then
@@ -642,6 +680,124 @@ begin
 
   lIndex := fResultsListView.Selected.Index;
   Result := fResults[lIndex].SkillRoot;
+end;
+
+procedure TMainForm.ShowTrayIcon;
+begin
+  if fTrayState.TrayIconVisible then
+  begin
+    Exit;
+  end;
+
+  fTrayIconData := Default(TNotifyIconData);
+  fTrayIconData.cbSize := TNotifyIconData.SizeOf;
+  fTrayIconData.Wnd := Handle;
+  fTrayIconData.uID := cTrayIconId;
+  fTrayIconData.uFlags := NIF_MESSAGE or NIF_ICON or NIF_TIP;
+  fTrayIconData.uCallbackMessage := WM_APP + 42;
+  fTrayIconData.hIcon := Application.Icon.Handle;
+  StringToWideChar(Caption, @fTrayIconData.szTip[0], High(fTrayIconData.szTip) + 1);
+
+  if not Shell_NotifyIcon(NIM_ADD, @fTrayIconData) then
+  begin
+    RecordPipelineError('Failed to add tray icon.');
+    Exit;
+  end;
+
+  fTrayState.TrayIconVisible := True;
+end;
+
+procedure TMainForm.RemoveTrayIcon;
+begin
+  if not fTrayState.TrayIconVisible then
+  begin
+    Exit;
+  end;
+
+  Shell_NotifyIcon(NIM_DELETE, @fTrayIconData);
+  fTrayState.TrayIconVisible := False;
+end;
+
+procedure TMainForm.HideToTray;
+begin
+  ShowTrayIcon;
+  if not fTrayState.TrayIconVisible then
+  begin
+    Exit;
+  end;
+
+  ShowWindow(Handle, SW_HIDE);
+  fTrayState := ApplyHideToTray(fTrayState);
+end;
+
+procedure TMainForm.RestoreFromTray;
+begin
+  RemoveTrayIcon;
+  Show;
+  if WindowState = TWindowState.wsMinimized then
+  begin
+    WindowState := TWindowState.wsNormal;
+  end;
+  ShowWindow(Handle, SW_RESTORE);
+  Application.Restore;
+  BringToFront;
+  SetForegroundWindow(Handle);
+  fTrayState := ApplyRestoreFromTray(fTrayState);
+end;
+
+procedure TMainForm.PopupTrayMenu;
+var
+  lPoint: TPoint;
+begin
+  if not Assigned(fTrayPopupMenu) then
+  begin
+    Exit;
+  end;
+
+  SetForegroundWindow(Handle);
+  lPoint := Mouse.CursorPos;
+  fTrayPopupMenu.Popup(lPoint.X, lPoint.Y);
+  PostMessage(Handle, WM_NULL, 0, 0);
+end;
+
+procedure TMainForm.UnregisterTrayHotkey;
+begin
+  if not fTrayHotkeyRegistered then
+  begin
+    Exit;
+  end;
+
+  UnregisterHotKey(Handle, cTrayHotkeyId);
+  fTrayHotkeyRegistered := False;
+end;
+
+procedure TMainForm.RegisterTrayHotkey;
+var
+  lError: string;
+  lHotkey: TTrayHotkey;
+  lHotkeySetting: string;
+begin
+  UnregisterTrayHotkey;
+
+  lHotkeySetting := Trim(fAppSettings.Ui.TrayHotkey);
+  if lHotkeySetting = '' then
+  begin
+    Exit;
+  end;
+
+  if not TryParseTrayHotkey(lHotkeySetting, lHotkey, lError) then
+  begin
+    RecordPipelineNotice('Tray hotkey ignored: ' + lHotkeySetting + ' (' + lError + ')');
+    Exit;
+  end;
+
+  if not RegisterHotKey(Handle, cTrayHotkeyId, lHotkey.Modifiers, lHotkey.VirtualKey) then
+  begin
+    RecordPipelineNotice('Tray hotkey registration failed: ' + lHotkeySetting);
+    Exit;
+  end;
+
+  fTrayHotkeyRegistered := True;
 end;
 
 function TMainForm.IsResultSelectionValid: Boolean;
@@ -1435,6 +1591,17 @@ end;
 procedure TMainForm.HandleFormClose(Sender: TObject; var Action: TCloseAction);
 begin
   SaveRuntimeState;
+  if ShouldHideToTrayOnClose(fTrayState.ExitRequested) then
+  begin
+    HideToTray;
+    if fTrayState.TrayIconVisible then
+    begin
+      Action := TCloseAction.caNone;
+      Exit;
+    end;
+  end;
+
+  RemoveTrayIcon;
 end;
 
 procedure TMainForm.HandleDockerGpuButtonClick(Sender: TObject);
@@ -1720,6 +1887,44 @@ procedure TMainForm.HandleTagToggleButtonClick(Sender: TObject);
 begin
   fTagBrowserPanel.Visible := not fTagBrowserPanel.Visible;
   UpdateTagBrowserUi;
+end;
+
+procedure TMainForm.HandleTrayShowClick(Sender: TObject);
+begin
+  RestoreFromTray;
+end;
+
+procedure TMainForm.HandleTrayExitClick(Sender: TObject);
+begin
+  fTrayState := ApplyTrayExitRequest(fTrayState);
+  Close;
+end;
+
+procedure TMainForm.HandleTrayHotkeyMessage(var Msg: TMessage);
+begin
+  if Msg.WParam <> cTrayHotkeyId then
+  begin
+    Exit;
+  end;
+
+  RestoreFromTray;
+end;
+
+procedure TMainForm.HandleTrayIconMessage(var Msg: TMessage);
+var
+  lAction: TTrayMessageAction;
+begin
+  lAction := ResolveTrayMessageAction(Msg.LParam);
+  case lAction of
+    TTrayMessageAction.tmaRestore:
+      begin
+        RestoreFromTray;
+      end;
+    TTrayMessageAction.tmaShowMenu:
+      begin
+        PopupTrayMenu;
+      end;
+  end;
 end;
 
 procedure TMainForm.HandleHasScriptsClick(Sender: TObject);
