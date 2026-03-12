@@ -106,6 +106,8 @@ type
     procedure CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
     function CaptureUiState: TUiStateSettings;
     function ClampWindowRectToWorkArea(const aBounds: TRect): TRect;
+    procedure CreateWnd; override;
+    procedure DestroyWnd; override;
     procedure BuildSortMenu;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
@@ -372,9 +374,6 @@ begin
   lMenuItem.OnClick := HandleTrayExitClick;
   fTrayPopupMenu.Items.Add(lMenuItem);
 
-  HandleNeeded;
-  RegisterTrayHotkey;
-
   QueueSearch(True);
 end;
 
@@ -402,6 +401,18 @@ begin
   fSearchService.Free;
   fDatabaseManager.Free;
   inherited Destroy;
+end;
+
+procedure TMainForm.CreateWnd;
+begin
+  inherited CreateWnd;
+  RegisterTrayHotkey;
+end;
+
+procedure TMainForm.DestroyWnd;
+begin
+  UnregisterTrayHotkey;
+  inherited DestroyWnd;
 end;
 
 procedure TMainForm.ConfigureColumns;
