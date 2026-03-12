@@ -76,8 +76,8 @@ type
     procedure LoadSearchHelpImage;
     procedure StartDockerStackAsync;
     function ResolveSearchHelpImagePath: string;
-    function ExecuteScanUpdate(const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
-      out aStatusText: string): Boolean;
+    function ExecuteScanUpdate(const aSourceRoots: TArray<string>; const aCancelToken: TPipelineCancellationToken;
+      out aResult: TPipelineRunResult; out aStatusText: string): Boolean;
     function BuildEffectiveQuery: string;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
@@ -141,6 +141,12 @@ const
   cStatusPanelResults = 4;
   cStatusPanelLastScan = 5;
   cStatusPanelCache = 6;
+
+resourcestring
+  rsScanBlockedEditSourcesList = 'Scan blocked: edit Sources.lst and retry.';
+  rsScanNeedsSourcesListEdit =
+    'Scan cannot start because %s does not contain any usable source directories.' + sLineBreak + sLineBreak +
+    'Edit the file first, save it, and then retry Scan.';
 
 { TMainForm }
 
@@ -467,7 +473,7 @@ begin
     Exit(False);
   end;
 
-  lParseResult := ParseSourcesListFile(fSourcesListPath, GetExeDirectory);
+  lParseResult := LoadUsableSourcesListFile(fSourcesListPath, GetExeDirectory);
   for i := 0 to Pred(Length(lParseResult.Issues)) do
   begin
     RecordPipelineError(
@@ -628,28 +634,21 @@ begin
   end;
 end;
 
-function TMainForm.ExecuteScanUpdate(const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
-  out aStatusText: string): Boolean;
+function TMainForm.ExecuteScanUpdate(const aSourceRoots: TArray<string>; const aCancelToken: TPipelineCancellationToken;
+  out aResult: TPipelineRunResult; out aStatusText: string): Boolean;
 var
   lCoordinator: TPipelineCoordinator;
   lOptions: TPipelineOptions;
-  lSourceRoots: TArray<string>;
 begin
   aResult := Default(TPipelineRunResult);
   aStatusText := '';
 
-  if not TryLoadSourceRoots(lSourceRoots) then
-  begin
-    aStatusText := 'Scan skipped: no valid source paths.';
-    Exit(False);
-  end;
-
   lOptions := BuildPipelineOptions;
-  LogInfo('Scan started from UI. Sources=' + IntToStr(Length(lSourceRoots)));
+  LogInfo('Scan started from UI. Sources=' + IntToStr(Length(aSourceRoots)));
 
   lCoordinator := TPipelineCoordinator.Create(fDatabaseManager, lOptions);
   try
-    aResult := lCoordinator.Run(lSourceRoots, aCancelToken);
+    aResult := lCoordinator.Run(aSourceRoots, aCancelToken);
   finally
     lCoordinator.Free;
   end;
@@ -812,9 +811,19 @@ begin
 end;
 
 procedure TMainForm.HandleScanButtonClick(Sender: TObject);
+var
+  lSourceRoots: TArray<string>;
 begin
   if fScanInProgress then
   begin
+    Exit;
+  end;
+
+  if not TryLoadSourceRoots(lSourceRoots) then
+  begin
+    UpdateStatus(rsScanBlockedEditSourcesList);
+    MessageDlg(Format(rsScanNeedsSourcesListEdit, [ExtractFileName(fSourcesListPath)]), TMsgDlgType.mtWarning,
+      [TMsgDlgBtn.mbOK], 0);
     Exit;
   end;
 
@@ -832,7 +841,7 @@ begin
       lExecuted := False;
       lFailure := '';
       try
-        lExecuted := ExecuteScanUpdate(fScanCancelToken, lResult, lStatusText);
+        lExecuted := ExecuteScanUpdate(lSourceRoots, fScanCancelToken, lResult, lStatusText);
       except
         on E: Exception do
         begin

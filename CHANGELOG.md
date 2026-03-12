@@ -34,5 +34,6 @@
 - Added a `Syntax` help button next to search input with concise query examples (`"phrase"`, `-exclude`, `name:`, `tag:`, `path:`, `has:scripts`, `limit:`) (`T-030`).
 
 ### Fixed
+- Scan start now blocks immediately when `Sources.lst` has no usable source directories and prompts us to edit the file before retrying (`T-031`).
 - Diagnostics modal now closes on `Esc` via standard cancel-button behavior, restoring expected keyboard dismiss flow (`T-022`).
 - Indexing now repairs missing frontmatter closing fences at file start (within defined scope) and records a non-fatal diagnostics notice (`T-024`).

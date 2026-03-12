@@ -95,10 +95,77 @@ begin
   AssertTrue(Pos('invalid characters', LowerCase(lResult.Issues[0].Reason)) > 0, 'Expected invalid char issue');
 end;
 
+procedure TestUsableSourcePathsRequireExistingDirectories;
+var
+  lBaseDir: string;
+  lExistingDir: string;
+  lListFile: string;
+  lResult: TSourcesListParseResult;
+  lRootDir: string;
+  lUtf8: TStringList;
+begin
+  lRootDir := TPath.Combine(TPath.GetTempPath, 'SkillSearchTestsUsable');
+  lBaseDir := TPath.Combine(lRootDir, 'base');
+  lExistingDir := TPath.Combine(lBaseDir, 'existing-repo');
+  lListFile := TPath.Combine(lRootDir, 'Sources.lst');
+
+  ForceDirectories(lExistingDir);
+
+  lUtf8 := TStringList.Create;
+  try
+    lUtf8.Add('missing-repo');
+    lUtf8.Add('existing-repo');
+    lUtf8.SaveToFile(lListFile, TEncoding.UTF8);
+  finally
+    lUtf8.Free;
+  end;
+
+  lResult := LoadUsableSourcesListFile(lListFile, lBaseDir);
+
+  AssertEqualInt(1, Length(lResult.ValidPaths), 'Only existing directories should remain usable');
+  AssertTrue(SameText(lExistingDir, lResult.ValidPaths[0]), 'Existing directory path mismatch');
+  AssertEqualInt(1, Length(lResult.Issues), 'Missing directories should be reported as issues');
+  AssertTrue(
+    Pos('does not exist', LowerCase(lResult.Issues[0].Reason)) > 0,
+    'Missing directory should report a does-not-exist issue'
+  );
+end;
+
+procedure TestUsableSourcePathsCanBeEmpty;
+var
+  lBaseDir: string;
+  lListFile: string;
+  lResult: TSourcesListParseResult;
+  lRootDir: string;
+  lUtf8: TStringList;
+begin
+  lRootDir := TPath.Combine(TPath.GetTempPath, 'SkillSearchTestsUsableEmpty');
+  lBaseDir := TPath.Combine(lRootDir, 'base');
+  lListFile := TPath.Combine(lRootDir, 'Sources.lst');
+
+  ForceDirectories(lBaseDir);
+
+  lUtf8 := TStringList.Create;
+  try
+    lUtf8.Add('missing-a');
+    lUtf8.Add('missing-b');
+    lUtf8.SaveToFile(lListFile, TEncoding.UTF8);
+  finally
+    lUtf8.Free;
+  end;
+
+  lResult := LoadUsableSourcesListFile(lListFile, lBaseDir);
+
+  AssertEqualInt(0, Length(lResult.ValidPaths), 'No usable source paths should remain when all directories are missing');
+  AssertEqualInt(2, Length(lResult.Issues), 'Each missing directory should be reported as an issue');
+end;
+
 procedure RunSourcesListTests;
 begin
   TestCommentsAndPathNormalization;
   TestInvalidPathHandling;
+  TestUsableSourcePathsRequireExistingDirectories;
+  TestUsableSourcePathsCanBeEmpty;
 end;
 
 end.
