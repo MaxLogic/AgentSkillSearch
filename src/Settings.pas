@@ -339,6 +339,7 @@ begin
     lIni.WriteInteger('UIState', 'CurrentPPI', aUiState.CurrentPPI);
     lIni.WriteInteger('UIState', 'DuplicateInfoWidth', aUiState.DuplicateInfoWidth);
     lIni.WriteString('UIState', 'LastQuery', aUiState.LastQuery);
+    lIni.WriteString('UIState', 'ResultSortMode', aUiState.ResultSortMode);
     lIni.WriteString('UIState', 'ResultsColumnWidths', aUiState.ResultsColumnWidths);
     lIni.WriteInteger('UIState', 'ResultsPaneWidth', aUiState.ResultsPaneWidth);
     lIni.WriteString('UIState', 'SearchAsYouType', BoolToIniValue(aUiState.SearchAsYouType));
@@ -489,6 +490,8 @@ begin
       lDefault.UiState.DuplicateInfoWidth);
     Result.Settings.UiState.LastQuery := ReadRequiredStringAllowEmpty(lIni, Result, 'UIState', 'LastQuery',
       lDefault.UiState.LastQuery);
+    Result.Settings.UiState.ResultSortMode := ReadRequiredStringAllowEmpty(lIni, Result, 'UIState',
+      'ResultSortMode', lDefault.UiState.ResultSortMode);
     Result.Settings.UiState.ResultsColumnWidths := ReadRequiredStringAllowEmpty(lIni, Result, 'UIState',
       'ResultsColumnWidths',
       lDefault.UiState.ResultsColumnWidths);

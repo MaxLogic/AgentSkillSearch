@@ -6,7 +6,7 @@ uses
   System.Classes, System.Types, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
   DatabaseManager, DockerHealthMonitor, DockerOps, PipelineCoordinator, SearchController, SearchInteraction,
-  SettingsModel, SkillSearchService;
+  SearchResultActions, SettingsModel, SkillSearchService;
 
 type
   TMainForm = class(TForm)
@@ -27,6 +27,7 @@ type
     fFiltersPanel: TPanel;
     fDockerHealthLabel: TStaticText;
     fHasScriptsCheckBox: TCheckBox;
+    fSortButton: TButton;
     fMainPanel: TPanel;
     fResultsPanePanel: TPanel;
     fResultsListView: TListView;
@@ -42,7 +43,9 @@ type
     fPreviewBrowser: TTMSFNCWebBrowser;
     fStatusBar: TStatusBar;
     fPopupMenu: TPopupMenu;
+    fSortPopupMenu: TPopupMenu;
     fSearchHistoryPopupMenu: TPopupMenu;
+    fExportResultsMenuItem: TMenuItem;
     fOpenFileMenuItem: TMenuItem;
     fOpenFolderMenuItem: TMenuItem;
     fCopyPathMenuItem: TMenuItem;
@@ -62,6 +65,7 @@ type
     fDockerHealthState: TDockerHealthState;
     fDockerStartInProgress: Boolean;
     fDockerStartHourGlass: IInterface;
+    fCurrentSortMode: TSearchSortMode;
     fSearchHistory: TSearchHistorySettings;
     fSearchController: TSearchController;
     fSearchService: TSkillSearchService;
@@ -85,10 +89,12 @@ type
     procedure CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
     function CaptureUiState: TUiStateSettings;
     function ClampWindowRectToWorkArea(const aBounds: TRect): TRect;
+    procedure BuildSortMenu;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
     procedure DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
     function EscapeHtml(const aText: string): string;
+    procedure ExportResultsAsMarkdown;
     function GetSelectedSkillFile: string;
     function IsResultSelectionValid: Boolean;
     procedure LoadUiState;
@@ -97,20 +103,24 @@ type
     procedure QueueSearch(const aImmediate: Boolean);
     procedure RefreshCountPanels;
     procedure RefreshInventoryCounters;
+    procedure RenderResultsList(const aPreferredSkillFile: string);
     procedure RenderPreview(const aResult: TSkillSearchResult);
     procedure SaveRuntimeState;
     function ScaleStoredUiValue(const aValue, aStoredPPI: Integer): Integer;
     procedure SelectHistoryQuery(const aQuery: string);
     function SerializeColumnWidths: string;
+    procedure SetSortMode(const aSortMode: TSearchSortMode; const aResortResults: Boolean = True);
     procedure ShowEmptyPreview;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
     procedure UpdateStatus(const aText: string);
+    procedure UpdateSortUi;
     procedure UpdateSearchHistoryMenu;
     procedure WaitForWorkerThread(var aThread: TThread);
   published
     procedure HandleCopyPathClick(Sender: TObject);
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleDockerGpuButtonClick(Sender: TObject);
+    procedure HandleExportResultsClick(Sender: TObject);
     procedure HandleFormClose(Sender: TObject; var Action: TCloseAction);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleHasScriptsClick(Sender: TObject);
@@ -121,6 +131,7 @@ type
     procedure HandleResultDoubleClick(Sender: TObject);
     procedure HandleResultKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleResultSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);
+    procedure HandleResultsColumnClick(Sender: TObject; Column: TListColumn);
     procedure HandleSearchButtonClick(Sender: TObject);
     procedure HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
       const aError: string);
@@ -130,6 +141,8 @@ type
     procedure HandleSearchHistoryItemClick(Sender: TObject);
     procedure HandleSearchHelpButtonClick(Sender: TObject);
     procedure HandleScanButtonClick(Sender: TObject);
+    procedure HandleSortButtonClick(Sender: TObject);
+    procedure HandleSortMenuItemClick(Sender: TObject);
   public
     constructor Create(aOwner: TComponent); override;
     destructor Destroy; override;
@@ -249,6 +262,8 @@ begin
   );
 
   ConfigureColumns;
+  fCurrentSortMode := DefaultSearchSortMode;
+  BuildSortMenu;
   fSearchHistory := fAppSettings.SearchHistory;
   if fSearchHistory.MaxItems <= 0 then
   begin
@@ -458,6 +473,7 @@ begin
   Result.CurrentPPI := CurrentPPI;
   Result.DuplicateInfoWidth := fDuplicateInfoPanel.Width;
   Result.LastQuery := Trim(fSearchEdit.Text);
+  Result.ResultSortMode := SearchSortModeToString(fCurrentSortMode);
   Result.ResultsColumnWidths := SerializeColumnWidths;
   Result.ResultsPaneWidth := fResultsPanePanel.Width;
   Result.SearchAsYouType := fSearchAsYouTypeCheckBox.Checked;
@@ -476,6 +492,11 @@ var
   lWidth: Integer;
 begin
   lStoredPPI := fAppSettings.UiState.CurrentPPI;
+  if not TryParseSearchSortMode(fAppSettings.UiState.ResultSortMode, fCurrentSortMode) then
+  begin
+    fCurrentSortMode := DefaultSearchSortMode;
+  end;
+  UpdateSortUi;
 
   fSearchEdit.Text := fAppSettings.UiState.LastQuery;
   fSearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
@@ -592,6 +613,85 @@ begin
   fStatusBar.Panels[cStatusPanelStatus].Text := aText;
 end;
 
+procedure TMainForm.BuildSortMenu;
+const
+  cSortCaptions: array[TSearchSortMode] of string = (
+    'Score',
+    'Name A to Z',
+    'Name Z to A',
+    'Path A to Z',
+    'Path Z to A',
+    'Date Indexed (Newest)',
+    'Date Indexed (Oldest)'
+  );
+var
+  lItem: TMenuItem;
+  lSortMode: TSearchSortMode;
+begin
+  fSortPopupMenu.Items.Clear;
+  for lSortMode := Low(TSearchSortMode) to High(TSearchSortMode) do
+  begin
+    lItem := TMenuItem.Create(fSortPopupMenu);
+    lItem.AutoCheck := False;
+    lItem.Caption := cSortCaptions[lSortMode];
+    lItem.RadioItem := True;
+    lItem.Tag := Ord(lSortMode);
+    lItem.OnClick := HandleSortMenuItemClick;
+    fSortPopupMenu.Items.Add(lItem);
+  end;
+  UpdateSortUi;
+end;
+
+procedure TMainForm.UpdateSortUi;
+const
+  cSortLabels: array[TSearchSortMode] of string = (
+    'Score',
+    'Name A to Z',
+    'Name Z to A',
+    'Path A to Z',
+    'Path Z to A',
+    'Date Indexed',
+    'Date Indexed Oldest'
+  );
+var
+  i: Integer;
+begin
+  fSortButton.Caption := 'Sort: ' + cSortLabels[fCurrentSortMode];
+  for i := 0 to Pred(fSortPopupMenu.Items.Count) do
+  begin
+    fSortPopupMenu.Items[i].Checked := fSortPopupMenu.Items[i].Tag = Ord(fCurrentSortMode);
+  end;
+end;
+
+procedure TMainForm.SetSortMode(const aSortMode: TSearchSortMode; const aResortResults: Boolean);
+var
+  lSelectedSkillFile: string;
+begin
+  lSelectedSkillFile := GetSelectedSkillFile;
+  fCurrentSortMode := aSortMode;
+  UpdateSortUi;
+
+  if aResortResults and (Length(fResults) > 0) then
+  begin
+    SortSearchResults(fResults, fCurrentSortMode);
+    RenderResultsList(lSelectedSkillFile);
+  end;
+end;
+
+procedure TMainForm.ExportResultsAsMarkdown;
+var
+  lMarkdown: string;
+begin
+  if not TryBuildResultsMarkdownList(fResults, lMarkdown) then
+  begin
+    UpdateStatus('No results to export.');
+    Exit;
+  end;
+
+  Clipboard.AsText := lMarkdown;
+  UpdateStatus(Format('Copied %d results as markdown list.', [Length(fResults)]));
+end;
+
 procedure TMainForm.DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
 begin
   if aImmediate then
@@ -642,6 +742,47 @@ begin
       DispatchSearchQuery(aPreparedQuery, True);
     end
   );
+end;
+
+procedure TMainForm.RenderResultsList(const aPreferredSkillFile: string);
+var
+  i: Integer;
+  lItem: TListItem;
+  lSelectedIndex: Integer;
+begin
+  lSelectedIndex := -1;
+  fResultsListView.Items.BeginUpdate;
+  try
+    fResultsListView.Items.Clear;
+    for i := 0 to Pred(Length(fResults)) do
+    begin
+      lItem := fResultsListView.Items.Add;
+      lItem.Caption := fResults[i].Name;
+      lItem.SubItems.Add(FormatFloat('0.000', fResults[i].FinalScore));
+      lItem.SubItems.Add(fResults[i].Description);
+      lItem.SubItems.Add(fResults[i].SkillRoot);
+      if (aPreferredSkillFile <> '') and SameText(fResults[i].SkillFile, aPreferredSkillFile) then
+      begin
+        lSelectedIndex := i;
+      end;
+    end;
+  finally
+    fResultsListView.Items.EndUpdate;
+  end;
+
+  if fResultsListView.Items.Count = 0 then
+  begin
+    ShowEmptyPreview;
+    Exit;
+  end;
+
+  if lSelectedIndex < 0 then
+  begin
+    lSelectedIndex := 0;
+  end;
+  fResultsListView.Items[lSelectedIndex].Selected := True;
+  fResultsListView.Items[lSelectedIndex].Focused := True;
+  RenderPreview(fResults[lSelectedIndex]);
 end;
 
 procedure TMainForm.RefreshCountPanels;
@@ -981,35 +1122,10 @@ begin
 end;
 
 procedure TMainForm.ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
-var
-  i: Integer;
-  lItem: TListItem;
 begin
   fResults := aResults;
-
-  fResultsListView.Items.BeginUpdate;
-  try
-    fResultsListView.Items.Clear;
-    for i := 0 to Pred(Length(fResults)) do
-    begin
-      lItem := fResultsListView.Items.Add;
-      lItem.Caption := fResults[i].Name;
-      lItem.SubItems.Add(FormatFloat('0.000', fResults[i].LexScore));
-      lItem.SubItems.Add(fResults[i].Description);
-      lItem.SubItems.Add(fResults[i].SkillRoot);
-    end;
-  finally
-    fResultsListView.Items.EndUpdate;
-  end;
-
-  if fResultsListView.Items.Count > 0 then
-  begin
-    fResultsListView.Items[0].Selected := True;
-    fResultsListView.Items[0].Focused := True;
-    RenderPreview(fResults[0]);
-  end else begin
-    ShowEmptyPreview;
-  end;
+  SortSearchResults(fResults, fCurrentSortMode);
+  RenderResultsList('');
 
   RefreshCountPanels;
   UpdateStatus(Format('Results: %d | Query: %s', [Length(fResults), BuildEffectiveQuery]));
@@ -1185,6 +1301,11 @@ begin
   ShowDiagnosticsDialog(self);
 end;
 
+procedure TMainForm.HandleExportResultsClick(Sender: TObject);
+begin
+  ExportResultsAsMarkdown;
+end;
+
 procedure TMainForm.HandleFormClose(Sender: TObject; var Action: TCloseAction);
 begin
   SaveRuntimeState;
@@ -1274,6 +1395,34 @@ begin
   end;
 
   SelectHistoryQuery(TMenuItem(Sender).Caption);
+end;
+
+procedure TMainForm.HandleResultsColumnClick(Sender: TObject; Column: TListColumn);
+begin
+  case Column.Index of
+    0:
+      begin
+        if fCurrentSortMode = TSearchSortMode.ssmNameAsc then
+        begin
+          SetSortMode(TSearchSortMode.ssmNameDesc);
+        end else begin
+          SetSortMode(TSearchSortMode.ssmNameAsc);
+        end;
+      end;
+    1:
+      begin
+        SetSortMode(TSearchSortMode.ssmScore);
+      end;
+    3:
+      begin
+        if fCurrentSortMode = TSearchSortMode.ssmPathAsc then
+        begin
+          SetSortMode(TSearchSortMode.ssmPathDesc);
+        end else begin
+          SetSortMode(TSearchSortMode.ssmPathAsc);
+        end;
+      end;
+  end;
 end;
 
 procedure TMainForm.HandleResultSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);
@@ -1373,6 +1522,24 @@ end;
 procedure TMainForm.HandleCopyPathClick(Sender: TObject);
 begin
   CopySelectedPathToClipboard;
+end;
+
+procedure TMainForm.HandleSortButtonClick(Sender: TObject);
+var
+  lPoint: TPoint;
+begin
+  lPoint := fSortButton.ClientToScreen(Point(0, fSortButton.Height));
+  fSortPopupMenu.Popup(lPoint.X, lPoint.Y);
+end;
+
+procedure TMainForm.HandleSortMenuItemClick(Sender: TObject);
+begin
+  if not (Sender is TMenuItem) then
+  begin
+    Exit;
+  end;
+
+  SetSortMode(TSearchSortMode(TMenuItem(Sender).Tag));
 end;
 
 procedure TMainForm.HandleHasScriptsClick(Sender: TObject);
