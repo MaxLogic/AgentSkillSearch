@@ -328,6 +328,27 @@ begin
   AssertTrue(not ContainsText(lHtml, '<script>'), 'Expected raw script tags to be escaped');
   AssertTrue(ContainsText(lHtml, '&lt;script&gt;alert(1)&lt;/script&gt;'),
     'Expected escaped script content in snippet HTML');
+
+  lHtml := BuildPreviewSnippetHtml(
+    '## Preview Title' + sLineBreak + sLineBreak +
+    'Some **bold** and *italic* [[retry]] text.' + sLineBreak + sLineBreak +
+    '- first item' + sLineBreak +
+    '- second item' + sLineBreak + sLineBreak +
+    '```delphi' + sLineBreak +
+    'ShowMessage(''retry'');' + sLineBreak +
+    '```' + sLineBreak + sLineBreak +
+    '![remote](https://example.com/image.png)'
+  );
+  AssertTrue(ContainsText(lHtml, '<h2>Preview Title</h2>'), 'Expected markdown headings to render as HTML headings');
+  AssertTrue(ContainsText(lHtml, '<strong>bold</strong>'), 'Expected bold markdown to render as <strong>');
+  AssertTrue(ContainsText(lHtml, '<em>italic</em>'), 'Expected italic markdown to render as <em>');
+  AssertTrue(ContainsText(lHtml, '<ul>') and ContainsText(lHtml, '<li>first item</li>'),
+    'Expected bullet list markdown to render as an unordered list');
+  AssertTrue(ContainsText(lHtml, '<pre') and ContainsText(lHtml, 'ShowMessage'),
+    'Expected fenced code blocks to render inside <pre><code>');
+  AssertTrue(not ContainsText(lHtml, 'https://example.com/image.png'),
+    'Expected remote image URLs to be blocked from the rendered preview');
+  AssertTrue(ContainsText(lHtml, 'remote'), 'Expected remote image alt text or placeholder to remain visible');
 end;
 
 procedure RunSearchTests;
