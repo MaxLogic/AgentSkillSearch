@@ -134,6 +134,11 @@ Defaults are auto-created for missing keys.
 `bin/excludes.lst` supports case-insensitive substring and wildcard (`*`, `?`) rules against full scanned paths.
 Use it to skip test harness fixtures before git/indexing.
 
+## Reference Repo List
+
+`skill-repos-list.txt` is a small reference list of repositories that contain at least one `SKILL.md`, stored as `<repo_path>	<remote_url>`.
+Use it as a seed set when we want known skill-bearing repos without rescanning the full source tree.
+
 ## Troubleshooting
 
 - Open `Diagnostics` in the app to see last scan summary and recent errors.

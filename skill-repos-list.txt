@@ -1,0 +1,27 @@
+# Format: <repo_path>	<remote_url>
+
+AiderDesk/aider-desk	https://github.com/hotovo/aider-desk
+Factory-AI (Droid)/factory	https://github.com/Factory-AI/factory.git
+Factory-AI (Droid)/factory-plugins	https://github.com/Factory-AI/factory-plugins.git
+Factory-AI (Droid)/skills	https://github.com/Factory-AI/skills.git
+OpenClaw/openclaw	https://github.com/openclaw/openclaw.git
+OpenClaw/skills	https://github.com/openclaw/skills.git
+OpenCodeSST/opencode	https://github.com/sst/opencode.git
+Professor-Synapse	https://github.com/ProfSynapse/Professor-Synapse.git
+SuperPowers/superpowers	https://github.com/obra/superpowers.git
+agents, skills, commands, plugins/DougTrajano-pydantic-ai-skills	https://github.com/DougTrajano/pydantic-ai-skills.git
+agents, skills, commands, plugins/OpenAi-skills	https://github.com/openai/skills.git
+agents, skills, commands, plugins/Uncodixfy	https://github.com/cyxzdev/Uncodixfy.git
+agents, skills, commands, plugins/Vercel-Labs/agent-browser	https://github.com/vercel-labs/agent-browser.git
+agents, skills, commands, plugins/Vercel-Labs/agent-skills	https://github.com/vercel-labs/agent-skills.git
+agents, skills, commands, plugins/agents (wshobson)	https://github.com/wshobson/agents.git
+agents, skills, commands, plugins/awesome-claude-skills(shajith003)	https://github.com/shajith003/awesome-claude-skills.git
+agents, skills, commands, plugins/awesome-copilot	https://github.com/github/awesome-copilot.git
+agents, skills, commands, plugins/ckanner-agent-skills	https://github.com/ckanner/agent-skills.git
+agents, skills, commands, plugins/claude-skills (vinnie357)	https://github.com/vinnie357/claude-skills.git
+agents, skills, commands, plugins/gotalab-skillport	https://github.com/gotalab/skillport.git
+agents, skills, commands, plugins/katies-ai-skills	https://github.com/SecKatie/katies-ai-skills.git
+agents, skills, commands, plugins/luxor-claude-marketplace	https://github.com/manutej/luxor-claude-marketplace.git
+agents, skills, commands, plugins/obra/superpowers	https://github.com/obra/superpowers.git
+agents, skills, commands, plugins/sanjay3290-ai-skills	https://github.com/sanjay3290/ai-skills.git
+agents, skills, commands, plugins/skills (anthropics)	https://github.com/anthropics/skills.git
