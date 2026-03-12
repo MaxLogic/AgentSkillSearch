@@ -9,7 +9,9 @@ implementation
 uses
   System.Classes, System.Diagnostics, System.IniFiles, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
   Winapi.Windows,
-  AppPaths, DatabaseManager, DockerHealthMonitor, Logging, PipelineCoordinator, Settings, SettingsModel;
+  Vcl.Menus,
+  AppPaths, DatabaseManager, DockerHealthMonitor, ExternalTools, Logging, PipelineCoordinator, Settings,
+  SettingsModel;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -336,6 +338,125 @@ begin
   AssertEqualText('backoff', lLoadResult.Settings.SearchHistory.Items[2], 'Expected oldest retained query last');
 end;
 
+procedure TestSettingsLoadExternalTools;
+var
+  lFixtureRoot: string;
+  lLoadResult: TSettingsLoadResult;
+  lSettingsPath: string;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+  lUtf8: TStringList;
+begin
+  PrepareFixtureDirectory('SkillSearchExternalToolsFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+
+  lSettingsPath := TPath.Combine(lFixtureRoot, 'runtime\settings.ini');
+  ForceDirectories(ExtractFilePath(lSettingsPath));
+
+  lUtf8 := TStringList.Create;
+  try
+    lUtf8.Add('[ExternalTools]');
+    lUtf8.Add('Code=code {path}');
+    lUtf8.Add('Explorer=explorer.exe {path}');
+    lUtf8.Add('Broken=code');
+    lUtf8.Add('Empty=');
+    lUtf8.SaveToFile(lSettingsPath, TEncoding.UTF8);
+  finally
+    lUtf8.Free;
+  end;
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+  AssertEqualInt(2, Length(lLoadResult.Settings.ExternalTools), 'Expected only valid external tools to load');
+  AssertEqualText('Code', lLoadResult.Settings.ExternalTools[0].Name, 'Expected Code external tool name');
+  AssertEqualText('code {path}', lLoadResult.Settings.ExternalTools[0].CommandTemplate,
+    'Expected Code external tool template');
+  AssertEqualText('Explorer', lLoadResult.Settings.ExternalTools[1].Name, 'Expected Explorer external tool name');
+end;
+
+procedure TestExternalToolCommandFormatting;
+var
+  lCommandLine: string;
+  lFixtureRoot: string;
+  lLaunch: TExternalToolLaunch;
+  lLaunchCommandLine: string;
+  lLaunchName: string;
+  lMenuItem: TMenuItem;
+  lSearchPath: string;
+  lShimPath: string;
+  lPopupMenu: TPopupMenu;
+  lTools: TArray<TExternalToolSettings>;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+begin
+  AssertTrue(TryBuildExternalToolCommandLine('code {path}', 'C:\skills\retry patterns', lCommandLine),
+    'Expected valid external tool command line');
+  AssertEqualText('code "C:\skills\retry patterns"', lCommandLine,
+    'Expected external tool path placeholder to be quoted');
+  AssertTrue(TryBuildExternalToolCommandLine('cmd /c type {path}\readme.txt', 'C:\skills\retry patterns',
+    lCommandLine), 'Expected placeholder replacement inside command arguments');
+  AssertEqualText('cmd /c type "C:\skills\retry patterns"\readme.txt', lCommandLine,
+    'Expected placeholder replacement inside command arguments');
+  AssertTrue(not TryBuildExternalToolCommandLine('code', 'C:\skills\retry patterns', lCommandLine),
+    'Expected missing {path} placeholder to be rejected');
+
+  SetLength(lTools, 2);
+  lTools[0].Name := 'Code';
+  lTools[0].CommandTemplate := 'code {path}';
+  lTools[1].Name := 'Explorer';
+  lTools[1].CommandTemplate := 'explorer.exe {path}';
+
+  AssertTrue(TryResolveExternalTool(lTools, 0, 'C:\skills\retry patterns', lLaunchName, lLaunchCommandLine),
+    'Expected selected external tool to resolve from settings');
+  AssertEqualText('Code', lLaunchName, 'Expected selected external tool caption');
+  AssertEqualText('code "C:\skills\retry patterns"', lLaunchCommandLine,
+    'Expected selected skill root to be substituted into external tool command');
+  AssertTrue(not TryResolveExternalTool(lTools, 3, 'C:\skills\retry patterns', lLaunchName, lLaunchCommandLine),
+    'Expected invalid tool index to be rejected');
+
+  lPopupMenu := TPopupMenu.Create(nil);
+  try
+    lPopupMenu.Items.Add(TMenuItem.Create(lPopupMenu));
+    lPopupMenu.Items[0].Caption := 'Copy Results as Markdown List';
+    lPopupMenu.Items.Add(TMenuItem.Create(lPopupMenu));
+    lPopupMenu.Items[1].Caption := 'Open File';
+
+    PopulateExternalToolsPopupMenu(lPopupMenu, lTools, nil, 1);
+    AssertEqualInt(5, lPopupMenu.Items.Count, 'Expected popup menu separator and two external tools');
+    AssertEqualText('-', lPopupMenu.Items[1].Caption, 'Expected separator before external tools');
+    AssertEqualText('Code', lPopupMenu.Items[2].Caption, 'Expected first external tool menu caption');
+    AssertEqualInt(0, lPopupMenu.Items[2].Tag, 'Expected first external tool menu tag');
+    AssertEqualText('Explorer', lPopupMenu.Items[3].Caption, 'Expected second external tool menu caption');
+    AssertEqualInt(1, lPopupMenu.Items[3].Tag, 'Expected second external tool menu tag');
+    AssertEqualText('Open File', lPopupMenu.Items[4].Caption, 'Expected existing menu items to stay after tool entries');
+  finally
+    lPopupMenu.Free;
+  end;
+
+  lMenuItem := TMenuItem.Create(nil);
+  try
+    lMenuItem.Tag := 1;
+    AssertTrue(TryResolveExternalToolMenuClick(lMenuItem, lTools, 'C:\skills\retry patterns', lLaunchName,
+      lLaunchCommandLine), 'Expected menu click resolution to use the selected skill root');
+    AssertEqualText('Explorer', lLaunchName, 'Expected clicked menu caption to resolve to tool name');
+    AssertEqualText('explorer.exe "C:\skills\retry patterns"', lLaunchCommandLine,
+      'Expected menu click resolution to build launch command from selected skill root');
+  finally
+    lMenuItem.Free;
+  end;
+
+  PrepareFixtureDirectory('SkillSearchExternalToolsLaunchFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+  lShimPath := TPath.Combine(lFixtureRoot, 'bin\code.cmd');
+  ForceDirectories(ExtractFilePath(lShimPath));
+  TFile.WriteAllText(lShimPath, '@echo off' + sLineBreak + 'exit /b 0' + sLineBreak, TEncoding.ASCII);
+  lSearchPath := ExtractFilePath(lShimPath);
+
+  AssertTrue(TryPrepareExternalToolLaunch(lTools, 0, 'C:\skills\retry patterns', lSearchPath, '.CMD;.EXE', lLaunch),
+    'Expected external tool launch preparation to resolve PATH shims');
+  AssertEqualText(TPath.GetFullPath(lShimPath), lLaunch.ExecutablePath,
+    'Expected PATH-based command to resolve to the shim file');
+  AssertEqualText('"C:\skills\retry patterns"', lLaunch.Parameters,
+    'Expected resolved launch to keep the selected skill root as parameters');
+end;
+
 procedure TestPipelineAutoCancelStopsBeforeDbWrites;
 var
   lCoordinator: TPipelineCoordinator;
@@ -560,6 +681,8 @@ begin
   TestPipelineHonorsComputeHasScriptsSetting;
   TestSettingsCreateUiStateAndSearchHistoryDefaults;
   TestSettingsPersistUiStateAndSearchHistory;
+  TestSettingsLoadExternalTools;
+  TestExternalToolCommandFormatting;
   TestPipelineAutoCancelStopsBeforeDbWrites;
   TestGitPullIsThrottledOnSecondRun;
   TestGitPullFailureDoesNotBlockOtherRepos;

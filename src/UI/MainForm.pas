@@ -5,7 +5,7 @@ interface
 uses
   System.Classes, System.Types, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
-  DatabaseManager, DockerHealthMonitor, DockerOps, PipelineCoordinator, SearchController, SearchInteraction,
+  DatabaseManager, DockerHealthMonitor, DockerOps, ExternalTools, PipelineCoordinator, SearchController, SearchInteraction,
   SearchResultActions, SettingsModel, SkillSearchService;
 
 type
@@ -96,10 +96,12 @@ type
     function EscapeHtml(const aText: string): string;
     procedure ExportResultsAsMarkdown;
     function GetSelectedSkillFile: string;
+    function GetSelectedSkillRoot: string;
     function IsResultSelectionValid: Boolean;
     procedure LoadUiState;
     procedure OpenSelectedSkillFile;
     procedure OpenSelectedSkillFolder;
+    procedure PopulateExternalToolsMenu;
     procedure QueueSearch(const aImmediate: Boolean);
     procedure RefreshCountPanels;
     procedure RefreshInventoryCounters;
@@ -121,6 +123,7 @@ type
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleDockerGpuButtonClick(Sender: TObject);
     procedure HandleExportResultsClick(Sender: TObject);
+    procedure HandleExternalToolClick(Sender: TObject);
     procedure HandleFormClose(Sender: TObject; var Action: TCloseAction);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleHasScriptsClick(Sender: TObject);
@@ -272,6 +275,7 @@ begin
   UpdateSearchHistoryMenu;
   LoadUiState;
   LoadSearchHelpImage;
+  PopulateExternalToolsMenu;
 
   fSearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
   fStatusBar.Panels[cStatusPanelCache].Text := 'Cache: ' + fDbPath;
@@ -601,6 +605,19 @@ begin
   Result := fResults[lIndex].SkillFile;
 end;
 
+function TMainForm.GetSelectedSkillRoot: string;
+var
+  lIndex: Integer;
+begin
+  if not IsResultSelectionValid then
+  begin
+    Exit('');
+  end;
+
+  lIndex := fResultsListView.Selected.Index;
+  Result := fResults[lIndex].SkillRoot;
+end;
+
 function TMainForm.IsResultSelectionValid: Boolean;
 begin
   Result := Assigned(fResultsListView.Selected) and
@@ -690,6 +707,11 @@ begin
 
   Clipboard.AsText := lMarkdown;
   UpdateStatus(Format('Copied %d results as markdown list.', [Length(fResults)]));
+end;
+
+procedure TMainForm.PopulateExternalToolsMenu;
+begin
+  PopulateExternalToolsPopupMenu(fPopupMenu, fAppSettings.ExternalTools, HandleExternalToolClick, 1);
 end;
 
 procedure TMainForm.DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
@@ -1304,6 +1326,39 @@ end;
 procedure TMainForm.HandleExportResultsClick(Sender: TObject);
 begin
   ExportResultsAsMarkdown;
+end;
+
+procedure TMainForm.HandleExternalToolClick(Sender: TObject);
+var
+  lLaunch: TExternalToolLaunch;
+  lSelectedSkillRoot: string;
+begin
+  lSelectedSkillRoot := GetSelectedSkillRoot;
+  if lSelectedSkillRoot = '' then
+  begin
+    Exit;
+  end;
+
+  if not (Sender is TMenuItem) then
+  begin
+    Exit;
+  end;
+
+  if not TryPrepareExternalToolLaunch(fAppSettings.ExternalTools, TMenuItem(Sender).Tag, lSelectedSkillRoot, lLaunch)
+  then
+  begin
+    Exit;
+  end;
+
+  if ShellExecute(Handle, 'open', PChar(lLaunch.ExecutablePath), PChar(lLaunch.Parameters), nil, SW_SHOWNORMAL) <= 32
+  then
+  begin
+    RecordPipelineError('Failed to launch external tool: ' + lLaunch.Name);
+    UpdateStatus('Failed to launch external tool: ' + lLaunch.Name);
+    Exit;
+  end;
+
+  UpdateStatus('Launched: ' + lLaunch.Name);
 end;
 
 procedure TMainForm.HandleFormClose(Sender: TObject; var Action: TCloseAction);
