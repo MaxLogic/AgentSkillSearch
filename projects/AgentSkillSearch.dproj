@@ -184,6 +184,7 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="..\src\UI\MainForm.pas"/>
+        <DCCReference Include="..\src\UI\SourcesEditorForm.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
             <DependentOn>..\..\MaxLogicFoundation\MaxLogicDefault.optset</DependentOn>

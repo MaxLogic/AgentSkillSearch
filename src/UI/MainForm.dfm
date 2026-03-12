@@ -200,6 +200,18 @@ object AppMainForm: TMainForm
       TabOrder = 2
       OnClick = HandleTagToggleButtonClick
     end
+    object fEditSourcesButton: TButton
+      AlignWithMargins = True
+      Left = 400
+      Top = 8
+      Width = 118
+      Height = 28
+      Margins.Left = 8
+      Align = alLeft
+      Caption = 'Edit Sources...'
+      TabOrder = 3
+      OnClick = HandleEditSourcesButtonClick
+    end
     object fDockerHealthLabel: TStaticText
       AlignWithMargins = True
       Left = 810
@@ -222,7 +234,7 @@ object AppMainForm: TMainForm
       Margins.Right = 8
       Align = alRight
       Caption = 'Start Docker Stack'
-      TabOrder = 3
+      TabOrder = 4
       OnClick = HandleDockerGpuButtonClick
     end
     object fScanProgressBar: TProgressBar
@@ -234,7 +246,7 @@ object AppMainForm: TMainForm
       Align = alRight
       MarqueeInterval = 30
       Style = pbstMarquee
-      TabOrder = 4
+      TabOrder = 5
       Visible = False
     end
   end

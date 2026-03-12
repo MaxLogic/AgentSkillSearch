@@ -12,7 +12,8 @@ uses
   madListModules,
   FireDAC.VCLUI.Wait,
   Vcl.Forms,
-  MainForm in '..\src\UI\MainForm.pas';
+  MainForm in '..\src\UI\MainForm.pas',
+  SourcesEditorForm in '..\src\UI\SourcesEditorForm.pas';
 
 {$R *.res}
 

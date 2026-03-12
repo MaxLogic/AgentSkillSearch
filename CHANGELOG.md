@@ -39,6 +39,7 @@
 - Results context menus can now expose configurable external tool actions from `settings.ini`, including PATH-resolved launch support for commands such as `code {path}` (`T-040`).
 - The main window now includes a collapsible tag browser with per-tag skill counts, click-to-filter behavior, and automatic refresh after scans (`T-041`).
 - Semantic-enabled scans now surface embedding warm-up progress and unavailable notices in the status bar, and the preview pane shows a Related list of cosine-ranked similar skills with click-to-select or open behavior (`T-043`, `T-044`).
+- MainForm now exposes an in-app `Edit Sources...` dialog that filters invalid existing entries, supports browse/add/remove/save, and writes `Sources.lst` for the next scan without restarting (`T-036`).
 - Documented the app’s Ollama auto-start behavior and updated Win64 packaging to build a Release runtime without overwriting existing portable config files in `bin/` (`T-032`).
 
 ### Fixed

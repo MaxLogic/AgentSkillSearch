@@ -29,6 +29,7 @@ type
     fHasScriptsCheckBox: TCheckBox;
     fSortButton: TButton;
     fTagToggleButton: TButton;
+    fEditSourcesButton: TButton;
     fMainPanel: TPanel;
     fTagBrowserPanel: TPanel;
     fTagBrowserSplitter: TSplitter;
@@ -135,6 +136,7 @@ type
     procedure HandleCopyPathClick(Sender: TObject);
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleDockerGpuButtonClick(Sender: TObject);
+    procedure HandleEditSourcesButtonClick(Sender: TObject);
     procedure HandleExportResultsClick(Sender: TObject);
     procedure HandleExternalToolClick(Sender: TObject);
     procedure HandleFormClose(Sender: TObject; var Action: TCloseAction);
@@ -178,7 +180,8 @@ uses
   Vcl.Clipbrd,
   Vcl.Dialogs,
   Vcl.Imaging.pngimage,
-  AppPaths, AutoHourGlass, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings, SourcesList;
+  AppPaths, AutoHourGlass, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings, SourcesEditorForm,
+  SourcesList;
 
 {$R *.dfm}
 
@@ -196,6 +199,7 @@ resourcestring
   rsScanNeedsSourcesListEdit =
     'Scan cannot start because %s does not contain any usable source directories.' + sLineBreak + sLineBreak +
     'Edit the file first, save it, and then retry Scan.';
+  rsSourcesListSaved = 'Sources list saved.';
 
 function ExecuteScanUpdate(const aDatabasePath, aSqliteDllPath: string; const aOptions: TPipelineOptions;
   const aSourceRoots: TArray<string>; const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
@@ -1436,6 +1440,16 @@ end;
 procedure TMainForm.HandleDockerGpuButtonClick(Sender: TObject);
 begin
   StartDockerStackAsync;
+end;
+
+procedure TMainForm.HandleEditSourcesButtonClick(Sender: TObject);
+begin
+  if not TSourcesEditorForm.Execute(Self, fSourcesListPath, GetExeDirectory) then
+  begin
+    Exit;
+  end;
+
+  UpdateStatus(rsSourcesListSaved);
 end;
 
 procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
