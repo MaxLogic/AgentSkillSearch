@@ -504,6 +504,10 @@ begin
   Result.SkipFolders := fAppSettings.Git.SkipFolders;
   Result.SkillFileName := fAppSettings.Index.SkillFileName;
   Result.TreatWorktreesAsRepos := fAppSettings.Git.TreatWorktreesAsRepos;
+  Result.IndexOptions.ComputeHasScripts := fAppSettings.Index.ComputeHasScripts;
+  Result.IndexOptions.HasScriptsMaxFilesToScan := fAppSettings.Index.HasScriptsMaxFilesToScan;
+  Result.IndexOptions.HasScriptsSkipFolders := fAppSettings.Index.HasScriptsSkipFolders;
+  Result.IndexOptions.ScriptExtensions := fAppSettings.Index.ScriptExtensions;
   lExclusions := ParsePathExclusionsFile(fExcludesListPath);
   Result.ExcludePathPatterns := lExclusions.Patterns;
 

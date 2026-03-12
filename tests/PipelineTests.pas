@@ -9,7 +9,7 @@ implementation
 uses
   System.Classes, System.Diagnostics, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
   Winapi.Windows,
-  AppPaths, DatabaseManager, DockerHealthMonitor, Logging, PipelineCoordinator;
+  AppPaths, DatabaseManager, DockerHealthMonitor, Logging, PipelineCoordinator, Settings, SettingsModel;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -38,6 +38,26 @@ end;
 function QuoteArg(const aValue: string): string;
 begin
   Result := '"' + aValue + '"';
+end;
+
+function BuildPipelineOptionsFromSettings(const aSettings: TAppSettings): TPipelineOptions;
+begin
+  Result := DefaultPipelineOptions;
+  Result.GitExePath := aSettings.Git.GitExePath;
+  Result.GitPullArgs := aSettings.Git.GitPullArgs;
+  Result.GitPullTimeoutSeconds := aSettings.Git.GitPullTimeoutSeconds;
+  Result.IndexOptions.ComputeHasScripts := aSettings.Index.ComputeHasScripts;
+  Result.IndexOptions.HasScriptsMaxFilesToScan := aSettings.Index.HasScriptsMaxFilesToScan;
+  Result.IndexOptions.HasScriptsSkipFolders := aSettings.Index.HasScriptsSkipFolders;
+  Result.IndexOptions.ScriptExtensions := aSettings.Index.ScriptExtensions;
+  Result.MaxGitPullThreads := aSettings.General.MaxGitPullThreads;
+  Result.MaxIndexThreads := aSettings.General.MaxIndexThreads;
+  Result.MaxScanThreads := aSettings.General.MaxScanThreads;
+  Result.MinPullIntervalMinutes := aSettings.Git.MinPullIntervalMinutes;
+  Result.PullEnabled := aSettings.Git.PullEnabled;
+  Result.SkipFolders := aSettings.Git.SkipFolders;
+  Result.SkillFileName := aSettings.Index.SkillFileName;
+  Result.TreatWorktreesAsRepos := aSettings.Git.TreatWorktreesAsRepos;
 end;
 
 procedure RunShellOrFail(const aWorkingDir, aCommand: string);
@@ -149,6 +169,75 @@ begin
   aScanRoot := TPath.Combine(aFixtureRoot, 'scan');
   ForceDirectories(aInfraRoot);
   ForceDirectories(aScanRoot);
+end;
+
+procedure TestPipelineHonorsComputeHasScriptsSetting;
+var
+  lCoordinator: TPipelineCoordinator;
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lOptions: TPipelineOptions;
+  lResult: TPipelineRunResult;
+  lScanRoot: string;
+  lSettings: TSettingsLoadResult;
+  lSettingsPath: string;
+  lSkillFile: string;
+  lSkillRoot: string;
+  lState: TSkillState;
+  lUnusedInfraRoot: string;
+  lUtf8: TStringList;
+begin
+  PrepareFixtureDirectory('SkillSearchPipelineSettingsFixture', lFixtureRoot, lUnusedInfraRoot, lScanRoot);
+
+  lSkillRoot := TPath.Combine(lScanRoot, 'skill-settings');
+  ForceDirectories(TPath.Combine(lSkillRoot, '.git'));
+  ForceDirectories(TPath.Combine(lSkillRoot, 'scripts'));
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  TFile.WriteAllText(lSkillFile, '# Settings Fixture' + sLineBreak + sLineBreak + 'Body text', TEncoding.UTF8);
+  TFile.WriteAllText(TPath.Combine(lSkillRoot, 'scripts\runner.py'), 'print("ok")', TEncoding.UTF8);
+
+  lSettingsPath := TPath.Combine(lFixtureRoot, 'runtime\settings.ini');
+  ForceDirectories(ExtractFilePath(lSettingsPath));
+  lUtf8 := TStringList.Create;
+  try
+    lUtf8.Add('[Index]');
+    lUtf8.Add('ComputeHasScripts=0');
+    lUtf8.SaveToFile(lSettingsPath, TEncoding.UTF8);
+  finally
+    lUtf8.Free;
+  end;
+
+  lSettings := LoadOrCreateSettings(lSettingsPath);
+  AssertTrue(not lSettings.Settings.Index.ComputeHasScripts,
+    'Expected test fixture settings to disable has-scripts computation');
+
+  lOptions := BuildPipelineOptionsFromSettings(lSettings.Settings);
+  lOptions.PullEnabled := False;
+  lOptions.MaxGitPullThreads := 1;
+  lOptions.MaxIndexThreads := 1;
+  lOptions.MaxScanThreads := 1;
+
+  lDbPath := ResolveSettingsPath(lSettings.Settings.General.CacheDbPath, ExtractFilePath(lSettings.SettingsPath));
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    lDbManager.Initialize;
+
+    lCoordinator := TPipelineCoordinator.Create(lDbManager, lOptions);
+    try
+      lResult := lCoordinator.Run([lScanRoot], nil);
+    finally
+      lCoordinator.Free;
+    end;
+
+    AssertEqualInt(0, lResult.ErrorCount, 'Pipeline run should not report errors');
+    AssertTrue(lDbManager.TryGetSkillState(TPath.GetFullPath(lSkillFile), lState), 'Expected indexed skill row');
+    AssertEqualInt(0, lState.HasScripts, 'Pipeline should honor ComputeHasScripts=0 from settings');
+    AssertEqualInt(0, lState.ScriptsCount, 'Disabled script computation should keep scripts_count=0');
+    AssertEqualText('', lState.ScriptsExts, 'Disabled script computation should keep scripts_exts empty');
+  finally
+    lDbManager.Free;
+  end;
 end;
 
 procedure TestPipelineAutoCancelStopsBeforeDbWrites;
@@ -372,6 +461,7 @@ end;
 
 procedure RunPipelineTests;
 begin
+  TestPipelineHonorsComputeHasScriptsSetting;
   TestPipelineAutoCancelStopsBeforeDbWrites;
   TestGitPullIsThrottledOnSecondRun;
   TestGitPullFailureDoesNotBlockOtherRepos;
