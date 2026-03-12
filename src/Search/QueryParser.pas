@@ -5,6 +5,8 @@ interface
 type
   TSearchQuery = record
     ExcludedTerms: TArray<string>;
+    ExtFilters: TArray<string>;
+    FtsTokens: TArray<string>;
     HasScriptsFilter: Integer;
     Limit: Integer;
     NameFilters: TArray<string>;
@@ -76,6 +78,18 @@ begin
       Continue;
     end;
 
+    if (not lInQuote) and CharInSet(aRawQuery[i], ['(', ')']) then
+    begin
+      if lBuffer <> '' then
+      begin
+        AddToken(Result, lBuffer);
+        lBuffer := '';
+      end;
+      lToken := aRawQuery[i];
+      AddToken(Result, lToken);
+      Continue;
+    end;
+
     if (not lInQuote) and CharInSet(aRawQuery[i], [#9, #10, #13, ' ']) then
     begin
       if lBuffer <> '' then
@@ -134,36 +148,145 @@ begin
   end;
 end;
 
+function IsAndOperatorToken(const aToken: string): Boolean;
+begin
+  Result := SameText(aToken, 'AND');
+end;
+
+function IsOrOperatorToken(const aToken: string): Boolean;
+begin
+  Result := SameText(aToken, 'OR');
+end;
+
+function IsOpenParenToken(const aToken: string): Boolean;
+begin
+  Result := aToken = '(';
+end;
+
+function IsCloseParenToken(const aToken: string): Boolean;
+begin
+  Result := aToken = ')';
+end;
+
+function CombineFtsExpressions(const aLeft, aOperator, aRight: string): string;
+begin
+  if aLeft = '' then
+  begin
+    Exit(aRight);
+  end;
+  if aRight = '' then
+  begin
+    Exit(aLeft);
+  end;
+
+  Result := '(' + aLeft + ' ' + aOperator + ' ' + aRight + ')';
+end;
+
+function ParseFtsOrExpression(const aTokens: TArray<string>; var aIndex: Integer): string; forward;
+
+function ParseFtsPrimaryExpression(const aTokens: TArray<string>; var aIndex: Integer): string;
+var
+  lToken: string;
+begin
+  Result := '';
+  if aIndex > High(aTokens) then
+  begin
+    Exit;
+  end;
+
+  lToken := aTokens[aIndex];
+  if IsOpenParenToken(lToken) then
+  begin
+    Inc(aIndex);
+    Result := ParseFtsOrExpression(aTokens, aIndex);
+    if (aIndex <= High(aTokens)) and IsCloseParenToken(aTokens[aIndex]) then
+    begin
+      Inc(aIndex);
+    end;
+    Exit;
+  end;
+
+  if IsCloseParenToken(lToken) or IsAndOperatorToken(lToken) or IsOrOperatorToken(lToken) then
+  begin
+    Exit;
+  end;
+
+  Inc(aIndex);
+  Result := NormalizeFtsTerm(lToken);
+end;
+
+function ParseFtsAndExpression(const aTokens: TArray<string>; var aIndex: Integer): string;
+var
+  lRight: string;
+begin
+  Result := ParseFtsPrimaryExpression(aTokens, aIndex);
+
+  while aIndex <= High(aTokens) do
+  begin
+    if IsCloseParenToken(aTokens[aIndex]) or IsOrOperatorToken(aTokens[aIndex]) then
+    begin
+      Break;
+    end;
+
+    if IsAndOperatorToken(aTokens[aIndex]) then
+    begin
+      Inc(aIndex);
+    end;
+
+    lRight := ParseFtsPrimaryExpression(aTokens, aIndex);
+    Result := CombineFtsExpressions(Result, 'AND', lRight);
+  end;
+end;
+
+function ParseFtsOrExpression(const aTokens: TArray<string>; var aIndex: Integer): string;
+var
+  lRight: string;
+begin
+  Result := ParseFtsAndExpression(aTokens, aIndex);
+
+  while (aIndex <= High(aTokens)) and IsOrOperatorToken(aTokens[aIndex]) do
+  begin
+    Inc(aIndex);
+    lRight := ParseFtsAndExpression(aTokens, aIndex);
+    Result := CombineFtsExpressions(Result, 'OR', lRight);
+  end;
+end;
+
+function NormalizeExtFilter(const aValue: string): string;
+begin
+  Result := Trim(aValue);
+  if StartsText('.', Result) then
+  begin
+    Delete(Result, 1, 1);
+  end;
+  Result := LowerCase(Result);
+end;
+
 function BuildFtsMatchExpression(const aQuery: TSearchQuery): string;
 var
-  i: Integer;
+  lExpression: string;
+  lIndex: Integer;
   lTerm: string;
 begin
   Result := '';
 
-  for i := 0 to Pred(Length(aQuery.PositiveTerms)) do
-  begin
-    lTerm := NormalizeFtsTerm(aQuery.PositiveTerms[i]);
-    if lTerm = '' then
-    begin
-      Continue;
-    end;
-
-    if Result <> '' then
-    begin
-      Result := Result + ' AND ';
-    end;
-    Result := Result + lTerm;
-  end;
-
-  if Result = '' then
+  lIndex := 0;
+  lExpression := ParseFtsOrExpression(aQuery.FtsTokens, lIndex);
+  if lExpression = '' then
   begin
     Exit('');
   end;
 
-  for i := 0 to Pred(Length(aQuery.ExcludedTerms)) do
+  if Length(aQuery.ExcludedTerms) > 0 then
   begin
-    lTerm := NormalizeFtsTerm(aQuery.ExcludedTerms[i]);
+    Result := '(' + lExpression + ')';
+  end else begin
+    Result := lExpression;
+  end;
+
+  for lIndex := 0 to Pred(Length(aQuery.ExcludedTerms)) do
+  begin
+    lTerm := NormalizeFtsTerm(aQuery.ExcludedTerms[lIndex]);
     if lTerm = '' then
     begin
       Continue;
@@ -235,13 +358,28 @@ begin
       Continue;
     end;
 
+    if StartsText('ext:', lToken) then
+    begin
+      lToken := NormalizeExtFilter(Copy(lToken, 5, MaxInt));
+      AddToken(Result.ExtFilters, lToken);
+      Continue;
+    end;
+
     if StartsText('-', lToken) then
     begin
       AddToken(Result.ExcludedTerms, Copy(lToken, 2, MaxInt));
       Continue;
     end;
 
+    if IsAndOperatorToken(lToken) or IsOrOperatorToken(lToken) or IsOpenParenToken(lToken) or IsCloseParenToken(lToken)
+    then
+    begin
+      AddToken(Result.FtsTokens, lToken);
+      Continue;
+    end;
+
     AddToken(Result.PositiveTerms, lToken);
+    AddToken(Result.FtsTokens, lToken);
   end;
 end;
 

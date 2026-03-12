@@ -18,6 +18,14 @@ begin
   end;
 end;
 
+procedure AssertEqualText(const aExpected, aActual, aMessage: string);
+begin
+  if aExpected <> aActual then
+  begin
+    raise Exception.CreateFmt('%s | expected="%s" actual="%s"', [aMessage, aExpected, aActual]);
+  end;
+end;
+
 procedure AssertTrue(const aCondition: Boolean; const aMessage: string);
 begin
   if not aCondition then
@@ -67,11 +75,13 @@ var
   lRootB: string;
   lRootC: string;
   lRootD: string;
+  lRootE: string;
 begin
   lRootA := 'C:\skills\repo-alpha\retry-patterns';
   lRootB := 'C:\skills\repo-beta\network-basics';
   lRootC := 'C:\skills\repo-gamma\jwt-auth';
   lRootD := 'C:\skills\repo-delta\retry-patterns-copy';
+  lRootE := 'C:\skills\repo-epsilon\backoff-basics';
   lLongBody :=
     'How to implement retry with backoff and rate limit in Delphi.' + sLineBreak +
     'Inline html <script>alert(1)</script> should never render as executable markup.' + sLineBreak;
@@ -80,7 +90,7 @@ begin
     lLongBody := lLongBody + 'Retry loops should include bounded jitter and clear retry limits. ';
   end;
 
-  SetLength(lSkills, 4);
+  SetLength(lSkills, 5);
   lSkills[0] := BuildSkill(
     lRootA,
     'SKILL.md',
@@ -129,11 +139,24 @@ begin
     'ps1;py'
   );
 
+  lSkills[4] := BuildSkill(
+    lRootE,
+    'SKILL.md',
+    'Backoff Strategy',
+    'Backoff-only guide',
+    'resilience',
+    'Exponential backoff strategies for flaky services.',
+    1,
+    2,
+    'ps1;sh'
+  );
+
   aDbManager.WriteBatch(nil, lSkills);
 end;
 
-procedure TestQueryParserUnderstandsHasScriptsFlag;
+procedure TestQueryParserSupportsBooleanOperatorsAndExtensionFilters;
 var
+  lExpression: string;
   lParsed: TSearchQuery;
 begin
   lParsed := ParseSearchQuery('retry', 500);
@@ -145,6 +168,23 @@ begin
 
   lParsed := ParseSearchQuery('retry -has:scripts');
   AssertEqualInt(0, lParsed.HasScriptsFilter, 'Expected -has:scripts exclude flag');
+
+  lParsed := ParseSearchQuery('retry OR backoff');
+  lExpression := BuildFtsMatchExpression(lParsed);
+  AssertEqualText('(retry* OR backoff*)', lExpression, 'Expected OR expression in FTS query');
+
+  lParsed := ParseSearchQuery('retry or backoff');
+  lExpression := BuildFtsMatchExpression(lParsed);
+  AssertEqualText('(retry* OR backoff*)', lExpression, 'Expected case-insensitive OR expression in FTS query');
+
+  lParsed := ParseSearchQuery('(retry OR backoff) timeout');
+  lExpression := BuildFtsMatchExpression(lParsed);
+  AssertEqualText('((retry* OR backoff*) AND timeout*)', lExpression,
+    'Expected grouped OR terms to combine with implicit AND');
+
+  lParsed := ParseSearchQuery('retry AND backoff');
+  lExpression := BuildFtsMatchExpression(lParsed);
+  AssertEqualText('(retry* AND backoff*)', lExpression, 'Explicit AND should preserve AND semantics');
 end;
 
 procedure TestSearchFiltersAndRanking;
@@ -176,8 +216,8 @@ begin
       'Expected seeded network basics skill row'
     );
     AssertEqualInt(0, lSkillState.HasScripts, 'Seeded non-script skill should keep has_scripts=0');
-    AssertEqualInt(4, lDbManager.GetValidSkillCount, 'Expected valid skills count to include all seeded rows');
-    AssertEqualInt(3, lDbManager.GetUniqueSkillCount, 'Expected unique skills count after body_hash dedup');
+    AssertEqualInt(5, lDbManager.GetValidSkillCount, 'Expected valid skills count to include all seeded rows');
+    AssertEqualInt(4, lDbManager.GetUniqueSkillCount, 'Expected unique skills count after body_hash dedup');
   finally
     lDbManager.Free;
   end;
@@ -215,6 +255,40 @@ begin
     AssertTrue(Length(lResults[0].Snippet) <= 600, 'Default snippet max chars should be enforced');
     AssertTrue(ContainsText(lResults[0].Snippet, '[['), 'Expected snippet highlight markers for FTS hits');
     AssertTrue(ContainsText(lResults[0].Snippet, ']]'), 'Expected snippet highlight markers for FTS hits');
+
+    lResults := lSearchService.Search('retry OR backoff');
+    AssertEqualInt(3, Length(lResults), 'OR query should match retry-only, backoff-only, and combined skills');
+    AssertTrue(ContainsText(lResults[0].Name, 'Retry'), 'Combined retry/backoff skill should still rank first');
+    AssertTrue(
+      SameText(lResults[1].Name, 'Backoff Strategy') or SameText(lResults[2].Name, 'Backoff Strategy'),
+      'Expected backoff-only skill to match OR query'
+    );
+    AssertTrue(
+      SameText(lResults[1].Name, 'Network Basics') or SameText(lResults[2].Name, 'Network Basics'),
+      'Expected retry-only skill to match OR query'
+    );
+
+    lResults := lSearchService.Search('retry AND backoff');
+    AssertEqualInt(1, Length(lResults), 'Explicit AND should keep only skills containing both terms');
+    AssertTrue(SameText(lResults[0].Name, 'Retry Patterns'),
+      'Explicit AND should keep the combined retry/backoff skill');
+
+    lResults := lSearchService.Search('retry backoff');
+    AssertEqualInt(1, Length(lResults), 'Implicit multi-term search should still require both terms');
+    AssertTrue(SameText(lResults[0].Name, 'Retry Patterns'),
+      'Implicit multi-term search should keep the combined retry/backoff skill');
+
+    lResults := lSearchService.Search('ext:py');
+    AssertEqualInt(1, Length(lResults), 'ext:py should keep only py-enabled skills');
+    AssertTrue(SameText(lResults[0].Name, 'Retry Patterns'), 'ext:py should return the py-enabled fixture');
+
+    lResults := lSearchService.Search('ext:ps1 ext:sh');
+    AssertEqualInt(1, Length(lResults), 'Multiple ext filters should AND-combine');
+    AssertTrue(SameText(lResults[0].Name, 'Backoff Strategy'),
+      'Expected ps1+sh filter to keep only the matching skill');
+
+    lResults := lSearchService.Search('ext:java');
+    AssertEqualInt(0, Length(lResults), 'Unknown ext filter should exclude non-matching skills');
   finally
     lSearchService.Free;
   end;
@@ -258,7 +332,7 @@ end;
 
 procedure RunSearchTests;
 begin
-  TestQueryParserUnderstandsHasScriptsFlag;
+  TestQueryParserSupportsBooleanOperatorsAndExtensionFilters;
   TestSearchFiltersAndRanking;
   TestPreviewSnippetHtmlIsSanitizedAndHighlighted;
 end;

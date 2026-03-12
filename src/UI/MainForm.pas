@@ -820,11 +820,13 @@ const
   cSearchHelpText =
     'Search syntax:' + sLineBreak +
     '- words: retry backoff' + sLineBreak +
+    '- OR / grouping: (retry OR backoff) timeout' + sLineBreak +
     '- phrase: "rate limit"' + sLineBreak +
     '- exclude: -jwt' + sLineBreak +
     '- name filter: name:ollama' + sLineBreak +
     '- tag filter: tag:docker' + sLineBreak +
     '- path filter: path:openclaw' + sLineBreak +
+    '- extension filter: ext:py' + sLineBreak +
     '- scripts filter: has:scripts / -has:scripts' + sLineBreak +
     '- result limit: limit:200';
 begin
