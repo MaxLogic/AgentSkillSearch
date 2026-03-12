@@ -8,10 +8,10 @@ implementation
 
 uses
   System.Classes, System.Diagnostics, System.IniFiles, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
-  Winapi.Windows,
+  Winapi.Messages, Winapi.Windows,
   Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   AppPaths, DatabaseManager, DockerHealthMonitor, ExternalTools, Logging, PipelineCoordinator, Settings,
-  RelatedSkillActions, SettingsModel, SkillSearchService, SkillTypes, TagBrowserActions;
+  RelatedSkillActions, SettingsModel, SkillSearchService, SkillTypes, TagBrowserActions, TrayActions;
 
 var
   gPartialEmbeddingRequestCount: Integer;
@@ -317,8 +317,12 @@ begin
       'Expected UIState.ResultsColumnWidths key to be created');
     AssertTrue(lIni.ValueExists('SearchHistory', 'MaxItems'),
       'Expected SearchHistory.MaxItems key to be created');
+    AssertTrue(lIni.ValueExists('UI', 'TrayHotkey'),
+      'Expected UI.TrayHotkey key to be created');
     AssertEqualInt(20, lIni.ReadInteger('SearchHistory', 'MaxItems', 0),
       'Expected SearchHistory.MaxItems default');
+    AssertEqualText('', lIni.ReadString('UI', 'TrayHotkey', 'missing'),
+      'Expected UI.TrayHotkey default to be empty');
   finally
     lIni.Free;
   end;
@@ -417,6 +421,33 @@ begin
   AssertEqualText('code {path}', lLoadResult.Settings.ExternalTools[0].CommandTemplate,
     'Expected Code external tool template');
   AssertEqualText('Explorer', lLoadResult.Settings.ExternalTools[1].Name, 'Expected Explorer external tool name');
+end;
+
+procedure TestSettingsLoadTrayHotkey;
+var
+  lFixtureRoot: string;
+  lLoadResult: TSettingsLoadResult;
+  lSettingsPath: string;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+  lUtf8: TStringList;
+begin
+  PrepareFixtureDirectory('SkillSearchTrayHotkeyFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+
+  lSettingsPath := TPath.Combine(lFixtureRoot, 'runtime\settings.ini');
+  ForceDirectories(ExtractFilePath(lSettingsPath));
+
+  lUtf8 := TStringList.Create;
+  try
+    lUtf8.Add('[UI]');
+    lUtf8.Add('TrayHotkey=Win+Shift+K');
+    lUtf8.SaveToFile(lSettingsPath, TEncoding.UTF8);
+  finally
+    lUtf8.Free;
+  end;
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+  AssertEqualText('Win+Shift+K', lLoadResult.Settings.Ui.TrayHotkey, 'Expected configured tray hotkey to load');
 end;
 
 procedure TestExternalToolCommandFormatting;
@@ -801,6 +832,57 @@ begin
   end;
 end;
 
+procedure TestTrayActions;
+var
+  lError: string;
+  lHotkey: TTrayHotkey;
+  lState: TTrayWindowState;
+begin
+  lState := DefaultTrayWindowState;
+  AssertTrue(lState.WindowVisible, 'Expected default tray state to start with the window visible');
+  AssertTrue(not lState.TrayIconVisible, 'Expected default tray state to start without a tray icon');
+  AssertTrue(not lState.ExitRequested, 'Expected default tray state to start without an exit request');
+
+  lState := ApplyHideToTray(lState);
+  AssertTrue(lState.TrayIconVisible, 'Expected hide-to-tray transition to set the tray icon visible');
+  AssertTrue(not lState.WindowVisible, 'Expected hide-to-tray transition to hide the window');
+
+  lState := ApplyRestoreFromTray(lState);
+  AssertTrue(not lState.TrayIconVisible, 'Expected restore transition to remove the tray icon');
+  AssertTrue(lState.WindowVisible, 'Expected restore transition to show the window');
+
+  lState := ApplyTrayExitRequest(lState);
+  AssertTrue(lState.ExitRequested, 'Expected tray Exit transition to mark an explicit exit request');
+  AssertTrue(ShouldHideToTrayOnClose(False), 'Expected normal window close to hide to tray');
+  AssertTrue(not ShouldHideToTrayOnClose(True), 'Expected explicit exit request to bypass tray hiding');
+
+  AssertTrue(ResolveTrayMessageAction(WM_LBUTTONDBLCLK) = TTrayMessageAction.tmaRestore,
+    'Expected tray double-click to restore the main window');
+  AssertTrue(ResolveTrayMessageAction(WM_CONTEXTMENU) = TTrayMessageAction.tmaShowMenu,
+    'Expected tray context menu message to open the tray menu');
+  AssertTrue(ResolveTrayMessageAction(WM_RBUTTONUP) = TTrayMessageAction.tmaShowMenu,
+    'Expected tray right-button release to open the tray menu');
+
+  AssertTrue(TryParseTrayHotkey('Win+Shift+K', lHotkey, lError), 'Expected Win+Shift+K to parse as a tray hotkey');
+  AssertEqualInt(MOD_WIN or MOD_SHIFT, lHotkey.Modifiers, 'Expected tray hotkey modifiers to match the setting');
+  AssertEqualInt(Ord('K'), lHotkey.VirtualKey, 'Expected tray hotkey virtual key to match the setting');
+
+  AssertTrue(not TryParseTrayHotkey('Win+Shift', lHotkey, lError),
+    'Expected tray hotkey without a primary key to be rejected');
+  AssertTrue(Pos('primary key', LowerCase(lError)) > 0, 'Expected missing-key tray hotkey parse message');
+
+  AssertTrue(not TryParseTrayHotkey('Win+Nope+K', lHotkey, lError),
+    'Expected unknown tray hotkey token to be rejected');
+  AssertTrue(Pos('unknown', LowerCase(lError)) > 0, 'Expected unknown-token tray hotkey parse message');
+
+  AssertTrue(not TryParseTrayHotkey('K', lHotkey, lError),
+    'Expected tray hotkey without modifiers to be rejected');
+  AssertTrue(Pos('modifier', LowerCase(lError)) > 0, 'Expected modifier-required tray hotkey parse message');
+
+  AssertTrue(not TryParseTrayHotkey('', lHotkey, lError), 'Expected empty tray hotkey to mean not configured');
+  AssertEqualText('', lError, 'Expected empty tray hotkey to return no parse error');
+end;
+
 procedure TestPipelineAutoCancelStopsBeforeDbWrites;
 var
   lCoordinator: TPipelineCoordinator;
@@ -1026,6 +1108,7 @@ begin
   TestSettingsCreateUiStateAndSearchHistoryDefaults;
   TestSettingsPersistUiStateAndSearchHistory;
   TestSettingsLoadExternalTools;
+  TestSettingsLoadTrayHotkey;
   TestExternalToolCommandFormatting;
   TestDatabaseSkillTagCounts;
   TestTagBrowserActions;
@@ -1034,6 +1117,7 @@ begin
   TestPipelineReportsEmbeddingProgress;
   TestPipelineReportsEmbeddingUnavailable;
   TestPipelineReportsEmbeddingUnavailableWhenSkillRemainsPartial;
+  TestTrayActions;
   TestPipelineAutoCancelStopsBeforeDbWrites;
   TestGitPullIsThrottledOnSecondRun;
   TestGitPullFailureDoesNotBlockOtherRepos;

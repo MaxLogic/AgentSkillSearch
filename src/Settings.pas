@@ -495,6 +495,8 @@ begin
       lDefault.Ui.ShowPreviewPane);
     Result.Settings.Ui.OpenFileOnEnter := ReadRequiredBool(lIni, Result, 'UI', 'OpenFileOnEnter',
       lDefault.Ui.OpenFileOnEnter);
+    Result.Settings.Ui.TrayHotkey := ReadRequiredStringAllowEmpty(lIni, Result, 'UI', 'TrayHotkey',
+      lDefault.Ui.TrayHotkey);
 
     lSectionValues := TStringList.Create;
     try
