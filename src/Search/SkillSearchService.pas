@@ -41,8 +41,8 @@ type
     fSqliteDllPath: string;
     procedure ApplySemanticRerank(const aQuery: string; var aResults: TArray<TSkillSearchResult>);
     procedure AppendSemanticCandidates(const aQueryVector: TArray<Single>; const aPositiveTerms, aNameFilters,
-      aTagFilters, aPathFilters, aExcludedTerms: TArray<string>; const aHasScriptsFilter, aMaxAppend: Integer;
-      var aResults: TArray<TSkillSearchResult>);
+      aTagFilters, aPathFilters, aExtFilters, aExcludedTerms: TArray<string>;
+      const aHasScriptsFilter, aMaxAppend: Integer; var aResults: TArray<TSkillSearchResult>);
     function BuildFallbackSnippet(const aBody: string; const aTerms: TArray<string>): string;
     function CosineSimilarity(const aLeft, aRight: TArray<Single>): Double;
     function ClampSnippet(const aValue: string): string;
@@ -97,6 +97,11 @@ end;
 function LowerLikePattern(const aValue: string): string;
 begin
   Result := '%' + LowerCase(EscapeLike(aValue)) + '%';
+end;
+
+function LowerExtensionLikePattern(const aValue: string): string;
+begin
+  Result := '%;' + LowerCase(EscapeLike(aValue)) + ';%';
 end;
 
 function TSkillSearchService.ClampSnippet(const aValue: string): string;
@@ -547,8 +552,8 @@ begin
 end;
 
 procedure TSkillSearchService.AppendSemanticCandidates(const aQueryVector: TArray<Single>; const aPositiveTerms,
-  aNameFilters, aTagFilters, aPathFilters, aExcludedTerms: TArray<string>; const aHasScriptsFilter, aMaxAppend: Integer;
-  var aResults: TArray<TSkillSearchResult>);
+  aNameFilters, aTagFilters, aPathFilters, aExtFilters, aExcludedTerms: TArray<string>;
+  const aHasScriptsFilter, aMaxAppend: Integer; var aResults: TArray<TSkillSearchResult>);
 var
   i: Integer;
   lAppendCount: Integer;
@@ -626,6 +631,14 @@ begin
       lSemanticSql.AppendLine(Format('AND LOWER(s.skill_root) LIKE :semantic_path_filter_%d ESCAPE ''\''', [i]));
     end;
 
+    for i := 0 to Pred(Length(aExtFilters)) do
+    begin
+      lSemanticSql.AppendLine(Format(
+        'AND ('';'' || LOWER(COALESCE(s.scripts_exts, '''')) || '';'') LIKE :semantic_ext_filter_%d ESCAPE ''\''',
+        [i]
+      ));
+    end;
+
     if aHasScriptsFilter = 1 then
     begin
       lSemanticSql.AppendLine('AND s.has_scripts = 1');
@@ -661,6 +674,12 @@ begin
     for i := 0 to Pred(Length(aPathFilters)) do
     begin
       lSemanticQuery.ParamByName(Format('semantic_path_filter_%d', [i])).AsString := LowerLikePattern(aPathFilters[i]);
+    end;
+
+    for i := 0 to Pred(Length(aExtFilters)) do
+    begin
+      lSemanticQuery.ParamByName(Format('semantic_ext_filter_%d', [i])).AsString :=
+        LowerExtensionLikePattern(aExtFilters[i]);
     end;
 
     for i := 0 to Pred(Length(aExcludedTerms)) do
@@ -840,6 +859,7 @@ begin
     lSearchQuery.NameFilters,
     lSearchQuery.TagFilters,
     lSearchQuery.PathFilters,
+    lSearchQuery.ExtFilters,
     lSearchQuery.ExcludedTerms,
     lSearchQuery.HasScriptsFilter,
     lSemanticAppendLimit,
@@ -944,6 +964,14 @@ begin
       lSql.AppendLine(Format('AND LOWER(s.skill_root) LIKE :path_filter_%d ESCAPE ''\''', [i]));
     end;
 
+    for i := 0 to Pred(Length(lSearchQuery.ExtFilters)) do
+    begin
+      lSql.AppendLine(Format(
+        'AND ('';'' || LOWER(COALESCE(s.scripts_exts, '''')) || '';'') LIKE :ext_filter_%d ESCAPE ''\''',
+        [i]
+      ));
+    end;
+
     if lSearchQuery.HasScriptsFilter = 1 then
     begin
       lSql.AppendLine('AND s.has_scripts = 1');
@@ -990,6 +1018,11 @@ begin
     for i := 0 to Pred(Length(lSearchQuery.PathFilters)) do
     begin
       lQuery.ParamByName(Format('path_filter_%d', [i])).AsString := LowerLikePattern(lSearchQuery.PathFilters[i]);
+    end;
+
+    for i := 0 to Pred(Length(lSearchQuery.ExtFilters)) do
+    begin
+      lQuery.ParamByName(Format('ext_filter_%d', [i])).AsString := LowerExtensionLikePattern(lSearchQuery.ExtFilters[i]);
     end;
 
     for i := 0 to Pred(Length(lSearchQuery.ExcludedTerms)) do
