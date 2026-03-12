@@ -480,6 +480,44 @@ begin
   AssertTrue(ContainsText(lHtml, 'remote'), 'Expected remote image alt text or placeholder to remain visible');
 end;
 
+procedure TestFindRelatedSkills;
+var
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lRelated: TArray<TRelatedSkillResult>;
+  lSemanticOptions: TSemanticSearchOptions;
+  lSearchService: TSkillSearchService;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchRelatedFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    lDbManager.Initialize;
+    SeedSearchFixture(lDbManager);
+  finally
+    lDbManager.Free;
+  end;
+
+  lSemanticOptions := DefaultSemanticSearchOptions;
+  lSemanticOptions.Enabled := True;
+  lSemanticOptions.Model := 'deterministic-v1';
+  lSearchService := TSkillSearchService.Create(lDbPath, GetSqliteDllPath, 600, 200, lSemanticOptions);
+  try
+    lRelated := lSearchService.FindRelatedSkills('C:\skills\repo-alpha\retry-patterns\SKILL.md');
+    AssertTrue(Length(lRelated) >= 1, 'Expected at least one related skill');
+    AssertEqualText('Retry Patterns Copy', lRelated[0].Name, 'Expected duplicate body to rank as the closest skill');
+  finally
+    lSearchService.Free;
+  end;
+end;
+
 procedure RunSearchTests;
 begin
   TestQueryParserSupportsBooleanOperatorsAndExtensionFilters;
@@ -487,6 +525,7 @@ begin
   TestSearchResultActions;
   TestSearchFiltersAndRanking;
   TestPreviewSnippetHtmlIsSanitizedAndHighlighted;
+  TestFindRelatedSkills;
 end;
 
 end.

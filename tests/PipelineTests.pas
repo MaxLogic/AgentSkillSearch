@@ -11,7 +11,10 @@ uses
   Winapi.Windows,
   Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   AppPaths, DatabaseManager, DockerHealthMonitor, ExternalTools, Logging, PipelineCoordinator, Settings,
-  SettingsModel, SkillTypes, TagBrowserActions;
+  RelatedSkillActions, SettingsModel, SkillSearchService, SkillTypes, TagBrowserActions;
+
+var
+  gPartialEmbeddingRequestCount: Integer;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -77,6 +80,33 @@ begin
   Result.SkillRoot := aSkillRoot;
   Result.SourceId := 1;
   Result.Tags := aTags;
+end;
+
+function TryBuildTestEmbedding(const aText: string; out aVector: TArray<Single>): Boolean;
+begin
+  SetLength(aVector, 3);
+  aVector[0] := Length(aText);
+  aVector[1] := Length(Trim(aText));
+  aVector[2] := 1.0;
+  Result := True;
+end;
+
+function TryBuildUnavailableEmbedding(const aText: string; out aVector: TArray<Single>): Boolean;
+begin
+  aVector := nil;
+  Result := False;
+end;
+
+function TryBuildPartialEmbedding(const aText: string; out aVector: TArray<Single>): Boolean;
+begin
+  Inc(gPartialEmbeddingRequestCount);
+  if gPartialEmbeddingRequestCount = 1 then
+  begin
+    Exit(TryBuildTestEmbedding(aText, aVector));
+  end;
+
+  aVector := nil;
+  Result := False;
 end;
 
 procedure RunShellOrFail(const aWorkingDir, aCommand: string);
@@ -541,6 +571,236 @@ begin
   end;
 end;
 
+procedure TestRelatedSkillActions;
+var
+  lForm: TForm;
+  lItems: TArray<TRelatedSkillResult>;
+  lListBox: TListBox;
+  lSelectedItem: TRelatedSkillResult;
+begin
+  SetLength(lItems, 2);
+  lItems[0].Name := 'Retry Patterns Copy';
+  lItems[0].SkillRoot := 'C:\skills\repo-delta\retry-patterns-copy';
+  lItems[1].Name := 'Backoff Strategy';
+  lItems[1].SkillRoot := 'C:\skills\repo-epsilon\backoff-basics';
+
+  lForm := TForm.Create(nil);
+  try
+    lListBox := TListBox.Create(lForm);
+    lListBox.Parent := lForm;
+
+    PopulateRelatedSkillsListBox(lListBox, lItems);
+    AssertEqualInt(2, lListBox.Items.Count, 'Expected one list-box row per related skill');
+    AssertTrue(ContainsText(lListBox.Items[0], 'Retry Patterns Copy'),
+      'Expected first related skill caption in the list box');
+
+    lListBox.ItemIndex := 1;
+    AssertTrue(TryGetSelectedRelatedSkill(lListBox, lItems, lSelectedItem),
+      'Expected related-skill selection lookup from the list box');
+    AssertEqualText('Backoff Strategy', lSelectedItem.Name, 'Expected selected related skill to match list row');
+  finally
+    lForm.Free;
+  end;
+end;
+
+procedure TestResolveRelatedSkillNavigation;
+var
+  lItems: TArray<TRelatedSkillResult>;
+  lNavigation: TRelatedSkillNavigation;
+  lResults: TArray<TSkillSearchResult>;
+begin
+  SetLength(lItems, 1);
+  lItems[0].Name := 'Retry Patterns Copy';
+  lItems[0].SkillFile := 'C:\skills\repo-delta\retry-patterns-copy\SKILL.md';
+  lItems[0].SkillRoot := 'C:\skills\repo-delta\retry-patterns-copy';
+
+  SetLength(lResults, 2);
+  lResults[0] := Default(TSkillSearchResult);
+  lResults[0].Name := 'Retry Patterns';
+  lResults[0].SkillFile := 'C:\skills\repo-alpha\retry-patterns\SKILL.md';
+  lResults[1] := Default(TSkillSearchResult);
+  lResults[1].Name := 'Retry Patterns Copy';
+  lResults[1].SkillFile := lItems[0].SkillFile;
+
+  lNavigation := ResolveRelatedSkillNavigation(lItems[0], lResults);
+  AssertTrue(lNavigation.Action = TRelatedSkillAction.rsaSelectResult,
+    'Expected in-result related skill to request list selection');
+  AssertEqualInt(1, lNavigation.ResultIndex, 'Expected related-skill navigation to point at the matching result');
+  AssertEqualText(lItems[0].SkillFile, lNavigation.SkillFile, 'Expected related-skill navigation to keep skill file');
+
+  SetLength(lResults, 1);
+  lResults[0] := Default(TSkillSearchResult);
+  lResults[0].Name := 'Different Skill';
+  lResults[0].SkillFile := 'C:\skills\repo-other\different\SKILL.md';
+
+  lNavigation := ResolveRelatedSkillNavigation(lItems[0], lResults);
+  AssertTrue(lNavigation.Action = TRelatedSkillAction.rsaOpenFile,
+    'Expected missing related skill to request direct file open');
+  AssertEqualInt(-1, lNavigation.ResultIndex,
+    'Expected direct-open navigation to avoid selecting a result list row');
+  AssertEqualText(lItems[0].SkillFile, lNavigation.SkillFile, 'Expected direct-open navigation to target skill file');
+end;
+
+procedure TestPipelineReportsEmbeddingProgress;
+var
+  lCoordinator: TPipelineCoordinator;
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lOptions: TPipelineOptions;
+  lProgressEvents: TStringList;
+  lScanRoot: string;
+  lUnusedInfraRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchEmbeddingProgressFixture', lFixtureRoot, lUnusedInfraRoot, lScanRoot);
+  CreateSyntheticRepoFixture(lScanRoot, 1, 2);
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  lProgressEvents := TStringList.Create;
+  try
+    lDbManager.Initialize;
+
+    lOptions := DefaultPipelineOptions;
+    lOptions.MaxGitPullThreads := 1;
+    lOptions.MaxIndexThreads := 1;
+    lOptions.MaxScanThreads := 1;
+    lOptions.PullEnabled := False;
+    lOptions.SemanticOptions.Enabled := True;
+    lOptions.SemanticOptions.Model := 'mxbai-embed-large';
+    lOptions.SemanticOptions.EmbeddingRequester := TryBuildTestEmbedding;
+    lOptions.OnEmbeddingProgress :=
+      procedure(const aCurrent, aTotal: Integer; const aStatusText: string)
+      begin
+        lProgressEvents.Add(aStatusText);
+      end;
+
+    lCoordinator := TPipelineCoordinator.Create(lDbManager, lOptions);
+    try
+      lCoordinator.Run([lScanRoot], nil);
+    finally
+      lCoordinator.Free;
+    end;
+
+    AssertTrue(lProgressEvents.Count > 0, 'Expected embedding progress callbacks during pipeline run');
+    AssertTrue(ContainsText(lProgressEvents.Text, 'Embedding 1 /'),
+      'Expected progress text to include an embedding count');
+  finally
+    lProgressEvents.Free;
+    lDbManager.Free;
+  end;
+end;
+
+procedure TestPipelineReportsEmbeddingUnavailable;
+var
+  lCoordinator: TPipelineCoordinator;
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lOptions: TPipelineOptions;
+  lProgressEvents: TStringList;
+  lScanRoot: string;
+  lUnusedInfraRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchEmbeddingUnavailableFixture', lFixtureRoot, lUnusedInfraRoot, lScanRoot);
+  CreateSyntheticRepoFixture(lScanRoot, 1, 1);
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  lProgressEvents := TStringList.Create;
+  try
+    lDbManager.Initialize;
+
+    lOptions := DefaultPipelineOptions;
+    lOptions.MaxGitPullThreads := 1;
+    lOptions.MaxIndexThreads := 1;
+    lOptions.MaxScanThreads := 1;
+    lOptions.PullEnabled := False;
+    lOptions.SemanticOptions.Enabled := True;
+    lOptions.SemanticOptions.Model := 'mxbai-embed-large';
+    lOptions.SemanticOptions.EmbeddingRequester := TryBuildUnavailableEmbedding;
+    lOptions.OnEmbeddingProgress :=
+      procedure(const aCurrent, aTotal: Integer; const aStatusText: string)
+      begin
+        lProgressEvents.Add(aStatusText);
+      end;
+
+    lCoordinator := TPipelineCoordinator.Create(lDbManager, lOptions);
+    try
+      lCoordinator.Run([lScanRoot], nil);
+    finally
+      lCoordinator.Free;
+    end;
+
+    AssertTrue(ContainsText(lProgressEvents.Text, 'Embedding unavailable'),
+      'Expected embedding-unavailable notice when embeddings cannot be requested');
+  finally
+    lProgressEvents.Free;
+    lDbManager.Free;
+  end;
+end;
+
+procedure TestPipelineReportsEmbeddingUnavailableWhenSkillRemainsPartial;
+var
+  lCoordinator: TPipelineCoordinator;
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lOptions: TPipelineOptions;
+  lProgressEvents: TStringList;
+  lScanRoot: string;
+  lSkillFile: string;
+  lSkillRoot: string;
+  lUnusedInfraRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchEmbeddingPartialFixture', lFixtureRoot, lUnusedInfraRoot, lScanRoot);
+  lSkillRoot := TPath.Combine(lScanRoot, 'repo-partial');
+  ForceDirectories(TPath.Combine(lSkillRoot, '.git'));
+  ForceDirectories(TPath.Combine(lSkillRoot, 'skill-partial'));
+  lSkillFile := TPath.Combine(lSkillRoot, 'skill-partial\SKILL.md');
+  TFile.WriteAllText(
+    lSkillFile,
+    '# Partial Skill' + sLineBreak + sLineBreak + StringOfChar('A', 700) + sLineBreak + sLineBreak +
+      StringOfChar('B', 700),
+    TEncoding.UTF8
+  );
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  lProgressEvents := TStringList.Create;
+  try
+    lDbManager.Initialize;
+
+    gPartialEmbeddingRequestCount := 0;
+    lOptions := DefaultPipelineOptions;
+    lOptions.MaxGitPullThreads := 1;
+    lOptions.MaxIndexThreads := 1;
+    lOptions.MaxScanThreads := 1;
+    lOptions.PullEnabled := False;
+    lOptions.SemanticOptions.Enabled := True;
+    lOptions.SemanticOptions.Model := 'mxbai-embed-large';
+    lOptions.SemanticOptions.EmbeddingRequester := TryBuildPartialEmbedding;
+    lOptions.OnEmbeddingProgress :=
+      procedure(const aCurrent, aTotal: Integer; const aStatusText: string)
+      begin
+        lProgressEvents.Add(aStatusText);
+      end;
+
+    lCoordinator := TPipelineCoordinator.Create(lDbManager, lOptions);
+    try
+      lCoordinator.Run([lScanRoot], nil);
+    finally
+      lCoordinator.Free;
+    end;
+
+    AssertTrue(ContainsText(lProgressEvents.Text, 'Embedding unavailable'),
+      'Expected embedding-unavailable notice when any chunk embedding still fails');
+  finally
+    lProgressEvents.Free;
+    lDbManager.Free;
+  end;
+end;
+
 procedure TestPipelineAutoCancelStopsBeforeDbWrites;
 var
   lCoordinator: TPipelineCoordinator;
@@ -769,6 +1029,11 @@ begin
   TestExternalToolCommandFormatting;
   TestDatabaseSkillTagCounts;
   TestTagBrowserActions;
+  TestRelatedSkillActions;
+  TestResolveRelatedSkillNavigation;
+  TestPipelineReportsEmbeddingProgress;
+  TestPipelineReportsEmbeddingUnavailable;
+  TestPipelineReportsEmbeddingUnavailableWhenSkillRemainsPartial;
   TestPipelineAutoCancelStopsBeforeDbWrites;
   TestGitPullIsThrottledOnSecondRun;
   TestGitPullFailureDoesNotBlockOtherRepos;

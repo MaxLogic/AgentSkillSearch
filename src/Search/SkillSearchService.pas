@@ -6,9 +6,13 @@ uses
   System.SysUtils, FireDAC.Comp.Client, FireDAC.Phys.SQLite;
 
 type
+  TEmbeddingProgressProc = reference to procedure(const aCurrent, aTotal: Integer; const aStatusText: string);
+  TEmbeddingRequestFunc = reference to function(const aText: string; out aVector: TArray<Single>): Boolean;
+
   TSemanticSearchOptions = record
     Enabled: Boolean;
     CandidateRerankCount: Integer;
+    EmbeddingRequester: TEmbeddingRequestFunc;
     Model: string;
     OllamaBaseUrl: string;
   end;
@@ -30,6 +34,13 @@ type
     SkillFile: string;
     SkillRoot: string;
     Tags: string;
+  end;
+
+  TRelatedSkillResult = record
+    Name: string;
+    Score: Double;
+    SkillFile: string;
+    SkillRoot: string;
   end;
 
   TSkillSearchService = class
@@ -54,6 +65,8 @@ type
     function GetCurrentUtcIso8601: string;
     function NormalizeScore(const aValue, aMin, aMax: Double): Double;
     procedure PersistChunkVector(const aChunkId: Integer; const aVector: TArray<Single>);
+    function QuerySkillChunkVectors(const aSkillFile: string; const aRequestMissing: Boolean): TArray<TArray<Single>>;
+    function SkillNeedsEmbedding(const aSkillFile: string): Boolean;
     function TryComputeSkillSemanticScore(const aSkillFile: string; const aQueryVector: TArray<Single>;
       out aScore: Double): Boolean;
     function TryExtractEmbedding(const aJsonText: string; out aVector: TArray<Single>): Boolean;
@@ -67,7 +80,9 @@ type
     constructor Create(const aDatabasePath, aSqliteDllPath: string); overload;
     constructor Create(const aDatabasePath, aSqliteDllPath: string; const aSnippetMaxChars: Integer); overload;
     destructor Destroy; override;
+    function FindRelatedSkills(const aSkillFile: string; const aMaxItems: Integer = 3): TArray<TRelatedSkillResult>;
     function Search(const aRawQuery: string): TArray<TSkillSearchResult>;
+    function WarmSkillEmbeddings(const aSkillFiles: TArray<string>; const aOnProgress: TEmbeddingProgressProc): Boolean;
   end;
 
 function DefaultSemanticSearchOptions: TSemanticSearchOptions;
@@ -85,6 +100,7 @@ function DefaultSemanticSearchOptions: TSemanticSearchOptions;
 begin
   Result.Enabled := False;
   Result.CandidateRerankCount := 300;
+  Result.EmbeddingRequester := nil;
   Result.Model := 'mxbai-embed-large';
   Result.OllamaBaseUrl := 'http://localhost:11434';
 end;
@@ -224,6 +240,196 @@ begin
   inherited Destroy;
 end;
 
+function TSkillSearchService.FindRelatedSkills(const aSkillFile: string; const aMaxItems: Integer)
+  : TArray<TRelatedSkillResult>;
+var
+  i: Integer;
+  lCandidateFile: string;
+  lCandidateIndex: Integer;
+  lCandidateVector: TArray<Single>;
+  lQuery: TFDQuery;
+  lRelated: TRelatedSkillResult;
+  lRelatedByFile: TDictionary<string, Integer>;
+  lScore: Double;
+  lSelectedVectors: TArray<TArray<Single>>;
+begin
+  Result := nil;
+  if (not fSemanticOptions.Enabled) or (aMaxItems <= 0) then
+  begin
+    Exit(nil);
+  end;
+
+  lSelectedVectors := QuerySkillChunkVectors(aSkillFile, False);
+  if Length(lSelectedVectors) = 0 then
+  begin
+    Exit(nil);
+  end;
+
+  lRelatedByFile := TDictionary<string, Integer>.Create;
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'SELECT s.name, s.skill_file, s.skill_root, COALESCE(v.model, '''') AS model, v.vec ' +
+      'FROM skills s ' +
+      'JOIN skill_chunks c ON c.skill_id = s.id ' +
+      'LEFT JOIN chunk_vec v ON v.chunk_id = c.id ' +
+      'WHERE s.skill_file <> :skill_file ' +
+      'ORDER BY s.skill_file ASC, c.chunk_index ASC;';
+    lQuery.ParamByName('skill_file').AsString := aSkillFile;
+    lQuery.Open;
+
+    while not lQuery.Eof do
+    begin
+      if not TryLoadChunkVector(fSemanticOptions.Model, lQuery, lCandidateVector) then
+      begin
+        lQuery.Next;
+        Continue;
+      end;
+
+      lCandidateFile := lQuery.FieldByName('skill_file').AsString;
+      lScore := 0.0;
+      for i := 0 to Pred(Length(lSelectedVectors)) do
+      begin
+        lScore := Max(lScore, CosineSimilarity(lSelectedVectors[i], lCandidateVector));
+      end;
+
+      if lScore <= 0.0 then
+      begin
+        lQuery.Next;
+        Continue;
+      end;
+
+      if lRelatedByFile.TryGetValue(lCandidateFile, lCandidateIndex) then
+      begin
+        if lScore > Result[lCandidateIndex].Score then
+        begin
+          Result[lCandidateIndex].Score := lScore;
+        end;
+        lQuery.Next;
+        Continue;
+      end;
+
+      lRelated.Name := lQuery.FieldByName('name').AsString;
+      lRelated.Score := lScore;
+      lRelated.SkillFile := lCandidateFile;
+      lRelated.SkillRoot := lQuery.FieldByName('skill_root').AsString;
+      SetLength(Result, Length(Result) + 1);
+      Result[High(Result)] := lRelated;
+      lRelatedByFile.Add(lCandidateFile, High(Result));
+      lQuery.Next;
+    end;
+  finally
+    lQuery.Free;
+    lRelatedByFile.Free;
+  end;
+
+  TArray.Sort<TRelatedSkillResult>(
+    Result,
+    TComparer<TRelatedSkillResult>.Construct(
+      function(const aLeft, aRight: TRelatedSkillResult): Integer
+      begin
+        if aLeft.Score > aRight.Score then
+        begin
+          Exit(-1);
+        end;
+        if aLeft.Score < aRight.Score then
+        begin
+          Exit(1);
+        end;
+        Result := CompareText(aLeft.Name, aRight.Name);
+      end
+    )
+  );
+
+  if Length(Result) > aMaxItems then
+  begin
+    SetLength(Result, aMaxItems);
+  end;
+end;
+
+function TSkillSearchService.QuerySkillChunkVectors(const aSkillFile: string; const aRequestMissing: Boolean)
+  : TArray<TArray<Single>>;
+var
+  lChunkId: Integer;
+  lChunkVector: TArray<Single>;
+  lLen: Integer;
+  lQuery: TFDQuery;
+begin
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'SELECT c.id AS chunk_id, c.chunk_text, COALESCE(v.model, '''') AS model, v.vec ' +
+      'FROM skill_chunks c ' +
+      'JOIN skills s ON s.id = c.skill_id ' +
+      'LEFT JOIN chunk_vec v ON v.chunk_id = c.id ' +
+      'WHERE s.skill_file = :skill_file ' +
+      'ORDER BY c.chunk_index;';
+    lQuery.ParamByName('skill_file').AsString := aSkillFile;
+    lQuery.Open;
+
+    while not lQuery.Eof do
+    begin
+      if not TryLoadChunkVector(fSemanticOptions.Model, lQuery, lChunkVector) then
+      begin
+        if (not aRequestMissing) or not TryRequestEmbedding(lQuery.FieldByName('chunk_text').AsString, lChunkVector) then
+        begin
+          lQuery.Next;
+          Continue;
+        end;
+
+        lChunkId := lQuery.FieldByName('chunk_id').AsInteger;
+        PersistChunkVector(lChunkId, lChunkVector);
+      end;
+
+      lLen := Length(Result);
+      SetLength(Result, lLen + 1);
+      Result[lLen] := lChunkVector;
+      lQuery.Next;
+    end;
+  finally
+    lQuery.Free;
+  end;
+end;
+
+function TSkillSearchService.SkillNeedsEmbedding(const aSkillFile: string): Boolean;
+var
+  lChunkVector: TArray<Single>;
+  lQuery: TFDQuery;
+begin
+  if not fSemanticOptions.Enabled then
+  begin
+    Exit(False);
+  end;
+
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'SELECT COALESCE(v.model, '''') AS model, v.vec ' +
+      'FROM skill_chunks c ' +
+      'JOIN skills s ON s.id = c.skill_id ' +
+      'LEFT JOIN chunk_vec v ON v.chunk_id = c.id ' +
+      'WHERE s.skill_file = :skill_file ' +
+      'ORDER BY c.chunk_index;';
+    lQuery.ParamByName('skill_file').AsString := aSkillFile;
+    lQuery.Open;
+
+    while not lQuery.Eof do
+    begin
+      if not TryLoadChunkVector(fSemanticOptions.Model, lQuery, lChunkVector) then
+      begin
+        Exit(True);
+      end;
+      lQuery.Next;
+    end;
+  finally
+    lQuery.Free;
+  end;
+  Result := False;
+end;
+
 procedure TSkillSearchService.ConfigureConnection;
 begin
   fDriverLink := TFDPhysSQLiteDriverLink.Create(nil);
@@ -337,6 +543,11 @@ begin
   if not fSemanticOptions.Enabled then
   begin
     Exit(False);
+  end;
+
+  if Assigned(fSemanticOptions.EmbeddingRequester) then
+  begin
+    Exit(fSemanticOptions.EmbeddingRequester(aText, aVector));
   end;
 
   lUrl := Trim(fSemanticOptions.OllamaBaseUrl);
@@ -1097,6 +1308,48 @@ begin
     lDuplicateByBodyHash.Free;
     lQuery.Free;
     lSql.Free;
+  end;
+end;
+
+function TSkillSearchService.WarmSkillEmbeddings(const aSkillFiles: TArray<string>;
+  const aOnProgress: TEmbeddingProgressProc): Boolean;
+var
+  i: Integer;
+  lPendingFiles: TArray<string>;
+begin
+  Result := True;
+  if not fSemanticOptions.Enabled then
+  begin
+    Exit(True);
+  end;
+
+  for i := 0 to Pred(Length(aSkillFiles)) do
+  begin
+    if not SkillNeedsEmbedding(aSkillFiles[i]) then
+    begin
+      Continue;
+    end;
+
+    SetLength(lPendingFiles, Length(lPendingFiles) + 1);
+    lPendingFiles[High(lPendingFiles)] := aSkillFiles[i];
+  end;
+
+  for i := 0 to Pred(Length(lPendingFiles)) do
+  begin
+    if Assigned(aOnProgress) then
+    begin
+      aOnProgress(i + 1, Length(lPendingFiles), Format('Embedding %d / %d skills...', [i + 1, Length(lPendingFiles)]));
+    end;
+
+    QuerySkillChunkVectors(lPendingFiles[i], True);
+    if SkillNeedsEmbedding(lPendingFiles[i]) then
+    begin
+      if Assigned(aOnProgress) then
+      begin
+        aOnProgress(i, Length(lPendingFiles), 'Embedding unavailable');
+      end;
+      Exit(False);
+    end;
   end;
 end;
 

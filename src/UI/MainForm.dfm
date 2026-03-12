@@ -404,9 +404,41 @@ object AppMainForm: TMainForm
           Left = 0
           Top = 17
           Width = 380
-          Height = 628
+          Height = 496
           Align = alClient
           TabOrder = 0
+        end
+        object fRelatedPanel: TPanel
+          Left = 0
+          Top = 513
+          Width = 380
+          Height = 132
+          Align = alBottom
+          BevelOuter = bvNone
+          Caption = ''
+          TabOrder = 1
+          Visible = False
+          object fRelatedListBox: TListBox
+            Left = 0
+            Top = 17
+            Width = 380
+            Height = 115
+            Align = alClient
+            ItemHeight = 17
+            TabOrder = 0
+            OnClick = HandleRelatedListBoxClick
+          end
+          object fRelatedLabel: TStaticText
+            Left = 0
+            Top = 0
+            Width = 380
+            Height = 17
+            Align = alTop
+            AutoSize = False
+            BorderStyle = sbsNone
+            Caption = 'Related'
+            TabStop = False
+          end
         end
         object fPreviewLabel: TStaticText
           Left = 0
