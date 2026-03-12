@@ -4,7 +4,7 @@ interface
 
 uses
   System.Diagnostics, System.Generics.Collections,
-  DatabaseManager, GitPullWorker, SkillTypes;
+  DatabaseManager, GitPullWorker, SkillIndexer, SkillTypes;
 
 type
   TPipelineOptions = record
@@ -14,6 +14,7 @@ type
     GitExePath: string;
     GitPullArgs: string;
     GitPullTimeoutSeconds: Integer;
+    IndexOptions: TSkillIndexOptions;
     MaxGitPullThreads: Integer;
     MaxIndexThreads: Integer;
     MaxScanThreads: Integer;
@@ -88,7 +89,7 @@ implementation
 uses
   System.Classes, System.DateUtils, System.IOUtils, System.Math, System.StrUtils, System.SyncObjs, System.SysUtils,
   System.Threading,
-  Logging, PathExclusions, RepoDetection, SkillIndexer;
+  Logging, PathExclusions, RepoDetection;
 
 function DefaultPipelineOptions: TPipelineOptions;
 begin
@@ -97,6 +98,7 @@ begin
   Result.GitExePath := 'git.exe';
   Result.GitPullArgs := 'pull --ff-only';
   Result.GitPullTimeoutSeconds := 1800;
+  Result.IndexOptions := DefaultSkillIndexOptions;
   Result.MaxGitPullThreads := 2;
   Result.MaxIndexThreads := 4;
   Result.MaxScanThreads := 4;
@@ -549,7 +551,7 @@ begin
                   Exit;
                 end;
 
-                if TryBuildIndexedSkill(lSkillFilesForIndex[aIndex], lLocalSkill, lLocalError) then
+                if TryBuildIndexedSkill(lSkillFilesForIndex[aIndex], fOptions.IndexOptions, lLocalSkill, lLocalError) then
                 begin
                   TMonitor.Enter(lIndexedSkills);
                   try

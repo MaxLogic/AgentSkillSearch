@@ -35,6 +35,7 @@
 - Documented the app’s Ollama auto-start behavior and updated Win64 packaging to build a Release runtime without overwriting existing portable config files in `bin/` (`T-032`).
 
 ### Fixed
+- Scan/index runs now honor `[Index]` script-detection settings from `settings.ini`, including `ComputeHasScripts`, `ScriptExtensions`, `HasScriptsMaxFilesToScan`, and `HasScriptsSkipFolders` (`T-046`).
 - Serialized asynchronous search execution and dropped queued Docker health callbacks after `Stop`, preventing stale completion delivery in those paths (`T-032`).
 - Pipeline cancellation now stops before DB batch writes once the cancel token is set, and scan summary count queries no longer read a freed DB manager (`T-032`).
 - Scan start now blocks immediately when `Sources.lst` has no usable source directories and prompts us to edit the file before retrying (`T-031`).
