@@ -7,7 +7,7 @@ procedure RunPipelineTests;
 implementation
 
 uses
-  System.Classes, System.Diagnostics, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
+  System.Classes, System.Diagnostics, System.IniFiles, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
   Winapi.Windows,
   AppPaths, DatabaseManager, DockerHealthMonitor, Logging, PipelineCoordinator, Settings, SettingsModel;
 
@@ -240,6 +240,99 @@ begin
   end;
 end;
 
+procedure TestSettingsCreateUiStateAndSearchHistoryDefaults;
+var
+  lFixtureRoot: string;
+  lIni: TMemIniFile;
+  lLoadResult: TSettingsLoadResult;
+  lSettingsPath: string;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchUiStateFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+
+  lSettingsPath := TPath.Combine(lFixtureRoot, 'runtime\settings.ini');
+  ForceDirectories(ExtractFilePath(lSettingsPath));
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+  AssertTrue(TFile.Exists(lSettingsPath), 'Expected settings.ini to be created');
+  AssertEqualText(lSettingsPath, lLoadResult.SettingsPath, 'Expected load result to keep settings path');
+
+  lIni := TMemIniFile.Create(lSettingsPath, TEncoding.UTF8);
+  try
+    AssertTrue(lIni.ValueExists('UIState', 'SearchAsYouType'),
+      'Expected UIState.SearchAsYouType key to be created');
+    AssertTrue(lIni.ValueExists('UIState', 'LastQuery'), 'Expected UIState.LastQuery key to be created');
+    AssertTrue(lIni.ValueExists('UIState', 'ResultsColumnWidths'),
+      'Expected UIState.ResultsColumnWidths key to be created');
+    AssertTrue(lIni.ValueExists('SearchHistory', 'MaxItems'),
+      'Expected SearchHistory.MaxItems key to be created');
+    AssertEqualInt(20, lIni.ReadInteger('SearchHistory', 'MaxItems', 0),
+      'Expected SearchHistory.MaxItems default');
+  finally
+    lIni.Free;
+  end;
+end;
+
+procedure TestSettingsPersistUiStateAndSearchHistory;
+var
+  lFixtureRoot: string;
+  lHistory: TSearchHistorySettings;
+  lLoadResult: TSettingsLoadResult;
+  lSettingsPath: string;
+  lUiState: TUiStateSettings;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchUiStatePersistFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+
+  lSettingsPath := TPath.Combine(lFixtureRoot, 'runtime\settings.ini');
+  ForceDirectories(ExtractFilePath(lSettingsPath));
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+
+  lUiState := lLoadResult.Settings.UiState;
+  lUiState.CurrentPPI := 144;
+  lUiState.DuplicateInfoWidth := 260;
+  lUiState.LastQuery := 'retry tag:docker';
+  lUiState.ResultsColumnWidths := '220;90;250;540';
+  lUiState.ResultsPaneWidth := 720;
+  lUiState.SearchAsYouType := True;
+  lUiState.WindowHeight := 900;
+  lUiState.WindowLeft := 140;
+  lUiState.WindowTop := 80;
+  lUiState.WindowWidth := 1500;
+  SaveUiState(lSettingsPath, lUiState);
+
+  lHistory.MaxItems := 3;
+  lHistory.Items := nil;
+  PushSearchHistoryEntry(lHistory, 'retry');
+  PushSearchHistoryEntry(lHistory, 'retry');
+  PushSearchHistoryEntry(lHistory, 'backoff');
+  PushSearchHistoryEntry(lHistory, 'jwt');
+  PushSearchHistoryEntry(lHistory, 'retry');
+  SaveSearchHistory(lSettingsPath, lHistory);
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+  AssertEqualInt(144, lLoadResult.Settings.UiState.CurrentPPI, 'Expected saved UIState.CurrentPPI');
+  AssertEqualInt(260, lLoadResult.Settings.UiState.DuplicateInfoWidth, 'Expected saved duplicate-info width');
+  AssertEqualText('retry tag:docker', lLoadResult.Settings.UiState.LastQuery, 'Expected saved last query');
+  AssertEqualText('220;90;250;540', lLoadResult.Settings.UiState.ResultsColumnWidths,
+    'Expected saved results column widths');
+  AssertEqualInt(720, lLoadResult.Settings.UiState.ResultsPaneWidth, 'Expected saved results pane width');
+  AssertTrue(lLoadResult.Settings.UiState.SearchAsYouType, 'Expected saved SearchAsYouType state');
+  AssertEqualInt(900, lLoadResult.Settings.UiState.WindowHeight, 'Expected saved window height');
+  AssertEqualInt(140, lLoadResult.Settings.UiState.WindowLeft, 'Expected saved window left');
+  AssertEqualInt(80, lLoadResult.Settings.UiState.WindowTop, 'Expected saved window top');
+  AssertEqualInt(1500, lLoadResult.Settings.UiState.WindowWidth, 'Expected saved window width');
+
+  AssertEqualInt(3, lLoadResult.Settings.SearchHistory.MaxItems, 'Expected saved search history max items');
+  AssertEqualInt(3, Length(lLoadResult.Settings.SearchHistory.Items), 'Expected trimmed search history length');
+  AssertEqualText('retry', lLoadResult.Settings.SearchHistory.Items[0], 'Expected most recent query first');
+  AssertEqualText('jwt', lLoadResult.Settings.SearchHistory.Items[1], 'Expected second-most recent query');
+  AssertEqualText('backoff', lLoadResult.Settings.SearchHistory.Items[2], 'Expected oldest retained query last');
+end;
+
 procedure TestPipelineAutoCancelStopsBeforeDbWrites;
 var
   lCoordinator: TPipelineCoordinator;
@@ -462,6 +555,8 @@ end;
 procedure RunPipelineTests;
 begin
   TestPipelineHonorsComputeHasScriptsSetting;
+  TestSettingsCreateUiStateAndSearchHistoryDefaults;
+  TestSettingsPersistUiStateAndSearchHistory;
   TestPipelineAutoCancelStopsBeforeDbWrites;
   TestGitPullIsThrottledOnSecondRun;
   TestGitPullFailureDoesNotBlockOtherRepos;

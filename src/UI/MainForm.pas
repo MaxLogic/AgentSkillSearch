@@ -3,10 +3,10 @@ unit MainForm;
 interface
 
 uses
-  System.Classes, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
+  System.Classes, System.Types, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
-  DatabaseManager, DockerHealthMonitor, DockerOps, PipelineCoordinator, SearchController, SettingsModel,
-  SkillSearchService;
+  DatabaseManager, DockerHealthMonitor, DockerOps, PipelineCoordinator, SearchController, SearchInteraction,
+  SettingsModel, SkillSearchService;
 
 type
   TMainForm = class(TForm)
@@ -15,6 +15,7 @@ type
     fSearchActionsPanel: TPanel;
     fSearchFieldPanel: TPanel;
     fSearchEdit: TEdit;
+    fSearchHistoryButton: TButton;
     fSearchEditLabel: TStaticText;
     fSearchHelpImage: TImage;
     fSearchButton: TButton;
@@ -41,6 +42,7 @@ type
     fPreviewBrowser: TTMSFNCWebBrowser;
     fStatusBar: TStatusBar;
     fPopupMenu: TPopupMenu;
+    fSearchHistoryPopupMenu: TPopupMenu;
     fOpenFileMenuItem: TMenuItem;
     fOpenFolderMenuItem: TMenuItem;
     fCopyPathMenuItem: TMenuItem;
@@ -60,6 +62,7 @@ type
     fDockerHealthState: TDockerHealthState;
     fDockerStartInProgress: Boolean;
     fDockerStartHourGlass: IInterface;
+    fSearchHistory: TSearchHistorySettings;
     fSearchController: TSearchController;
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
@@ -79,25 +82,36 @@ type
     procedure StartDockerStackAsync;
     function ResolveSearchHelpImagePath: string;
     function BuildEffectiveQuery: string;
+    procedure CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
+    function CaptureUiState: TUiStateSettings;
+    function ClampWindowRectToWorkArea(const aBounds: TRect): TRect;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
+    procedure DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
     function EscapeHtml(const aText: string): string;
     function GetSelectedSkillFile: string;
     function IsResultSelectionValid: Boolean;
+    procedure LoadUiState;
     procedure OpenSelectedSkillFile;
     procedure OpenSelectedSkillFolder;
     procedure QueueSearch(const aImmediate: Boolean);
     procedure RefreshCountPanels;
     procedure RefreshInventoryCounters;
     procedure RenderPreview(const aResult: TSkillSearchResult);
+    procedure SaveRuntimeState;
+    function ScaleStoredUiValue(const aValue, aStoredPPI: Integer): Integer;
+    procedure SelectHistoryQuery(const aQuery: string);
+    function SerializeColumnWidths: string;
     procedure ShowEmptyPreview;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
     procedure UpdateStatus(const aText: string);
+    procedure UpdateSearchHistoryMenu;
     procedure WaitForWorkerThread(var aThread: TThread);
   published
     procedure HandleCopyPathClick(Sender: TObject);
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleDockerGpuButtonClick(Sender: TObject);
+    procedure HandleFormClose(Sender: TObject; var Action: TCloseAction);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleHasScriptsClick(Sender: TObject);
     procedure HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
@@ -112,6 +126,8 @@ type
       const aError: string);
     procedure HandleSearchEditChange(Sender: TObject);
     procedure HandleSearchEditKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure HandleSearchHistoryButtonClick(Sender: TObject);
+    procedure HandleSearchHistoryItemClick(Sender: TObject);
     procedure HandleSearchHelpButtonClick(Sender: TObject);
     procedure HandleScanButtonClick(Sender: TObject);
   public
@@ -233,9 +249,16 @@ begin
   );
 
   ConfigureColumns;
+  fSearchHistory := fAppSettings.SearchHistory;
+  if fSearchHistory.MaxItems <= 0 then
+  begin
+    fSearchHistory.MaxItems := fAppSettings.Search.RecentQueryLimit;
+  end;
+  UpdateSearchHistoryMenu;
+  LoadUiState;
   LoadSearchHelpImage;
 
-  fSearchAsYouTypeCheckBox.Checked := fAppSettings.Search.SearchAsYouType;
+  fSearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
   fStatusBar.Panels[cStatusPanelCache].Text := 'Cache: ' + fDbPath;
   fStatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: n/a';
   fSkillsFoundCount := 0;
@@ -335,6 +358,165 @@ begin
   end;
 end;
 
+function TMainForm.ScaleStoredUiValue(const aValue, aStoredPPI: Integer): Integer;
+begin
+  Result := SearchInteraction.ScaleStoredUiValue(aValue, aStoredPPI, CurrentPPI);
+end;
+
+procedure TMainForm.CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
+var
+  lBounds: TRect;
+  lPlacement: TWindowPlacement;
+begin
+  if WindowState = wsNormal then
+  begin
+    lBounds := BoundsRect;
+  end else begin
+    lPlacement := Default(TWindowPlacement);
+    lPlacement.length := SizeOf(TWindowPlacement);
+    if GetWindowPlacement(Handle, @lPlacement) then
+    begin
+      lBounds := lPlacement.rcNormalPosition;
+    end else begin
+      lBounds := BoundsRect;
+    end;
+  end;
+
+  aLeft := lBounds.Left;
+  aTop := lBounds.Top;
+  aWidth := lBounds.Right - lBounds.Left;
+  aHeight := lBounds.Bottom - lBounds.Top;
+end;
+
+function TMainForm.ClampWindowRectToWorkArea(const aBounds: TRect): TRect;
+var
+  lHeight: Integer;
+  lMonitor: TMonitor;
+  lWidth: Integer;
+  lWorkArea: TRect;
+begin
+  Result := aBounds;
+  lMonitor := Screen.MonitorFromRect(aBounds, mdNearest);
+  if not Assigned(lMonitor) then
+  begin
+    Exit;
+  end;
+
+  lWorkArea := lMonitor.WorkareaRect;
+  lWidth := Result.Right - Result.Left;
+  lHeight := Result.Bottom - Result.Top;
+
+  if lWidth > (lWorkArea.Right - lWorkArea.Left) then
+  begin
+    Result.Left := lWorkArea.Left;
+    Result.Right := lWorkArea.Right;
+  end else begin
+    if Result.Left < lWorkArea.Left then
+    begin
+      OffsetRect(Result, lWorkArea.Left - Result.Left, 0);
+    end;
+    if Result.Right > lWorkArea.Right then
+    begin
+      OffsetRect(Result, lWorkArea.Right - Result.Right, 0);
+    end;
+  end;
+
+  if lHeight > (lWorkArea.Bottom - lWorkArea.Top) then
+  begin
+    Result.Top := lWorkArea.Top;
+    Result.Bottom := lWorkArea.Bottom;
+  end else begin
+    if Result.Top < lWorkArea.Top then
+    begin
+      OffsetRect(Result, 0, lWorkArea.Top - Result.Top);
+    end;
+    if Result.Bottom > lWorkArea.Bottom then
+    begin
+      OffsetRect(Result, 0, lWorkArea.Bottom - Result.Bottom);
+    end;
+  end;
+end;
+
+function TMainForm.SerializeColumnWidths: string;
+var
+  i: Integer;
+begin
+  Result := '';
+  for i := 0 to Pred(fResultsListView.Columns.Count) do
+  begin
+    if Result <> '' then
+    begin
+      Result := Result + ';';
+    end;
+    Result := Result + IntToStr(fResultsListView.Columns[i].Width);
+  end;
+end;
+
+function TMainForm.CaptureUiState: TUiStateSettings;
+begin
+  Result := fAppSettings.UiState;
+  Result.CurrentPPI := CurrentPPI;
+  Result.DuplicateInfoWidth := fDuplicateInfoPanel.Width;
+  Result.LastQuery := Trim(fSearchEdit.Text);
+  Result.ResultsColumnWidths := SerializeColumnWidths;
+  Result.ResultsPaneWidth := fResultsPanePanel.Width;
+  Result.SearchAsYouType := fSearchAsYouTypeCheckBox.Checked;
+  CaptureWindowBounds(Result.WindowLeft, Result.WindowTop, Result.WindowWidth, Result.WindowHeight);
+end;
+
+procedure TMainForm.LoadUiState;
+var
+  i: Integer;
+  lBounds: TRect;
+  lHeight: Integer;
+  lLeft: Integer;
+  lParts: TStringDynArray;
+  lStoredPPI: Integer;
+  lTop: Integer;
+  lWidth: Integer;
+begin
+  lStoredPPI := fAppSettings.UiState.CurrentPPI;
+
+  fSearchEdit.Text := fAppSettings.UiState.LastQuery;
+  fSearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
+
+  if (fAppSettings.UiState.WindowWidth > 0) and (fAppSettings.UiState.WindowHeight > 0) and
+    ((fAppSettings.UiState.WindowLeft <> -1) or (fAppSettings.UiState.WindowTop <> -1)) then
+  begin
+    lLeft := fAppSettings.UiState.WindowLeft;
+    lTop := fAppSettings.UiState.WindowTop;
+    lWidth := ScaleStoredUiValue(fAppSettings.UiState.WindowWidth, lStoredPPI);
+    lHeight := ScaleStoredUiValue(fAppSettings.UiState.WindowHeight, lStoredPPI);
+    lLeft := ScaleStoredUiValue(lLeft, lStoredPPI);
+    lTop := ScaleStoredUiValue(lTop, lStoredPPI);
+    lBounds := ClampWindowRectToWorkArea(Rect(lLeft, lTop, lLeft + lWidth, lTop + lHeight));
+    Position := poDesigned;
+    SetBounds(lBounds.Left, lBounds.Top, lBounds.Right - lBounds.Left, lBounds.Bottom - lBounds.Top);
+  end;
+
+  if fAppSettings.UiState.ResultsPaneWidth > 0 then
+  begin
+    fResultsPanePanel.Width := ScaleStoredUiValue(fAppSettings.UiState.ResultsPaneWidth, lStoredPPI);
+  end;
+  if fAppSettings.UiState.DuplicateInfoWidth > 0 then
+  begin
+    fDuplicateInfoPanel.Width := ScaleStoredUiValue(fAppSettings.UiState.DuplicateInfoWidth, lStoredPPI);
+  end;
+
+  if Trim(fAppSettings.UiState.ResultsColumnWidths) <> '' then
+  begin
+    lParts := SplitString(fAppSettings.UiState.ResultsColumnWidths, ';');
+    for i := 0 to Pred(Length(lParts)) do
+    begin
+      if i >= fResultsListView.Columns.Count then
+      begin
+        Break;
+      end;
+      fResultsListView.Columns[i].Width := ScaleStoredUiValue(StrToIntDef(Trim(lParts[i]), 0), lStoredPPI);
+    end;
+  end;
+end;
+
 function TMainForm.EscapeHtml(const aText: string): string;
 begin
   Result := StringReplace(aText, '&', '&amp;', [rfReplaceAll]);
@@ -408,6 +590,58 @@ end;
 procedure TMainForm.UpdateStatus(const aText: string);
 begin
   fStatusBar.Panels[cStatusPanelStatus].Text := aText;
+end;
+
+procedure TMainForm.DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
+begin
+  if aImmediate then
+  begin
+    fSearchController.QueueSearch(aQuery, 0);
+  end else begin
+    fSearchController.QueueSearch(aQuery);
+  end;
+  UpdateStatus('Searching...');
+end;
+
+procedure TMainForm.SaveRuntimeState;
+begin
+  fAppSettings.UiState := CaptureUiState;
+  SaveUiState(fSettingsPath, fAppSettings.UiState);
+  SaveSearchHistory(fSettingsPath, fSearchHistory);
+end;
+
+procedure TMainForm.UpdateSearchHistoryMenu;
+var
+  i: Integer;
+  lItem: TMenuItem;
+begin
+  fSearchHistoryPopupMenu.Items.Clear;
+  for i := 0 to Pred(Length(fSearchHistory.Items)) do
+  begin
+    lItem := TMenuItem.Create(fSearchHistoryPopupMenu);
+    lItem.Caption := fSearchHistory.Items[i];
+    lItem.OnClick := HandleSearchHistoryItemClick;
+    fSearchHistoryPopupMenu.Items.Add(lItem);
+  end;
+
+  fSearchHistoryButton.Enabled := Length(fSearchHistory.Items) > 0;
+end;
+
+procedure TMainForm.SelectHistoryQuery(const aQuery: string);
+begin
+  ExecuteHistorySelection(
+    aQuery,
+    fSearchHistory,
+    procedure(const aSelectedQuery: string)
+    begin
+      fSearchEdit.Text := aSelectedQuery;
+    end,
+    procedure(const aPreparedQuery: string)
+    begin
+      UpdateSearchHistoryMenu;
+      DispatchSearchQuery(aPreparedQuery, True);
+    end
+  );
 end;
 
 procedure TMainForm.RefreshCountPanels;
@@ -616,7 +850,7 @@ begin
       lResult: TDockerCommandResult;
     begin
       lResult := StartDockerGpuStack(lStartCommand, 45);
-      TThread.Queue(fDockerStartThread,
+      TThread.Queue(nil,
         procedure
         var
           lForm: TMainForm;
@@ -732,11 +966,18 @@ begin
   lQuery := BuildEffectiveQuery;
   if aImmediate then
   begin
-    fSearchController.QueueSearch(lQuery, 0);
+    ExecuteImmediateSearch(
+      lQuery,
+      fSearchHistory,
+      procedure(const aPreparedQuery: string)
+      begin
+        UpdateSearchHistoryMenu;
+        DispatchSearchQuery(aPreparedQuery, True);
+      end
+    );
   end else begin
-    fSearchController.QueueSearch(lQuery);
+    DispatchSearchQuery(lQuery, False);
   end;
-  UpdateStatus('Searching...');
 end;
 
 procedure TMainForm.ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
@@ -919,7 +1160,7 @@ begin
         end;
       end;
 
-      TThread.Queue(fScanThread,
+      TThread.Queue(nil,
         procedure
         var
           lForm: TMainForm;
@@ -944,6 +1185,11 @@ begin
   ShowDiagnosticsDialog(self);
 end;
 
+procedure TMainForm.HandleFormClose(Sender: TObject; var Action: TCloseAction);
+begin
+  SaveRuntimeState;
+end;
+
 procedure TMainForm.HandleDockerGpuButtonClick(Sender: TObject);
 begin
   StartDockerStackAsync;
@@ -954,7 +1200,7 @@ procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aR
 begin
   if GetCurrentThreadId <> MainThreadID then
   begin
-    TThread.Queue(TThread.CurrentThread,
+    TThread.Queue(nil,
       procedure
       var
         lForm: TMainForm;
@@ -1004,6 +1250,30 @@ begin
     QueueSearch(True);
     Key := 0;
   end;
+end;
+
+procedure TMainForm.HandleSearchHistoryButtonClick(Sender: TObject);
+var
+  lPoint: TPoint;
+begin
+  if fSearchHistoryPopupMenu.Items.Count = 0 then
+  begin
+    UpdateStatus('No recent queries yet.');
+    Exit;
+  end;
+
+  lPoint := fSearchHistoryButton.ClientToScreen(Point(0, fSearchHistoryButton.Height));
+  fSearchHistoryPopupMenu.Popup(lPoint.X, lPoint.Y);
+end;
+
+procedure TMainForm.HandleSearchHistoryItemClick(Sender: TObject);
+begin
+  if not (Sender is TMenuItem) then
+  begin
+    Exit;
+  end;
+
+  SelectHistoryQuery(TMenuItem(Sender).Caption);
 end;
 
 procedure TMainForm.HandleResultSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);

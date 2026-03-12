@@ -14,7 +14,11 @@ type
 
 function GetSettingsFilePath: string;
 function LoadOrCreateSettings(const aSettingsPath: string): TSettingsLoadResult;
+function NormalizeSearchHistory(const aItems: TArray<string>; const aMaxItems: Integer): TArray<string>;
+procedure PushSearchHistoryEntry(var aHistory: TSearchHistorySettings; const aQuery: string);
 function ResolveSettingsPath(const aValue, aBaseDirectory: string): string;
+procedure SaveSearchHistory(const aSettingsPath: string; const aSearchHistory: TSearchHistorySettings);
+procedure SaveUiState(const aSettingsPath: string; const aUiState: TUiStateSettings);
 
 implementation
 
@@ -87,6 +91,15 @@ begin
   aResult.RestoredKeys[lLen] := aSection + '.' + aKey;
 end;
 
+procedure AddStringItem(var aItems: TArray<string>; const aValue: string);
+var
+  lLen: Integer;
+begin
+  lLen := Length(aItems);
+  SetLength(aItems, lLen + 1);
+  aItems[lLen] := aValue;
+end;
+
 function BoolToIniValue(const aValue: Boolean): string;
 begin
   if aValue then
@@ -131,6 +144,70 @@ begin
   Result := aDefault;
 end;
 
+function NormalizeSearchHistory(const aItems: TArray<string>; const aMaxItems: Integer): TArray<string>;
+var
+  i: Integer;
+  lLimit: Integer;
+  lTrimmed: string;
+begin
+  lLimit := aMaxItems;
+  if lLimit <= 0 then
+  begin
+    lLimit := 20;
+  end;
+
+  Result := nil;
+  for i := 0 to Pred(Length(aItems)) do
+  begin
+    lTrimmed := Trim(aItems[i]);
+    if lTrimmed = '' then
+    begin
+      Continue;
+    end;
+    if (Length(Result) > 0) and SameText(Result[High(Result)], lTrimmed) then
+    begin
+      Continue;
+    end;
+
+    AddStringItem(Result, lTrimmed);
+    if Length(Result) >= lLimit then
+    begin
+      Break;
+    end;
+  end;
+end;
+
+procedure PushSearchHistoryEntry(var aHistory: TSearchHistorySettings; const aQuery: string);
+var
+  i: Integer;
+  lItems: TArray<string>;
+  lTrimmed: string;
+begin
+  aHistory.Items := NormalizeSearchHistory(aHistory.Items, aHistory.MaxItems);
+
+  lTrimmed := Trim(aQuery);
+  if lTrimmed = '' then
+  begin
+    Exit;
+  end;
+  if (Length(aHistory.Items) > 0) and SameText(aHistory.Items[0], lTrimmed) then
+  begin
+    Exit;
+  end;
+
+  AddStringItem(lItems, lTrimmed);
+  for i := 0 to Pred(Length(aHistory.Items)) do
+  begin
+    if SameText(aHistory.Items[i], lTrimmed) then
+    begin
+      Continue;
+    end;
+    AddStringItem(lItems, aHistory.Items[i]);
+  end;
+
+  aHistory.Items := NormalizeSearchHistory(lItems, aHistory.MaxItems);
+end;
+
 function ReadRequiredString(aIni: TMemIniFile; var aResult: TSettingsLoadResult; const aSection, aKey, aDefault: string): string;
 begin
   if not aIni.ValueExists(aSection, aKey) then
@@ -147,6 +224,19 @@ begin
     AddRestoredKey(aResult, aSection, aKey);
     Exit(aDefault);
   end;
+end;
+
+function ReadRequiredStringAllowEmpty(aIni: TMemIniFile; var aResult: TSettingsLoadResult; const aSection, aKey,
+  aDefault: string): string;
+begin
+  if not aIni.ValueExists(aSection, aKey) then
+  begin
+    aIni.WriteString(aSection, aKey, aDefault);
+    AddRestoredKey(aResult, aSection, aKey);
+    Exit(aDefault);
+  end;
+
+  Result := aIni.ReadString(aSection, aKey, aDefault);
 end;
 
 function ReadRequiredInteger(aIni: TMemIniFile; var aResult: TSettingsLoadResult; const aSection, aKey: string;
@@ -239,10 +329,64 @@ begin
   end;
 end;
 
+procedure SaveUiState(const aSettingsPath: string; const aUiState: TUiStateSettings);
+var
+  lIni: TMemIniFile;
+begin
+  ForceDirectories(ExtractFilePath(aSettingsPath));
+  lIni := TMemIniFile.Create(aSettingsPath, TEncoding.UTF8);
+  try
+    lIni.WriteInteger('UIState', 'CurrentPPI', aUiState.CurrentPPI);
+    lIni.WriteInteger('UIState', 'DuplicateInfoWidth', aUiState.DuplicateInfoWidth);
+    lIni.WriteString('UIState', 'LastQuery', aUiState.LastQuery);
+    lIni.WriteString('UIState', 'ResultsColumnWidths', aUiState.ResultsColumnWidths);
+    lIni.WriteInteger('UIState', 'ResultsPaneWidth', aUiState.ResultsPaneWidth);
+    lIni.WriteString('UIState', 'SearchAsYouType', BoolToIniValue(aUiState.SearchAsYouType));
+    lIni.WriteInteger('UIState', 'WindowHeight', aUiState.WindowHeight);
+    lIni.WriteInteger('UIState', 'WindowLeft', aUiState.WindowLeft);
+    lIni.WriteInteger('UIState', 'WindowTop', aUiState.WindowTop);
+    lIni.WriteInteger('UIState', 'WindowWidth', aUiState.WindowWidth);
+    lIni.UpdateFile;
+  finally
+    lIni.Free;
+  end;
+end;
+
+procedure SaveSearchHistory(const aSettingsPath: string; const aSearchHistory: TSearchHistorySettings);
+var
+  i: Integer;
+  lHistory: TSearchHistorySettings;
+  lIni: TMemIniFile;
+begin
+  ForceDirectories(ExtractFilePath(aSettingsPath));
+  lHistory := aSearchHistory;
+  if lHistory.MaxItems <= 0 then
+  begin
+    lHistory.MaxItems := 20;
+  end;
+  lHistory.Items := NormalizeSearchHistory(lHistory.Items, lHistory.MaxItems);
+
+  lIni := TMemIniFile.Create(aSettingsPath, TEncoding.UTF8);
+  try
+    lIni.EraseSection('SearchHistory');
+    lIni.WriteInteger('SearchHistory', 'MaxItems', lHistory.MaxItems);
+    for i := 0 to Pred(Length(lHistory.Items)) do
+    begin
+      lIni.WriteString('SearchHistory', Format('Item%d', [i]), lHistory.Items[i]);
+    end;
+    lIni.UpdateFile;
+  finally
+    lIni.Free;
+  end;
+end;
+
 function LoadOrCreateSettings(const aSettingsPath: string): TSettingsLoadResult;
 var
+  i: Integer;
   lDefault: TAppSettings;
   lIni: TMemIniFile;
+  lItemKey: string;
+  lItemValue: string;
   lSettingsDir: string;
 begin
   lDefault := DefaultAppSettings;
@@ -309,6 +453,14 @@ begin
       lDefault.Search.SearchDebounceMs);
     Result.Settings.Search.MaxResults := ReadRequiredInteger(lIni, Result, 'Search', 'MaxResults',
       lDefault.Search.MaxResults);
+    Result.Settings.Search.RecentQueryLimit := ReadRequiredInteger(lIni, Result, 'Search', 'RecentQueryLimit',
+      lDefault.Search.RecentQueryLimit);
+    if Result.Settings.Search.RecentQueryLimit <= 0 then
+    begin
+      Result.Settings.Search.RecentQueryLimit := lDefault.Search.RecentQueryLimit;
+      lIni.WriteString('Search', 'RecentQueryLimit', IntToStr(Result.Settings.Search.RecentQueryLimit));
+      AddRestoredKey(Result, 'Search', 'RecentQueryLimit');
+    end;
     Result.Settings.Search.SnippetMaxChars := ReadRequiredInteger(lIni, Result, 'Search', 'SnippetMaxChars',
       lDefault.Search.SnippetMaxChars);
 
@@ -330,6 +482,57 @@ begin
       lDefault.Ui.ShowPreviewPane);
     Result.Settings.Ui.OpenFileOnEnter := ReadRequiredBool(lIni, Result, 'UI', 'OpenFileOnEnter',
       lDefault.Ui.OpenFileOnEnter);
+
+    Result.Settings.UiState.CurrentPPI := ReadRequiredInteger(lIni, Result, 'UIState', 'CurrentPPI',
+      lDefault.UiState.CurrentPPI);
+    Result.Settings.UiState.DuplicateInfoWidth := ReadRequiredInteger(lIni, Result, 'UIState', 'DuplicateInfoWidth',
+      lDefault.UiState.DuplicateInfoWidth);
+    Result.Settings.UiState.LastQuery := ReadRequiredStringAllowEmpty(lIni, Result, 'UIState', 'LastQuery',
+      lDefault.UiState.LastQuery);
+    Result.Settings.UiState.ResultsColumnWidths := ReadRequiredStringAllowEmpty(lIni, Result, 'UIState',
+      'ResultsColumnWidths',
+      lDefault.UiState.ResultsColumnWidths);
+    Result.Settings.UiState.ResultsPaneWidth := ReadRequiredInteger(lIni, Result, 'UIState', 'ResultsPaneWidth',
+      lDefault.UiState.ResultsPaneWidth);
+    Result.Settings.UiState.SearchAsYouType := ReadRequiredBool(lIni, Result, 'UIState', 'SearchAsYouType',
+      lDefault.UiState.SearchAsYouType);
+    Result.Settings.UiState.WindowHeight := ReadRequiredInteger(lIni, Result, 'UIState', 'WindowHeight',
+      lDefault.UiState.WindowHeight);
+    Result.Settings.UiState.WindowLeft := ReadRequiredInteger(lIni, Result, 'UIState', 'WindowLeft',
+      lDefault.UiState.WindowLeft);
+    Result.Settings.UiState.WindowTop := ReadRequiredInteger(lIni, Result, 'UIState', 'WindowTop',
+      lDefault.UiState.WindowTop);
+    Result.Settings.UiState.WindowWidth := ReadRequiredInteger(lIni, Result, 'UIState', 'WindowWidth',
+      lDefault.UiState.WindowWidth);
+
+    Result.Settings.SearchHistory.MaxItems := ReadRequiredInteger(lIni, Result, 'SearchHistory', 'MaxItems',
+      Result.Settings.Search.RecentQueryLimit);
+    if Result.Settings.SearchHistory.MaxItems <= 0 then
+    begin
+      Result.Settings.SearchHistory.MaxItems := Result.Settings.Search.RecentQueryLimit;
+      lIni.WriteString('SearchHistory', 'MaxItems', IntToStr(Result.Settings.SearchHistory.MaxItems));
+      AddRestoredKey(Result, 'SearchHistory', 'MaxItems');
+    end;
+    Result.Settings.SearchHistory.Items := nil;
+    for i := 0 to Pred(Result.Settings.SearchHistory.MaxItems) do
+    begin
+      lItemKey := Format('Item%d', [i]);
+      if not lIni.ValueExists('SearchHistory', lItemKey) then
+      begin
+        Continue;
+      end;
+
+      lItemValue := Trim(lIni.ReadString('SearchHistory', lItemKey, ''));
+      if lItemValue = '' then
+      begin
+        Continue;
+      end;
+      AddStringItem(Result.Settings.SearchHistory.Items, lItemValue);
+    end;
+    Result.Settings.SearchHistory.Items := NormalizeSearchHistory(
+      Result.Settings.SearchHistory.Items,
+      Result.Settings.SearchHistory.MaxItems
+    );
 
     lIni.UpdateFile;
   finally
