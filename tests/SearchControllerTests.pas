@@ -29,10 +29,15 @@ end;
 type
   TSearchControllerHarness = class
   private
+    fActiveExecutors: Integer;
     fCallbackCount: Integer;
     fDoneEvent: TEvent;
+    fFirstSearchEnteredEvent: TEvent;
     fLastError: string;
     fLastName: string;
+    fMaxConcurrentExecutors: Integer;
+    fReleaseFirstSearchEvent: TEvent;
+    fUseSerialExecutionScenario: Boolean;
     procedure HandleCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>; const aError: string);
     function ExecuteFakeSearch(const aQuery: string): TArray<TSkillSearchResult>;
   public
@@ -45,17 +50,43 @@ constructor TSearchControllerHarness.Create;
 begin
   inherited Create;
   fDoneEvent := TEvent.Create(nil, True, False, '');
+  fFirstSearchEnteredEvent := TEvent.Create(nil, True, False, '');
+  fReleaseFirstSearchEvent := TEvent.Create(nil, True, False, '');
 end;
 
 destructor TSearchControllerHarness.Destroy;
 begin
+  fReleaseFirstSearchEvent.Free;
+  fFirstSearchEnteredEvent.Free;
   fDoneEvent.Free;
   inherited Destroy;
 end;
 
 function TSearchControllerHarness.ExecuteFakeSearch(const aQuery: string): TArray<TSkillSearchResult>;
+var
+  lActiveExecutors: Integer;
 begin
-  Sleep(40);
+  lActiveExecutors := TInterlocked.Increment(fActiveExecutors);
+  if lActiveExecutors > fMaxConcurrentExecutors then
+  begin
+    fMaxConcurrentExecutors := lActiveExecutors;
+  end;
+
+  try
+    if fUseSerialExecutionScenario and SameText(aQuery, 'serial-first') then
+    begin
+      fFirstSearchEnteredEvent.SetEvent;
+      if fReleaseFirstSearchEvent.WaitFor(1500) <> wrSignaled then
+      begin
+        raise Exception.Create('Timed out waiting to release first search execution');
+      end;
+    end else begin
+      Sleep(40);
+    end;
+  finally
+    TInterlocked.Decrement(fActiveExecutors);
+  end;
+
   SetLength(Result, 1);
   Result[0] := Default(TSkillSearchResult);
   Result[0].Name := aQuery;
@@ -114,6 +145,33 @@ begin
     Sleep(300);
 
     AssertEqualInt(0, fCallbackCount, 'Cancelled search should not dispatch completion callback');
+
+    fDoneEvent.ResetEvent;
+    fFirstSearchEnteredEvent.ResetEvent;
+    fReleaseFirstSearchEvent.ResetEvent;
+    fCallbackCount := 0;
+    fLastName := '';
+    fMaxConcurrentExecutors := 0;
+    fUseSerialExecutionScenario := True;
+
+    lController.QueueSearch('serial-first', 0);
+    if fFirstSearchEnteredEvent.WaitFor(1500) <> wrSignaled then
+    begin
+      raise Exception.Create('Timed out waiting for first serialized search to start');
+    end;
+
+    lController.QueueSearch('serial-second', 0);
+    Sleep(100);
+    fReleaseFirstSearchEvent.SetEvent;
+
+    if fDoneEvent.WaitFor(1500) <> wrSignaled then
+    begin
+      raise Exception.Create('Timed out waiting for serialized search result');
+    end;
+
+    AssertEqualInt(1, fMaxConcurrentExecutors, 'Search executor should run at most one search at a time');
+    AssertEqualInt(1, fCallbackCount, 'Serialized scenario should still emit only one callback');
+    AssertEqualText('serial-second', fLastName, 'Expected latest serialized search payload to win');
   finally
     lController.Free;
   end;

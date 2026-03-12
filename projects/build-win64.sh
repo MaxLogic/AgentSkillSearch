@@ -6,21 +6,34 @@ PROJECT_FILE="$ROOT_DIR/projects/AgentSkillSearch.dproj"
 OUTPUT_DIR="$ROOT_DIR/bin"
 TEST_OUTPUT_DIR="$ROOT_DIR/tests/bin"
 RUNTIME_TEMPLATE_DIR="$ROOT_DIR/assets/runtime"
+BUILD_CONFIG="${BUILD_CONFIG:-Release}"
+DAK_BUILD_SH="${DAK_BUILD_SH:-/mnt/f/projects/MaxLogic/DelphiAiKit/build-delphi.sh}"
 
-bash /home/pawel/.codex/skills/build-delphi/scripts/build-delphi.sh "$PROJECT_FILE" -ver 23 -config Debug -platform Win64
+install_if_missing() {
+  local src="$1"
+  local dst="$2"
 
-cp "$RUNTIME_TEMPLATE_DIR/settings.ini" "$OUTPUT_DIR/settings.ini"
-cp "$RUNTIME_TEMPLATE_DIR/Sources.lst" "$OUTPUT_DIR/Sources.lst"
-cp "$RUNTIME_TEMPLATE_DIR/excludes.lst" "$OUTPUT_DIR/excludes.lst"
+  if [[ -f "$dst" ]]; then
+    return
+  fi
+
+  cp "$src" "$dst"
+}
+
+"$DAK_BUILD_SH" "$PROJECT_FILE" -ver 23 -config "$BUILD_CONFIG" -platform Win64
+
+install_if_missing "$RUNTIME_TEMPLATE_DIR/settings.ini" "$OUTPUT_DIR/settings.ini"
+install_if_missing "$RUNTIME_TEMPLATE_DIR/Sources.lst" "$OUTPUT_DIR/Sources.lst"
+install_if_missing "$RUNTIME_TEMPLATE_DIR/excludes.lst" "$OUTPUT_DIR/excludes.lst"
 cp "$RUNTIME_TEMPLATE_DIR/search-syntax-help-64.png" "$OUTPUT_DIR/search-syntax-help-64.png"
 
 mkdir -p "$TEST_OUTPUT_DIR"
-cp "$RUNTIME_TEMPLATE_DIR/settings.ini" "$TEST_OUTPUT_DIR/settings.ini"
-cp "$RUNTIME_TEMPLATE_DIR/Sources.lst" "$TEST_OUTPUT_DIR/Sources.lst"
-cp "$RUNTIME_TEMPLATE_DIR/excludes.lst" "$TEST_OUTPUT_DIR/excludes.lst"
+install_if_missing "$RUNTIME_TEMPLATE_DIR/settings.ini" "$TEST_OUTPUT_DIR/settings.ini"
+install_if_missing "$RUNTIME_TEMPLATE_DIR/Sources.lst" "$TEST_OUTPUT_DIR/Sources.lst"
+install_if_missing "$RUNTIME_TEMPLATE_DIR/excludes.lst" "$TEST_OUTPUT_DIR/excludes.lst"
 cp "$RUNTIME_TEMPLATE_DIR/search-syntax-help-64.png" "$TEST_OUTPUT_DIR/search-syntax-help-64.png"
 
-for dll in sqlite3.dll vec0.dll; do
+for dll in sqlite3.dll; do
   if [[ ! -f "$OUTPUT_DIR/$dll" ]]; then
     echo "ERROR: missing runtime dependency $OUTPUT_DIR/$dll" >&2
     exit 1

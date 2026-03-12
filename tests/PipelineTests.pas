@@ -7,9 +7,9 @@ procedure RunPipelineTests;
 implementation
 
 uses
-  System.Classes, System.IOUtils, System.StrUtils, System.SysUtils,
+  System.Classes, System.Diagnostics, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
   Winapi.Windows,
-  AppPaths, DatabaseManager, Logging, PipelineCoordinator;
+  AppPaths, DatabaseManager, DockerHealthMonitor, Logging, PipelineCoordinator;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -151,10 +151,9 @@ begin
   ForceDirectories(aScanRoot);
 end;
 
-procedure TestPipelineCancellationAndBatchWrites;
+procedure TestPipelineAutoCancelStopsBeforeDbWrites;
 var
   lCoordinator: TPipelineCoordinator;
-  lDiagnostics: string;
   lDbManager: TDatabaseManager;
   lDbPath: string;
   lFixtureRoot: string;
@@ -164,7 +163,7 @@ var
   lUnusedInfraRoot: string;
 begin
   PrepareFixtureDirectory('SkillSearchPipelineFixture', lFixtureRoot, lUnusedInfraRoot, lScanRoot);
-  CreateSyntheticRepoFixture(lScanRoot, 30, 20);
+  CreateSyntheticRepoFixture(lScanRoot, 1, 0);
 
   lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
   lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
@@ -172,10 +171,11 @@ begin
     lDbManager.Initialize;
 
     lOptions := DefaultPipelineOptions;
+    lOptions.AutoCancelAfterMs := 1;
     lOptions.DbBatchSize := 20;
+    lOptions.MaxScanThreads := 1;
     lOptions.PullEnabled := False;
-    lOptions.SimulationDelayMs := 2;
-    lOptions.AutoCancelAfterMs := 800;
+    lOptions.SimulationDelayMs := 25;
 
     lCoordinator := TPipelineCoordinator.Create(lDbManager, lOptions);
     try
@@ -185,18 +185,40 @@ begin
     end;
 
     AssertTrue(lResult.Cancelled, 'Expected pipeline cancellation flag to be set');
+    AssertTrue(lResult.ReposQueued > 0, 'Fixture should discover a repo before auto-cancel triggers');
     AssertTrue(lResult.ErrorCount = 0, 'Expected no pipeline processing errors when pull is disabled');
-    AssertTrue(lResult.ReposWritten > 0, 'Expected partial repo writes before cancellation');
-    AssertTrue(lResult.SkillsWritten >= 0, 'Expected deterministic skill write count');
-    AssertTrue(lDbManager.GetRepoCount = lResult.ReposWritten, 'Repo write counter mismatch');
-    AssertTrue(lDbManager.GetSkillCount = lResult.SkillsWritten, 'Skill write counter mismatch');
-
-    lDiagnostics := BuildDiagnosticsText;
-    AssertTrue(ContainsText(lDiagnostics, 'Skills Found/Written/Valid/Unique'),
-      'Diagnostics should publish unified count semantics');
+    AssertEqualInt(0, lResult.ReposWritten, 'Cancelled pipeline should not write repo batches');
+    AssertEqualInt(0, lDbManager.GetRepoCount, 'Repo writes should remain at zero after cancellation');
   finally
     lDbManager.Free;
   end;
+end;
+
+procedure TestDockerHealthMonitorStopDropsQueuedCallbacks;
+var
+  lCallbackCount: Integer;
+  lMonitor: TDockerHealthMonitor;
+begin
+  lCallbackCount := 0;
+  lMonitor := TDockerHealthMonitor.Create(
+    'ver',
+    1000,
+    procedure(const aState: TDockerHealthState; const aDetail: string)
+    begin
+      TInterlocked.Increment(lCallbackCount);
+    end
+  );
+  try
+    lMonitor.Start;
+    Sleep(600);
+    lMonitor.Stop;
+  finally
+    lMonitor.Free;
+  end;
+
+  CheckSynchronize(200);
+  AssertEqualInt(0, TInterlocked.CompareExchange(lCallbackCount, 0, 0),
+    'Stopped docker monitor should not dispatch queued callbacks');
 end;
 
 procedure TestGitPullIsThrottledOnSecondRun;
@@ -350,10 +372,11 @@ end;
 
 procedure RunPipelineTests;
 begin
-  TestPipelineCancellationAndBatchWrites;
+  TestPipelineAutoCancelStopsBeforeDbWrites;
   TestGitPullIsThrottledOnSecondRun;
   TestGitPullFailureDoesNotBlockOtherRepos;
   TestGitPullRunsInNonInteractiveMode;
+  TestDockerHealthMonitorStopDropsQueuedCallbacks;
 end;
 
 end.

@@ -12,10 +12,16 @@ type
   TDockerHealthMonitor = class
   private
     fCheckCommand: string;
+    fDispatchQueued: Integer;
     fIntervalMs: Integer;
     fOnPolled: TDockerHealthPolledEvent;
+    fPendingDetail: string;
+    fPendingLock: TObject;
+    fPendingState: TDockerHealthState;
+    fStopping: Integer;
     fThread: TThread;
-    procedure DoPolled(const aState: TDockerHealthState; const aDetail: string);
+    procedure DispatchPolled;
+    procedure QueuePendingPoll(const aState: TDockerHealthState; const aDetail: string);
   public
     constructor Create(const aCheckCommand: string; const aIntervalMs: Integer;
       const aOnPolled: TDockerHealthPolledEvent);
@@ -27,7 +33,7 @@ type
 implementation
 
 uses
-  System.Math, System.SysUtils,
+  System.Math, System.SyncObjs, System.SysUtils,
   DockerOps;
 
 constructor TDockerHealthMonitor.Create(const aCheckCommand: string; const aIntervalMs: Integer;
@@ -35,26 +41,75 @@ constructor TDockerHealthMonitor.Create(const aCheckCommand: string; const aInte
 begin
   inherited Create;
   fCheckCommand := aCheckCommand;
+  fDispatchQueued := 0;
   fIntervalMs := Max(1000, aIntervalMs);
   fOnPolled := aOnPolled;
+  fPendingDetail := '';
+  fPendingLock := TObject.Create;
+  fPendingState := TDockerHealthState.dhsUnknown;
+  fStopping := 0;
 end;
 
 destructor TDockerHealthMonitor.Destroy;
 begin
   Stop;
+  fPendingLock.Free;
   inherited Destroy;
 end;
 
-procedure TDockerHealthMonitor.DoPolled(const aState: TDockerHealthState; const aDetail: string);
+procedure TDockerHealthMonitor.DispatchPolled;
+var
+  lDetail: string;
+  lOnPolled: TDockerHealthPolledEvent;
+  lState: TDockerHealthState;
 begin
-  if Assigned(fOnPolled) then
+  if TInterlocked.CompareExchange(fStopping, 0, 0) <> 0 then
   begin
-    fOnPolled(aState, aDetail);
+    Exit;
+  end;
+
+  TMonitor.Enter(fPendingLock);
+  try
+    lDetail := fPendingDetail;
+    lOnPolled := fOnPolled;
+    lState := fPendingState;
+    TInterlocked.Exchange(fDispatchQueued, 0);
+  finally
+    TMonitor.Exit(fPendingLock);
+  end;
+
+  if (TInterlocked.CompareExchange(fStopping, 0, 0) <> 0) or (not Assigned(lOnPolled)) then
+  begin
+    Exit;
+  end;
+
+  lOnPolled(lState, lDetail);
+end;
+
+procedure TDockerHealthMonitor.QueuePendingPoll(const aState: TDockerHealthState; const aDetail: string);
+begin
+  if TInterlocked.CompareExchange(fStopping, 0, 0) <> 0 then
+  begin
+    Exit;
+  end;
+
+  TMonitor.Enter(fPendingLock);
+  try
+    fPendingState := aState;
+    fPendingDetail := aDetail;
+    if TInterlocked.CompareExchange(fDispatchQueued, 1, 0) = 0 then
+    begin
+      TThread.Queue(nil, DispatchPolled);
+    end;
+  finally
+    TMonitor.Exit(fPendingLock);
   end;
 end;
 
 procedure TDockerHealthMonitor.Start;
 begin
+  TInterlocked.Exchange(fStopping, 0);
+
   if Assigned(fThread) then
   begin
     Exit;
@@ -95,12 +150,7 @@ begin
           end;
         end;
 
-        TThread.Queue(nil,
-          procedure
-          begin
-            DoPolled(lState, lDetail);
-          end
-        );
+        QueuePendingPoll(lState, lDetail);
 
         lSteps := Max(1, fIntervalMs div 200);
         for i := 1 to lSteps do
@@ -125,8 +175,12 @@ begin
     Exit;
   end;
 
+  TInterlocked.Exchange(fStopping, 1);
+  TThread.RemoveQueuedEvents(DispatchPolled);
   fThread.Terminate;
   fThread.WaitFor;
+  TThread.RemoveQueuedEvents(DispatchPolled);
+  TInterlocked.Exchange(fDispatchQueued, 0);
   fThread.Free;
   fThread := nil;
 end;
