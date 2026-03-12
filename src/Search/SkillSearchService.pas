@@ -14,6 +14,7 @@ type
   end;
 
   TSkillSearchResult = record
+    BodyMarkdown: string;
     Description: string;
     DuplicateCount: Integer;
     DuplicatePaths: string;
@@ -737,6 +738,7 @@ begin
       end;
 
       lCandidate.Name := lSemanticQuery.FieldByName('name').AsString;
+      lCandidate.BodyMarkdown := lSemanticQuery.FieldByName('body_md').AsString;
       lCandidate.Description := lSemanticQuery.FieldByName('description').AsString;
       lCandidate.Tags := lSemanticQuery.FieldByName('tags').AsString;
       lCandidate.SkillFile := lKnownFile;
@@ -1036,6 +1038,7 @@ begin
     while not lQuery.Eof do
     begin
       lResult.Name := lQuery.FieldByName('name').AsString;
+      lResult.BodyMarkdown := lQuery.FieldByName('body_md').AsString;
       lResult.Description := lQuery.FieldByName('description').AsString;
       lResult.Tags := lQuery.FieldByName('tags').AsString;
       lResult.SkillFile := lQuery.FieldByName('skill_file').AsString;

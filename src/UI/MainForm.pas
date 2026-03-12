@@ -352,18 +352,24 @@ end;
 
 procedure TMainForm.RenderPreview(const aResult: TSkillSearchResult);
 var
+  lBodyHtml: string;
+  lBodyMarkdown: string;
   lDuplicateText: string;
   lHtml: string;
-  lSnippetHtml: string;
 begin
-  lSnippetHtml := BuildPreviewSnippetHtml(aResult.Snippet);
+  lBodyMarkdown := Trim(aResult.BodyMarkdown);
+  if lBodyMarkdown = '' then
+  begin
+    lBodyMarkdown := aResult.Snippet;
+  end;
+  lBodyHtml := BuildPreviewSnippetHtml(HighlightPreviewTerms(lBodyMarkdown, BuildEffectiveQuery));
   lHtml :=
     '<html><body style="font-family:Segoe UI;padding:12px;">' +
     '<h3>' + EscapeHtml(aResult.Name) + '</h3>' +
     '<p><b>Description:</b> ' + EscapeHtml(aResult.Description) + '</p>' +
     '<p><b>Tags:</b> ' + EscapeHtml(aResult.Tags) + '</p>' +
     '<p><b>Scripts:</b> ' + IntToStr(aResult.ScriptsCount) + ' [' + EscapeHtml(aResult.ScriptsExts) + ']</p>' +
-    '<p><b>Snippet:</b><br/>' + lSnippetHtml + '</p>' +
+    lBodyHtml +
     '<p><b>Path:</b> ' + EscapeHtml(aResult.SkillFile) + '</p>' +
     '</body></html>';
 

@@ -33,6 +33,7 @@
 - Added Docker operations in UI: configurable `Start GPU` action with diagnostics/log feedback and a 10-second background health indicator updated via `TThread.Queue` (`T-028`, `T-029`).
 - Added a `Syntax` help button next to search input with concise query examples (`"phrase"`, `-exclude`, `name:`, `tag:`, `path:`, `has:scripts`, `limit:`) (`T-030`).
 - Expanded query syntax with boolean `OR`/grouping support and `ext:` script-extension filtering, including updated in-app syntax help (`T-037`, `T-038`).
+- Preview pane now renders full markdown bodies with headings, lists, fenced code blocks, inline emphasis, and highlighted matches while blocking remote image loads (`T-034`).
 - Documented the app’s Ollama auto-start behavior and updated Win64 packaging to build a Release runtime without overwriting existing portable config files in `bin/` (`T-032`).
 
 ### Fixed
