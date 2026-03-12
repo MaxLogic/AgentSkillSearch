@@ -3,6 +3,12 @@ unit SourcesList;
 interface
 
 type
+  TSourcePathEntry = record
+    LineNumber: Integer;
+    NormalizedPath: string;
+    RawLine: string;
+  end;
+
   TSourcePathIssue = record
     LineNumber: Integer;
     RawLine: string;
@@ -10,11 +16,13 @@ type
   end;
 
   TSourcesListParseResult = record
+    Entries: TArray<TSourcePathEntry>;
     Issues: TArray<TSourcePathIssue>;
     ValidPaths: TArray<string>;
   end;
 
 function ParseSourcesListFile(const aFilePath, aBaseDirectory: string): TSourcesListParseResult;
+function LoadUsableSourcesListFile(const aFilePath, aBaseDirectory: string): TSourcesListParseResult;
 
 implementation
 
@@ -63,13 +71,31 @@ begin
   aResult.Issues[lLen].Reason := aReason;
 end;
 
-procedure AddValidPath(var aResult: TSourcesListParseResult; const aPath: string);
+procedure AddValidPath(var aResult: TSourcesListParseResult; const aLineNumber: Integer; const aRawLine, aPath: string);
 var
   lLen: Integer;
 begin
+  lLen := Length(aResult.Entries);
+  SetLength(aResult.Entries, lLen + 1);
+  aResult.Entries[lLen].LineNumber := aLineNumber;
+  aResult.Entries[lLen].RawLine := aRawLine;
+  aResult.Entries[lLen].NormalizedPath := aPath;
+
   lLen := Length(aResult.ValidPaths);
   SetLength(aResult.ValidPaths, lLen + 1);
   aResult.ValidPaths[lLen] := aPath;
+end;
+
+function BuildBaseDirectory(const aFilePath, aBaseDirectory: string): string;
+begin
+  if aBaseDirectory = '' then
+  begin
+    Result := ExtractFilePath(aFilePath);
+  end else begin
+    Result := aBaseDirectory;
+  end;
+
+  Result := TPath.GetFullPath(Result);
 end;
 
 function NormalizePath(const aInput, aBaseDirectory: string; out aOutput: string; out aError: string): Boolean;
@@ -121,14 +147,7 @@ var
   lNormalizedPath: string;
   lRawLine: string;
 begin
-  if aBaseDirectory = '' then
-  begin
-    lBaseDirectory := ExtractFilePath(aFilePath);
-  end else begin
-    lBaseDirectory := aBaseDirectory;
-  end;
-
-  lBaseDirectory := TPath.GetFullPath(lBaseDirectory);
+  lBaseDirectory := BuildBaseDirectory(aFilePath, aBaseDirectory);
 
   lLines := TStringList.Create;
   try
@@ -145,13 +164,42 @@ begin
 
       if NormalizePath(lRawLine, lBaseDirectory, lNormalizedPath, lIssue) then
       begin
-        AddValidPath(Result, lNormalizedPath);
+        AddValidPath(Result, i + 1, lRawLine, lNormalizedPath);
       end else begin
         AddIssue(Result, i + 1, lRawLine, lIssue);
       end;
     end;
   finally
     lLines.Free;
+  end;
+end;
+
+function LoadUsableSourcesListFile(const aFilePath, aBaseDirectory: string): TSourcesListParseResult;
+var
+  i: Integer;
+  lParsedResult: TSourcesListParseResult;
+begin
+  lParsedResult := ParseSourcesListFile(aFilePath, aBaseDirectory);
+  Result.Issues := lParsedResult.Issues;
+
+  for i := 0 to Pred(Length(lParsedResult.Entries)) do
+  begin
+    if TDirectory.Exists(lParsedResult.Entries[i].NormalizedPath) then
+    begin
+      AddValidPath(
+        Result,
+        lParsedResult.Entries[i].LineNumber,
+        lParsedResult.Entries[i].RawLine,
+        lParsedResult.Entries[i].NormalizedPath
+      );
+    end else begin
+      AddIssue(
+        Result,
+        lParsedResult.Entries[i].LineNumber,
+        lParsedResult.Entries[i].RawLine,
+        'Source directory does not exist'
+      );
+    end;
   end;
 end;
 
