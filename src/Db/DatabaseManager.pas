@@ -57,6 +57,11 @@ type
     VectorUpdatedUtc: string;
   end;
 
+  TSkillTagInfo = record
+    Name: string;
+    SkillCount: Integer;
+  end;
+
   TDatabaseManager = class
   private
     fConnection: TFDConnection;
@@ -83,6 +88,7 @@ type
     property SqliteDllPath: string read fSqliteDllPath;
     function GetRepoCount: Integer;
     function GetSkillCount: Integer;
+    function GetSkillTagCounts: TArray<TSkillTagInfo>;
     function GetUniqueSkillCount: Integer;
     function GetValidSkillCount: Integer;
     function Initialize: TDbInitResult;
@@ -369,6 +375,41 @@ end;
 function TDatabaseManager.GetSkillCount: Integer;
 begin
   Result := QueryScalarInt('SELECT COUNT(1) FROM skills;');
+end;
+
+function TDatabaseManager.GetSkillTagCounts: TArray<TSkillTagInfo>;
+var
+  lLen: Integer;
+  lQuery: TFDQuery;
+begin
+  lQuery := TFDQuery.Create(nil);
+  try
+    lQuery.Connection := fConnection;
+    lQuery.SQL.Text :=
+      'WITH RECURSIVE tag_parts(skill_id, rest, tag) AS (' +
+      '  SELECT id, TRIM(COALESCE(tags, '''')) || '';'', '''' FROM skills ' +
+      '  UNION ALL ' +
+      '  SELECT skill_id, SUBSTR(rest, INSTR(rest, '';'') + 1), TRIM(SUBSTR(rest, 1, INSTR(rest, '';'') - 1)) ' +
+      '  FROM tag_parts WHERE rest <> ''''' +
+      ') ' +
+      'SELECT LOWER(tag) AS tag_name, COUNT(DISTINCT skill_id) AS skill_count ' +
+      'FROM tag_parts ' +
+      'WHERE tag <> '''' ' +
+      'GROUP BY LOWER(tag) ' +
+      'ORDER BY LOWER(tag);';
+    lQuery.Open;
+
+    while not lQuery.Eof do
+    begin
+      lLen := Length(Result);
+      SetLength(Result, lLen + 1);
+      Result[lLen].Name := lQuery.FieldByName('tag_name').AsString;
+      Result[lLen].SkillCount := lQuery.FieldByName('skill_count').AsInteger;
+      lQuery.Next;
+    end;
+  finally
+    lQuery.Free;
+  end;
 end;
 
 function TDatabaseManager.GetValidSkillCount: Integer;

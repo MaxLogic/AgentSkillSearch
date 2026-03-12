@@ -186,6 +186,10 @@ begin
   lParsed := ParseSearchQuery('retry AND backoff');
   lExpression := BuildFtsMatchExpression(lParsed);
   AssertEqualText('(retry* AND backoff*)', lExpression, 'Explicit AND should preserve AND semantics');
+
+  lParsed := ParseSearchQuery('tag:"rate limit"');
+  AssertEqualInt(1, Length(lParsed.TagFilters), 'Expected quoted multi-word tag filter to stay intact');
+  AssertEqualText('rate limit', lParsed.TagFilters[0], 'Expected quoted multi-word tag filter value');
 end;
 
 procedure TestSearchInteractionHelpers;
@@ -238,6 +242,15 @@ begin
   AssertEqualText('jwt', lHistory.Items[0], 'Expected selected history query to move to the top');
   AssertEqualText('retry tag:docker', lHistory.Items[1], 'Expected previous top history query to shift down');
   AssertEqualText('backoff', lHistory.Items[2], 'Expected remaining history order to stay stable');
+
+  AssertEqualText('tag:docker', AppendTagFilterQuery('', 'docker'),
+    'Expected empty query to become a tag filter');
+  AssertEqualText('retry tag:docker', AppendTagFilterQuery('retry', 'docker'),
+    'Expected clicked tag to append to an existing query');
+  AssertEqualText('retry tag:docker', AppendTagFilterQuery(' retry ', 'docker'),
+    'Expected clicked tag to append after trimming surrounding spaces');
+  AssertEqualText('retry tag:"rate limit"', AppendTagFilterQuery('retry', 'rate limit'),
+    'Expected clicked multi-word tag to be quoted');
 
   AssertEqualInt(-1440, ScaleStoredUiValue(-960, 96, 144),
     'Expected negative restored monitor coordinates to scale across DPI changes');

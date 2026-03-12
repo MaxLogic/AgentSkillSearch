@@ -188,6 +188,18 @@ object AppMainForm: TMainForm
       TabOrder = 1
       OnClick = HandleSortButtonClick
     end
+    object fTagToggleButton: TButton
+      AlignWithMargins = True
+      Left = 282
+      Top = 8
+      Width = 110
+      Height = 28
+      Margins.Left = 8
+      Align = alLeft
+      Caption = 'Hide Tags'
+      TabOrder = 2
+      OnClick = HandleTagToggleButtonClick
+    end
     object fDockerHealthLabel: TStaticText
       AlignWithMargins = True
       Left = 810
@@ -210,7 +222,7 @@ object AppMainForm: TMainForm
       Margins.Right = 8
       Align = alRight
       Caption = 'Start Docker Stack'
-      TabOrder = 2
+      TabOrder = 3
       OnClick = HandleDockerGpuButtonClick
     end
     object fScanProgressBar: TProgressBar
@@ -222,7 +234,7 @@ object AppMainForm: TMainForm
       Align = alRight
       MarqueeInterval = 30
       Style = pbstMarquee
-      TabOrder = 3
+      TabOrder = 4
       Visible = False
     end
   end
@@ -240,6 +252,93 @@ object AppMainForm: TMainForm
     Padding.Right = 12
     Padding.Bottom = 12
     TabOrder = 2
+    object fTagBrowserPanel: TPanel
+      Left = 12
+      Top = 9
+      Width = 220
+      Height = 645
+      Align = alLeft
+      BevelOuter = bvNone
+      Caption = ''
+      TabOrder = 0
+      object fTagListBox: TListBox
+        Left = 0
+        Top = 17
+        Width = 220
+        Height = 628
+        Align = alClient
+        ItemHeight = 17
+        TabOrder = 0
+        OnClick = HandleTagListBoxClick
+      end
+      object fTagBrowserLabel: TStaticText
+        Left = 0
+        Top = 0
+        Width = 220
+        Height = 17
+        Align = alTop
+        AutoSize = False
+        BorderStyle = sbsNone
+        Caption = 'Tags'
+        TabStop = False
+      end
+    end
+    object fTagBrowserSplitter: TSplitter
+      Left = 232
+      Top = 9
+      Width = 6
+      Height = 645
+      Align = alLeft
+      ExplicitTop = 8
+      ExplicitHeight = 637
+    end
+    object fResultsPanePanel: TPanel
+      Left = 238
+      Top = 9
+      Width = 522
+      Height = 645
+      Align = alLeft
+      BevelOuter = bvNone
+      Caption = ''
+      TabOrder = 1
+      object fResultsListView: TListView
+        Left = 0
+        Top = 17
+        Width = 522
+        Height = 628
+        Align = alClient
+        HideSelection = False
+        PopupMenu = fPopupMenu
+        ReadOnly = True
+        RowSelect = True
+        TabOrder = 0
+        ViewStyle = vsReport
+        OnColumnClick = HandleResultsColumnClick
+        OnDblClick = HandleResultDoubleClick
+        OnKeyDown = HandleResultKeyDown
+        OnSelectItem = HandleResultSelectItem
+      end
+      object fResultsListLabel: TStaticText
+        Left = 0
+        Top = 0
+        Width = 522
+        Height = 17
+        Align = alTop
+        AutoSize = False
+        BorderStyle = sbsNone
+        Caption = 'Search results'
+        TabStop = False
+      end
+    end
+    object fResultsPreviewSplitter: TSplitter
+      Left = 760
+      Top = 9
+      Width = 6
+      Height = 645
+      Align = alLeft
+      ExplicitTop = 8
+      ExplicitHeight = 637
+    end
     object fPreviewHostPanel: TPanel
       Left = 766
       Top = 9
@@ -248,7 +347,7 @@ object AppMainForm: TMainForm
       Align = alClient
       BevelOuter = bvNone
       Caption = ''
-      TabOrder = 1
+      TabOrder = 2
       object fDuplicateInfoPanel: TPanel
         Left = 386
         Top = 0
@@ -320,53 +419,6 @@ object AppMainForm: TMainForm
           Caption = 'Skill preview'
           TabStop = False
         end
-      end
-    end
-    object fResultsPreviewSplitter: TSplitter
-      Left = 760
-      Top = 9
-      Width = 6
-      Height = 645
-      Align = alLeft
-      ExplicitTop = 8
-      ExplicitHeight = 637
-    end
-    object fResultsPanePanel: TPanel
-      Left = 12
-      Top = 9
-      Width = 748
-      Height = 645
-      Align = alLeft
-      BevelOuter = bvNone
-      Caption = ''
-      TabOrder = 0
-      object fResultsListView: TListView
-        Left = 0
-        Top = 17
-        Width = 748
-        Height = 628
-        Align = alClient
-        HideSelection = False
-        PopupMenu = fPopupMenu
-        ReadOnly = True
-        RowSelect = True
-        TabOrder = 0
-        ViewStyle = vsReport
-        OnColumnClick = HandleResultsColumnClick
-        OnDblClick = HandleResultDoubleClick
-        OnKeyDown = HandleResultKeyDown
-        OnSelectItem = HandleResultSelectItem
-      end
-      object fResultsListLabel: TStaticText
-        Left = 0
-        Top = 0
-        Width = 748
-        Height = 17
-        Align = alTop
-        AutoSize = False
-        BorderStyle = sbsNone
-        Caption = 'Search results'
-        TabStop = False
       end
     end
   end

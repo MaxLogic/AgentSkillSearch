@@ -6,7 +6,7 @@ uses
   System.Classes, System.Types, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
   DatabaseManager, DockerHealthMonitor, DockerOps, ExternalTools, PipelineCoordinator, SearchController, SearchInteraction,
-  SearchResultActions, SettingsModel, SkillSearchService;
+  SearchResultActions, SettingsModel, SkillSearchService, TagBrowserActions;
 
 type
   TMainForm = class(TForm)
@@ -28,7 +28,12 @@ type
     fDockerHealthLabel: TStaticText;
     fHasScriptsCheckBox: TCheckBox;
     fSortButton: TButton;
+    fTagToggleButton: TButton;
     fMainPanel: TPanel;
+    fTagBrowserPanel: TPanel;
+    fTagBrowserSplitter: TSplitter;
+    fTagListBox: TListBox;
+    fTagBrowserLabel: TStaticText;
     fResultsPanePanel: TPanel;
     fResultsListView: TListView;
     fResultsPreviewSplitter: TSplitter;
@@ -71,6 +76,7 @@ type
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
     fSkillsFoundCount: Integer;
+    fTagBrowserItems: TArray<TSkillTagInfo>;
     fSkillsUniqueCount: Integer;
     fSkillsValidCount: Integer;
     fSourcesListPath: string;
@@ -105,6 +111,7 @@ type
     procedure QueueSearch(const aImmediate: Boolean);
     procedure RefreshCountPanels;
     procedure RefreshInventoryCounters;
+    procedure RefreshTagBrowser;
     procedure RenderResultsList(const aPreferredSkillFile: string);
     procedure RenderPreview(const aResult: TSkillSearchResult);
     procedure SaveRuntimeState;
@@ -115,6 +122,7 @@ type
     procedure ShowEmptyPreview;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
     procedure UpdateStatus(const aText: string);
+    procedure UpdateTagBrowserUi;
     procedure UpdateSortUi;
     procedure UpdateSearchHistoryMenu;
     procedure WaitForWorkerThread(var aThread: TThread);
@@ -146,6 +154,8 @@ type
     procedure HandleScanButtonClick(Sender: TObject);
     procedure HandleSortButtonClick(Sender: TObject);
     procedure HandleSortMenuItemClick(Sender: TObject);
+    procedure HandleTagListBoxClick(Sender: TObject);
+    procedure HandleTagToggleButtonClick(Sender: TObject);
   public
     constructor Create(aOwner: TComponent); override;
     destructor Destroy; override;
@@ -276,6 +286,8 @@ begin
   LoadUiState;
   LoadSearchHelpImage;
   PopulateExternalToolsMenu;
+  RefreshTagBrowser;
+  UpdateTagBrowserUi;
 
   fSearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
   fStatusBar.Panels[cStatusPanelCache].Text := 'Cache: ' + fDbPath;
@@ -821,6 +833,12 @@ begin
   fSkillsUniqueCount := fDatabaseManager.GetUniqueSkillCount;
 end;
 
+procedure TMainForm.RefreshTagBrowser;
+begin
+  fTagBrowserItems := fDatabaseManager.GetSkillTagCounts;
+  PopulateTagListBox(fTagListBox, fTagBrowserItems);
+end;
+
 function TMainForm.ResolveSearchHelpImagePath: string;
 const
   cImageFileName = 'search-syntax-help-64.png';
@@ -1238,6 +1256,7 @@ begin
     UpdateStatus(aStatusText);
     fSkillsFoundCount := aResult.SkillsQueued;
     RefreshInventoryCounters;
+    RefreshTagBrowser;
     RefreshCountPanels;
     fStatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
     QueueSearch(True);
@@ -1597,9 +1616,39 @@ begin
   SetSortMode(TSearchSortMode(TMenuItem(Sender).Tag));
 end;
 
+procedure TMainForm.HandleTagListBoxClick(Sender: TObject);
+var
+  lTag: string;
+begin
+  if not TryGetSelectedTag(fTagListBox, fTagBrowserItems, lTag) then
+  begin
+    Exit;
+  end;
+
+  fSearchEdit.Text := AppendTagFilterQuery(fSearchEdit.Text, lTag);
+  QueueSearch(True);
+end;
+
+procedure TMainForm.HandleTagToggleButtonClick(Sender: TObject);
+begin
+  fTagBrowserPanel.Visible := not fTagBrowserPanel.Visible;
+  UpdateTagBrowserUi;
+end;
+
 procedure TMainForm.HandleHasScriptsClick(Sender: TObject);
 begin
   QueueSearch(False);
+end;
+
+procedure TMainForm.UpdateTagBrowserUi;
+begin
+  fTagBrowserSplitter.Visible := fTagBrowserPanel.Visible;
+  if fTagBrowserPanel.Visible then
+  begin
+    fTagToggleButton.Caption := 'Hide Tags';
+  end else begin
+    fTagToggleButton.Caption := 'Show Tags';
+  end;
 end;
 
 end.
