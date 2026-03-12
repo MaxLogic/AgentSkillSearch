@@ -23,6 +23,9 @@ type
 
 function ParseSourcesListFile(const aFilePath, aBaseDirectory: string): TSourcesListParseResult;
 function LoadUsableSourcesListFile(const aFilePath, aBaseDirectory: string): TSourcesListParseResult;
+procedure SaveSourcesListFile(const aFilePath: string; const aPaths: TArray<string>);
+function TryValidateNewSourcePath(const aInput, aBaseDirectory: string; const aExistingPaths: TArray<string>;
+  out aNormalizedPath: string; out aError: string): Boolean;
 
 implementation
 
@@ -60,6 +63,11 @@ begin
   end;
 end;
 
+function AreSamePath(const aLeft, aRight: string): Boolean;
+begin
+  Result := SameText(ExcludeTrailingPathDelimiter(aLeft), ExcludeTrailingPathDelimiter(aRight));
+end;
+
 procedure AddIssue(var aResult: TSourcesListParseResult; const aLineNumber: Integer; const aRawLine, aReason: string);
 var
   lLen: Integer;
@@ -84,6 +92,21 @@ begin
   lLen := Length(aResult.ValidPaths);
   SetLength(aResult.ValidPaths, lLen + 1);
   aResult.ValidPaths[lLen] := aPath;
+end;
+
+function ContainsSourcePath(const aPaths: TArray<string>; const aPath: string): Boolean;
+var
+  lPath: string;
+begin
+  for lPath in aPaths do
+  begin
+    if AreSamePath(lPath, aPath) then
+    begin
+      Exit(True);
+    end;
+  end;
+
+  Result := False;
 end;
 
 function BuildBaseDirectory(const aFilePath, aBaseDirectory: string): string;
@@ -184,6 +207,17 @@ begin
 
   for i := 0 to Pred(Length(lParsedResult.Entries)) do
   begin
+    if ContainsSourcePath(Result.ValidPaths, lParsedResult.Entries[i].NormalizedPath) then
+    begin
+      AddIssue(
+        Result,
+        lParsedResult.Entries[i].LineNumber,
+        lParsedResult.Entries[i].RawLine,
+        'Duplicate source path'
+      );
+      Continue;
+    end;
+
     if TDirectory.Exists(lParsedResult.Entries[i].NormalizedPath) then
     begin
       AddValidPath(
@@ -201,6 +235,64 @@ begin
       );
     end;
   end;
+end;
+
+procedure SaveSourcesListFile(const aFilePath: string; const aPaths: TArray<string>);
+var
+  lLines: TStringList;
+  lPath: string;
+begin
+  ForceDirectories(ExtractFilePath(aFilePath));
+
+  lLines := TStringList.Create;
+  try
+    for lPath in aPaths do
+    begin
+      lLines.Add(lPath);
+    end;
+    lLines.SaveToFile(aFilePath, TEncoding.UTF8);
+  finally
+    lLines.Free;
+  end;
+end;
+
+function TryValidateNewSourcePath(const aInput, aBaseDirectory: string; const aExistingPaths: TArray<string>;
+  out aNormalizedPath: string; out aError: string): Boolean;
+var
+  lExistingPath: string;
+begin
+  aNormalizedPath := '';
+  aError := '';
+
+  if Trim(aInput) = '' then
+  begin
+    aError := 'Source path is required';
+    Exit(False);
+  end;
+
+  if not NormalizePath(aInput, TPath.GetFullPath(aBaseDirectory), aNormalizedPath, aError) then
+  begin
+    Exit(False);
+  end;
+
+  if not TDirectory.Exists(aNormalizedPath) then
+  begin
+    aError := 'Source directory does not exist';
+    Exit(False);
+  end;
+
+  for lExistingPath in aExistingPaths do
+  begin
+    if not AreSamePath(aNormalizedPath, lExistingPath) then
+    begin
+      Continue;
+    end;
+
+    aError := 'Duplicate source path';
+    Exit(False);
+  end;
+
+  Result := True;
 end;
 
 end.
