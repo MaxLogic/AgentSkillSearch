@@ -24,7 +24,7 @@ implementation
 
 uses
   System.Classes, System.IOUtils, System.IniFiles, System.SysUtils,
-  AppPaths, AutoFree;
+  AppPaths, AutoFree, ExternalTools;
 
 function ResolveSettingsPath(const aValue, aBaseDirectory: string): string;
 begin
@@ -98,6 +98,16 @@ begin
   lLen := Length(aItems);
   SetLength(aItems, lLen + 1);
   aItems[lLen] := aValue;
+end;
+
+procedure AddExternalTool(var aTools: TArray<TExternalToolSettings>; const aName, aCommandTemplate: string);
+var
+  lLen: Integer;
+begin
+  lLen := Length(aTools);
+  SetLength(aTools, lLen + 1);
+  aTools[lLen].Name := aName;
+  aTools[lLen].CommandTemplate := aCommandTemplate;
 end;
 
 function BoolToIniValue(const aValue: Boolean): string;
@@ -388,6 +398,8 @@ var
   lIni: TMemIniFile;
   lItemKey: string;
   lItemValue: string;
+  lName: string;
+  lSectionValues: TStringList;
   lSettingsDir: string;
 begin
   lDefault := DefaultAppSettings;
@@ -483,6 +495,24 @@ begin
       lDefault.Ui.ShowPreviewPane);
     Result.Settings.Ui.OpenFileOnEnter := ReadRequiredBool(lIni, Result, 'UI', 'OpenFileOnEnter',
       lDefault.Ui.OpenFileOnEnter);
+
+    lSectionValues := TStringList.Create;
+    try
+      lIni.ReadSectionValues('ExternalTools', lSectionValues);
+      Result.Settings.ExternalTools := nil;
+      for i := 0 to Pred(lSectionValues.Count) do
+      begin
+        lName := Trim(lSectionValues.Names[i]);
+        lItemValue := Trim(lSectionValues.ValueFromIndex[i]);
+        if (lName = '') or not IsExternalToolTemplateValid(lItemValue) then
+        begin
+          Continue;
+        end;
+        AddExternalTool(Result.Settings.ExternalTools, lName, lItemValue);
+      end;
+    finally
+      lSectionValues.Free;
+    end;
 
     Result.Settings.UiState.CurrentPPI := ReadRequiredInteger(lIni, Result, 'UIState', 'CurrentPPI',
       lDefault.UiState.CurrentPPI);

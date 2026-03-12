@@ -81,8 +81,14 @@ type
     MaxItems: Integer;
   end;
 
+  TExternalToolSettings = record
+    CommandTemplate: string;
+    Name: string;
+  end;
+
   TAppSettings = record
     Docker: TDockerSettings;
+    ExternalTools: TArray<TExternalToolSettings>;
     General: TGeneralSettings;
     Git: TGitSettings;
     Index: TIndexSettings;
