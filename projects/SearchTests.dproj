@@ -49,6 +49,7 @@
     <DCCReference Include="..\src\Indexer\SkillTypes.pas" />
     <DCCReference Include="..\src\Search\QueryParser.pas" />
     <DCCReference Include="..\src\Search\SearchInteraction.pas" />
+    <DCCReference Include="..\src\Search\SearchResultActions.pas" />
     <DCCReference Include="..\src\Search\SkillSearchService.pas" />
     <DCCReference Include="..\src\UI\PreviewRenderer.pas" />
     <BuildConfiguration Include="Base">

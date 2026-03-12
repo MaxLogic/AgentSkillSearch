@@ -8,8 +8,8 @@ implementation
 
 uses
   System.DateUtils, System.Hash, System.IOUtils, System.StrUtils, System.SysUtils,
-  AppPaths, DatabaseManager, PreviewRenderer, QueryParser, SearchInteraction, SettingsModel, SkillSearchService,
-  SkillTypes;
+  AppPaths, DatabaseManager, PreviewRenderer, QueryParser, SearchInteraction, SearchResultActions, SettingsModel,
+  SkillSearchService, SkillTypes;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -245,6 +245,64 @@ begin
   AssertEqualInt(0, ScaleStoredUiValue(0, 96, 144), 'Expected zero UI dimensions to remain zero');
 end;
 
+procedure TestSearchResultActions;
+var
+  lMarkdown: string;
+  lResults: TArray<TSkillSearchResult>;
+  lSortMode: TSearchSortMode;
+begin
+  SetLength(lResults, 3);
+
+  lResults[0] := Default(TSkillSearchResult);
+  lResults[0].Name := 'Zulu Skill';
+  lResults[0].SkillFile := 'C:\skills\zulu\SKILL.md';
+  lResults[0].SkillRoot := 'C:\skills\zulu';
+  lResults[0].FinalScore := 1.5;
+  lResults[0].IndexedUtc := '2026-03-10T08:00:00Z';
+
+  lResults[1] := Default(TSkillSearchResult);
+  lResults[1].Name := 'Alpha Skill';
+  lResults[1].SkillFile := 'C:\skills\alpha\SKILL.md';
+  lResults[1].SkillRoot := 'C:\skills\alpha';
+  lResults[1].FinalScore := 0.5;
+  lResults[1].IndexedUtc := '2026-03-12T08:00:00Z';
+
+  lResults[2] := Default(TSkillSearchResult);
+  lResults[2].Name := 'Bravo Skill';
+  lResults[2].SkillFile := 'C:\skills\bravo\SKILL.md';
+  lResults[2].SkillRoot := 'C:\skills\bravo';
+  lResults[2].FinalScore := 1.0;
+  lResults[2].IndexedUtc := '2026-03-11T08:00:00Z';
+
+  AssertTrue(TryParseSearchSortMode('date-indexed-desc', lSortMode), 'Expected date-indexed sort mode to parse');
+  AssertEqualText('date-indexed-desc', SearchSortModeToString(TSearchSortMode.ssmDateIndexedDesc),
+    'Expected date-indexed sort mode to round-trip');
+  AssertEqualInt(Integer(TSearchSortMode.ssmScore), Integer(DefaultSearchSortMode),
+    'Expected score sort to remain the default');
+
+  SortSearchResults(lResults, TSearchSortMode.ssmNameAsc);
+  AssertEqualText('Alpha Skill', lResults[0].Name, 'Expected name sort ascending');
+  SortSearchResults(lResults, TSearchSortMode.ssmNameDesc);
+  AssertEqualText('Zulu Skill', lResults[0].Name, 'Expected name sort descending');
+  SortSearchResults(lResults, TSearchSortMode.ssmPathAsc);
+  AssertEqualText('C:\skills\alpha', lResults[0].SkillRoot, 'Expected path sort ascending');
+  SortSearchResults(lResults, TSearchSortMode.ssmDateIndexedDesc);
+  AssertEqualText('Alpha Skill', lResults[0].Name, 'Expected newest indexed result first');
+  SortSearchResults(lResults, TSearchSortMode.ssmScore);
+  AssertEqualText('Zulu Skill', lResults[0].Name, 'Expected highest-score result first');
+
+  lMarkdown := BuildResultsMarkdownList(lResults);
+  AssertEqualText(
+    '- [Zulu Skill](C:\skills\zulu\SKILL.md)' + sLineBreak +
+    '- [Bravo Skill](C:\skills\bravo\SKILL.md)' + sLineBreak +
+    '- [Alpha Skill](C:\skills\alpha\SKILL.md)',
+    lMarkdown,
+    'Expected markdown export list for current results'
+  );
+  AssertTrue(not TryBuildResultsMarkdownList(nil, lMarkdown), 'Expected empty export list to report no export payload');
+  AssertEqualText('', lMarkdown, 'Expected empty export list markdown to stay empty');
+end;
+
 procedure TestSearchFiltersAndRanking;
 var
   lDbManager: TDatabaseManager;
@@ -413,6 +471,7 @@ procedure RunSearchTests;
 begin
   TestQueryParserSupportsBooleanOperatorsAndExtensionFilters;
   TestSearchInteractionHelpers;
+  TestSearchResultActions;
   TestSearchFiltersAndRanking;
   TestPreviewSnippetHtmlIsSanitizedAndHighlighted;
 end;

@@ -66,6 +66,7 @@ type
     CurrentPPI: Integer;
     DuplicateInfoWidth: Integer;
     LastQuery: string;
+    ResultSortMode: string;
     ResultsColumnWidths: string;
     ResultsPaneWidth: Integer;
     SearchAsYouType: Boolean;
@@ -147,6 +148,7 @@ begin
   Result.UiState.CurrentPPI := 0;
   Result.UiState.DuplicateInfoWidth := 0;
   Result.UiState.LastQuery := '';
+  Result.UiState.ResultSortMode := 'score';
   Result.UiState.ResultsColumnWidths := '';
   Result.UiState.ResultsPaneWidth := 0;
   Result.UiState.SearchAsYouType := Result.Search.SearchAsYouType;

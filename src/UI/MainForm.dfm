@@ -176,6 +176,18 @@ object AppMainForm: TMainForm
       TabOrder = 0
       OnClick = HandleHasScriptsClick
     end
+    object fSortButton: TButton
+      AlignWithMargins = True
+      Left = 132
+      Top = 8
+      Width = 142
+      Height = 28
+      Margins.Left = 8
+      Align = alLeft
+      Caption = 'Sort: Score'
+      TabOrder = 1
+      OnClick = HandleSortButtonClick
+    end
     object fDockerHealthLabel: TStaticText
       AlignWithMargins = True
       Left = 810
@@ -198,7 +210,7 @@ object AppMainForm: TMainForm
       Margins.Right = 8
       Align = alRight
       Caption = 'Start Docker Stack'
-      TabOrder = 1
+      TabOrder = 2
       OnClick = HandleDockerGpuButtonClick
     end
     object fScanProgressBar: TProgressBar
@@ -210,7 +222,7 @@ object AppMainForm: TMainForm
       Align = alRight
       MarqueeInterval = 30
       Style = pbstMarquee
-      TabOrder = 2
+      TabOrder = 3
       Visible = False
     end
   end
@@ -340,6 +352,7 @@ object AppMainForm: TMainForm
         RowSelect = True
         TabOrder = 0
         ViewStyle = vsReport
+        OnColumnClick = HandleResultsColumnClick
         OnDblClick = HandleResultDoubleClick
         OnKeyDown = HandleResultKeyDown
         OnSelectItem = HandleResultSelectItem
@@ -396,6 +409,10 @@ object AppMainForm: TMainForm
   object fPopupMenu: TPopupMenu
     Left = 392
     Top = 152
+    object fExportResultsMenuItem: TMenuItem
+      Caption = 'Copy Results as Markdown List'
+      OnClick = HandleExportResultsClick
+    end
     object fOpenFileMenuItem: TMenuItem
       Caption = 'Open Skill File'
       OnClick = HandleOpenFileClick
@@ -411,6 +428,10 @@ object AppMainForm: TMainForm
   end
   object fSearchHistoryPopupMenu: TPopupMenu
     Left = 488
+    Top = 152
+  end
+  object fSortPopupMenu: TPopupMenu
+    Left = 584
     Top = 152
   end
 end

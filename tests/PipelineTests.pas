@@ -263,6 +263,7 @@ begin
     AssertTrue(lIni.ValueExists('UIState', 'SearchAsYouType'),
       'Expected UIState.SearchAsYouType key to be created');
     AssertTrue(lIni.ValueExists('UIState', 'LastQuery'), 'Expected UIState.LastQuery key to be created');
+    AssertTrue(lIni.ValueExists('UIState', 'ResultSortMode'), 'Expected UIState.ResultSortMode key to be created');
     AssertTrue(lIni.ValueExists('UIState', 'ResultsColumnWidths'),
       'Expected UIState.ResultsColumnWidths key to be created');
     AssertTrue(lIni.ValueExists('SearchHistory', 'MaxItems'),
@@ -295,6 +296,7 @@ begin
   lUiState.CurrentPPI := 144;
   lUiState.DuplicateInfoWidth := 260;
   lUiState.LastQuery := 'retry tag:docker';
+  lUiState.ResultSortMode := 'name-desc';
   lUiState.ResultsColumnWidths := '220;90;250;540';
   lUiState.ResultsPaneWidth := 720;
   lUiState.SearchAsYouType := True;
@@ -317,6 +319,7 @@ begin
   AssertEqualInt(144, lLoadResult.Settings.UiState.CurrentPPI, 'Expected saved UIState.CurrentPPI');
   AssertEqualInt(260, lLoadResult.Settings.UiState.DuplicateInfoWidth, 'Expected saved duplicate-info width');
   AssertEqualText('retry tag:docker', lLoadResult.Settings.UiState.LastQuery, 'Expected saved last query');
+  AssertEqualText('name-desc', lLoadResult.Settings.UiState.ResultSortMode, 'Expected saved result sort mode');
   AssertEqualText('220;90;250;540', lLoadResult.Settings.UiState.ResultsColumnWidths,
     'Expected saved results column widths');
   AssertEqualInt(720, lLoadResult.Settings.UiState.ResultsPaneWidth, 'Expected saved results pane width');

@@ -20,6 +20,7 @@ type
     DuplicatePaths: string;
     FinalScore: Double;
     HasScripts: Integer;
+    IndexedUtc: string;
     LexScore: Double;
     Name: string;
     SemanticScore: Double;
@@ -607,7 +608,7 @@ begin
     end;
 
     lSemanticSql.AppendLine(
-      'SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.body_hash, s.has_scripts, s.scripts_count,'
+      'SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.body_hash, s.has_scripts, s.indexed_utc, s.scripts_count,'
     );
     lSemanticSql.AppendLine(
       '  s.scripts_exts, s.body_md, COALESCE(v.model, '''') AS model, v.vec'
@@ -746,6 +747,7 @@ begin
       lCandidate.DuplicateCount := 1;
       lCandidate.DuplicatePaths := '';
       lCandidate.HasScripts := lSemanticQuery.FieldByName('has_scripts').AsInteger;
+      lCandidate.IndexedUtc := lSemanticQuery.FieldByName('indexed_utc').AsString;
       lCandidate.ScriptsCount := lSemanticQuery.FieldByName('scripts_count').AsInteger;
       lCandidate.ScriptsExts := lSemanticQuery.FieldByName('scripts_exts').AsString;
       lCandidate.LexScore := 0.0;
@@ -936,14 +938,17 @@ begin
     if lFtsMatch <> '' then
     begin
       lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.body_hash, s.has_scripts,');
+      lSql.AppendLine('  s.indexed_utc,');
       lSql.AppendLine('  s.scripts_count,');
-      lSql.AppendLine('  s.scripts_exts, s.body_md, snippet(skills_fts, 3, ''[['', '']]'', '' ... '', 32) AS snippet,');
+      lSql.AppendLine('  s.scripts_exts, s.body_md,');
+      lSql.AppendLine('  snippet(skills_fts, 3, ''[['', '']]'', '' ... '', 32) AS snippet,');
       lSql.AppendLine('  (-bm25(skills_fts, 10.0, 5.0, 4.0, 1.0)) AS lex_score');
       lSql.AppendLine('FROM skills_fts');
       lSql.AppendLine('JOIN skills s ON s.id = skills_fts.rowid');
       lSql.AppendLine('WHERE skills_fts MATCH :match');
     end else begin
       lSql.AppendLine('SELECT s.name, s.description, s.tags, s.skill_file, s.skill_root, s.body_hash, s.has_scripts,');
+      lSql.AppendLine('  s.indexed_utc,');
       lSql.AppendLine('  s.scripts_count,');
       lSql.AppendLine('  s.scripts_exts, s.body_md, '''' AS snippet,');
       lSql.AppendLine('  0.0 AS lex_score');
@@ -1046,6 +1051,7 @@ begin
       lResult.DuplicateCount := 1;
       lResult.DuplicatePaths := '';
       lResult.HasScripts := lQuery.FieldByName('has_scripts').AsInteger;
+      lResult.IndexedUtc := lQuery.FieldByName('indexed_utc').AsString;
       lResult.ScriptsCount := lQuery.FieldByName('scripts_count').AsInteger;
       lResult.ScriptsExts := lQuery.FieldByName('scripts_exts').AsString;
       lResult.LexScore := lQuery.FieldByName('lex_score').AsFloat;
