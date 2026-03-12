@@ -5,8 +5,8 @@ interface
 uses
   System.Classes, System.Types, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
-  DatabaseManager, DockerHealthMonitor, DockerOps, ExternalTools, PipelineCoordinator, SearchController, SearchInteraction,
-  SearchResultActions, SettingsModel, SkillSearchService, TagBrowserActions;
+  DatabaseManager, DockerHealthMonitor, DockerOps, ExternalTools, PipelineCoordinator, RelatedSkillActions,
+  SearchController, SearchInteraction, SearchResultActions, SettingsModel, SkillSearchService, TagBrowserActions;
 
 type
   TMainForm = class(TForm)
@@ -40,6 +40,9 @@ type
     fPreviewHostPanel: TPanel;
     fPreviewInfoSplitter: TSplitter;
     fPreviewPanel: TPanel;
+    fRelatedPanel: TPanel;
+    fRelatedListBox: TListBox;
+    fRelatedLabel: TStaticText;
     fPreviewLabel: TStaticText;
     fDuplicateInfoPanel: TPanel;
     fDuplicateInfoMemo: TMemo;
@@ -76,6 +79,7 @@ type
     fSearchService: TSkillSearchService;
     fSettingsPath: string;
     fSkillsFoundCount: Integer;
+    fRelatedItems: TArray<TRelatedSkillResult>;
     fTagBrowserItems: TArray<TSkillTagInfo>;
     fSkillsUniqueCount: Integer;
     fSkillsValidCount: Integer;
@@ -111,6 +115,7 @@ type
     procedure QueueSearch(const aImmediate: Boolean);
     procedure RefreshCountPanels;
     procedure RefreshInventoryCounters;
+    procedure RefreshRelatedSkills(const aSkillFile: string);
     procedure RefreshTagBrowser;
     procedure RenderResultsList(const aPreferredSkillFile: string);
     procedure RenderPreview(const aResult: TSkillSearchResult);
@@ -139,6 +144,7 @@ type
       aFailure: string);
     procedure HandleOpenFileClick(Sender: TObject);
     procedure HandleOpenFolderClick(Sender: TObject);
+    procedure HandleRelatedListBoxClick(Sender: TObject);
     procedure HandleResultDoubleClick(Sender: TObject);
     procedure HandleResultKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleResultSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);
@@ -567,6 +573,9 @@ procedure TMainForm.ShowEmptyPreview;
 begin
   fPreviewBrowser.LoadHTML('<html><body><p>No skill selected.</p></body></html>');
   fDuplicateInfoMemo.Lines.Text := 'No duplicate details available.';
+  fRelatedItems := nil;
+  PopulateRelatedSkillsListBox(fRelatedListBox, fRelatedItems);
+  fRelatedPanel.Visible := False;
 end;
 
 procedure TMainForm.RenderPreview(const aResult: TSkillSearchResult);
@@ -602,6 +611,7 @@ begin
       'Other locations:' + sLineBreak + aResult.DuplicatePaths;
   end;
   fDuplicateInfoMemo.Lines.Text := lDuplicateText;
+  RefreshRelatedSkills(aResult.SkillFile);
 end;
 
 function TMainForm.GetSelectedSkillFile: string;
@@ -833,6 +843,21 @@ begin
   fSkillsUniqueCount := fDatabaseManager.GetUniqueSkillCount;
 end;
 
+procedure TMainForm.RefreshRelatedSkills(const aSkillFile: string);
+begin
+  if (not fAppSettings.Semantic.Enabled) or (Trim(aSkillFile) = '') then
+  begin
+    fRelatedItems := nil;
+    PopulateRelatedSkillsListBox(fRelatedListBox, fRelatedItems);
+    fRelatedPanel.Visible := False;
+    Exit;
+  end;
+
+  fRelatedItems := fSearchService.FindRelatedSkills(aSkillFile, 3);
+  PopulateRelatedSkillsListBox(fRelatedListBox, fRelatedItems);
+  fRelatedPanel.Visible := Length(fRelatedItems) > 0;
+end;
+
 procedure TMainForm.RefreshTagBrowser;
 begin
   fTagBrowserItems := fDatabaseManager.GetSkillTagCounts;
@@ -922,9 +947,32 @@ begin
   Result.MaxScanThreads := fAppSettings.General.MaxScanThreads;
   Result.MinPullIntervalMinutes := fAppSettings.Git.MinPullIntervalMinutes;
   Result.PullEnabled := fAppSettings.Git.PullEnabled;
+  Result.SemanticOptions.Enabled := fAppSettings.Semantic.Enabled;
+  Result.SemanticOptions.CandidateRerankCount := fAppSettings.Semantic.CandidateRerankCount;
+  Result.SemanticOptions.EmbeddingRequester := nil;
+  Result.SemanticOptions.Model := fAppSettings.Semantic.Model;
+  Result.SemanticOptions.OllamaBaseUrl := fAppSettings.Semantic.OllamaBaseUrl;
   Result.SkipFolders := fAppSettings.Git.SkipFolders;
   Result.SkillFileName := fAppSettings.Index.SkillFileName;
   Result.TreatWorktreesAsRepos := fAppSettings.Git.TreatWorktreesAsRepos;
+  Result.OnEmbeddingProgress :=
+    procedure(const aCurrent, aTotal: Integer; const aStatusText: string)
+    begin
+      TThread.Queue(nil,
+        procedure
+        var
+          lForm: TMainForm;
+        begin
+          lForm := AppMainForm;
+          if not Assigned(lForm) or (Trim(aStatusText) = '') then
+          begin
+            Exit;
+          end;
+
+          lForm.UpdateStatus(aStatusText);
+        end
+      );
+    end;
   Result.IndexOptions.ComputeHasScripts := fAppSettings.Index.ComputeHasScripts;
   Result.IndexOptions.HasScriptsMaxFilesToScan := fAppSettings.Index.HasScriptsMaxFilesToScan;
   Result.IndexOptions.HasScriptsSkipFolders := fAppSettings.Index.HasScriptsSkipFolders;
@@ -1591,6 +1639,31 @@ end;
 procedure TMainForm.HandleOpenFolderClick(Sender: TObject);
 begin
   OpenSelectedSkillFolder;
+end;
+
+procedure TMainForm.HandleRelatedListBoxClick(Sender: TObject);
+var
+  lNavigation: TRelatedSkillNavigation;
+  lRelatedItem: TRelatedSkillResult;
+begin
+  if not TryGetSelectedRelatedSkill(fRelatedListBox, fRelatedItems, lRelatedItem) then
+  begin
+    Exit;
+  end;
+
+  lNavigation := ResolveRelatedSkillNavigation(lRelatedItem, fResults);
+  case lNavigation.Action of
+    TRelatedSkillAction.rsaSelectResult:
+      begin
+        fResultsListView.Items[lNavigation.ResultIndex].Selected := True;
+        fResultsListView.Items[lNavigation.ResultIndex].Focused := True;
+        RenderPreview(fResults[lNavigation.ResultIndex]);
+      end;
+    TRelatedSkillAction.rsaOpenFile:
+      begin
+        ShellExecute(Handle, 'open', PChar(lNavigation.SkillFile), nil, nil, SW_SHOWNORMAL);
+      end;
+  end;
 end;
 
 procedure TMainForm.HandleCopyPathClick(Sender: TObject);

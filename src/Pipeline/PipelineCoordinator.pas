@@ -4,7 +4,7 @@ interface
 
 uses
   System.Diagnostics, System.Generics.Collections,
-  DatabaseManager, GitPullWorker, SkillIndexer, SkillTypes;
+  DatabaseManager, GitPullWorker, SkillIndexer, SkillSearchService, SkillTypes;
 
 type
   TPipelineOptions = record
@@ -19,7 +19,9 @@ type
     MaxIndexThreads: Integer;
     MaxScanThreads: Integer;
     MinPullIntervalMinutes: Integer;
+    OnEmbeddingProgress: TEmbeddingProgressProc;
     PullEnabled: Boolean;
+    SemanticOptions: TSemanticSearchOptions;
     SimulationDelayMs: Integer;
     SkipFolders: string;
     SkillFileName: string;
@@ -103,7 +105,9 @@ begin
   Result.MaxIndexThreads := 4;
   Result.MaxScanThreads := 4;
   Result.MinPullIntervalMinutes := 1440;
+  Result.OnEmbeddingProgress := nil;
   Result.PullEnabled := True;
+  Result.SemanticOptions := DefaultSemanticSearchOptions;
   Result.SimulationDelayMs := 0;
   Result.SkipFolders := '.git;node_modules;bin;obj;.vs;.idea;dist;build;.venv;__pycache__';
   Result.SkillFileName := 'SKILL.md';
@@ -374,6 +378,8 @@ var
   lSummary: TScanSummary;
   lSkillFilesDiscovered: TList<string>;
   lSkillFilesForIndex: TArray<string>;
+  lSkillSearchService: TSkillSearchService;
+  lSkillFilesToEmbed: TArray<string>;
 begin
   lLocalDbManager := nil;
   lSummary := Default(TScanSummary);
@@ -659,6 +665,27 @@ begin
         lSummary.SkillsUnique := lLocalDbManager.GetUniqueSkillCount;
       end;
       lSummary.ErrorCount := fErrorCount;
+      if fOptions.SemanticOptions.Enabled and (Length(lBatchSkills) > 0) then
+      begin
+        SetLength(lSkillFilesToEmbed, Length(lBatchSkills));
+        for i := 0 to Pred(Length(lBatchSkills)) do
+        begin
+          lSkillFilesToEmbed[i] := lBatchSkills[i].SkillFile;
+        end;
+
+        lSkillSearchService := TSkillSearchService.Create(
+          fDbManager.DatabasePath,
+          fDbManager.SqliteDllPath,
+          600,
+          200,
+          fOptions.SemanticOptions
+        );
+        try
+          lSkillSearchService.WarmSkillEmbeddings(lSkillFilesToEmbed, fOptions.OnEmbeddingProgress);
+        finally
+          lSkillSearchService.Free;
+        end;
+      end;
       lLocalDbManager.Free;
       lLocalDbManager := nil;
     except
