@@ -3,6 +3,7 @@ unit SearchController;
 interface
 
 uses
+  System.SyncObjs,
   SkillSearchService;
 
 type
@@ -13,14 +14,19 @@ type
 
   TSearchController = class
   private
+    fActiveTaskCount: Integer;
     fDebounceMs: Integer;
+    fExecutorLock: TCriticalSection;
     fExecutor: TSearchExecutor;
     fGenerationCounter: Integer;
+    fIdleEvent: TEvent;
     fLatestQueuedGeneration: Integer;
     fOnCompleted: TSearchCompletedEvent;
+    fShutdownRequested: Integer;
     function GetCurrentGeneration: Integer;
   public
     constructor Create(const aExecutor: TSearchExecutor; const aDebounceMs: Integer);
+    destructor Destroy; override;
     procedure CancelCurrent;
     function QueueSearch(const aQuery: string; const aDebounceOverrideMs: Integer = -1): Integer;
     property CurrentGeneration: Integer read GetCurrentGeneration;
@@ -30,15 +36,33 @@ type
 implementation
 
 uses
-  System.Classes, System.SyncObjs, System.Threading, System.SysUtils;
+  System.Classes, System.Threading, System.SysUtils;
 
 constructor TSearchController.Create(const aExecutor: TSearchExecutor; const aDebounceMs: Integer);
 begin
   inherited Create;
+  fActiveTaskCount := 0;
   fExecutor := aExecutor;
+  fExecutorLock := TCriticalSection.Create;
   fDebounceMs := aDebounceMs;
   fGenerationCounter := 0;
+  fIdleEvent := TEvent.Create(nil, True, True, '');
   fLatestQueuedGeneration := 0;
+  fShutdownRequested := 0;
+end;
+
+destructor TSearchController.Destroy;
+begin
+  TInterlocked.Exchange(fShutdownRequested, 1);
+  CancelCurrent;
+  fOnCompleted := nil;
+  if TInterlocked.CompareExchange(fActiveTaskCount, 0, 0) > 0 then
+  begin
+    fIdleEvent.WaitFor(INFINITE);
+  end;
+  fIdleEvent.Free;
+  fExecutorLock.Free;
+  inherited Destroy;
 end;
 
 function TSearchController.GetCurrentGeneration: Integer;
@@ -59,6 +83,11 @@ var
   lDebounceMs: Integer;
   lGeneration: Integer;
 begin
+  if TInterlocked.CompareExchange(fShutdownRequested, 0, 0) <> 0 then
+  begin
+    Exit(GetCurrentGeneration);
+  end;
+
   lGeneration := TInterlocked.Increment(fGenerationCounter);
   TInterlocked.Exchange(fLatestQueuedGeneration, lGeneration);
 
@@ -69,6 +98,8 @@ begin
     lDebounceMs := fDebounceMs;
   end;
 
+  TInterlocked.Increment(fActiveTaskCount);
+  fIdleEvent.ResetEvent;
   TTask.Run(
     procedure
     var
@@ -76,37 +107,63 @@ begin
       lError: string;
       lResults: TArray<TSkillSearchResult>;
     begin
-      if lDebounceMs > 0 then
-      begin
-        Sleep(lDebounceMs);
-      end;
-
-      lCurrentGeneration := TInterlocked.CompareExchange(fLatestQueuedGeneration, 0, 0);
-      if lGeneration <> lCurrentGeneration then
-      begin
-        Exit;
-      end;
-
       try
-        lResults := fExecutor(aQuery);
-        lError := '';
-      except
-        on E: Exception do
-        begin
-          lResults := nil;
-          lError := E.Message;
+        try
+          if lDebounceMs > 0 then
+          begin
+            Sleep(lDebounceMs);
+          end;
+          if TInterlocked.CompareExchange(fShutdownRequested, 0, 0) <> 0 then
+          begin
+            Exit;
+          end;
+
+          lCurrentGeneration := TInterlocked.CompareExchange(fLatestQueuedGeneration, 0, 0);
+          if lGeneration <> lCurrentGeneration then
+          begin
+            Exit;
+          end;
+
+          fExecutorLock.Enter;
+          try
+            if TInterlocked.CompareExchange(fShutdownRequested, 0, 0) <> 0 then
+            begin
+              Exit;
+            end;
+
+            lResults := fExecutor(aQuery);
+            lError := '';
+          finally
+            fExecutorLock.Leave;
+          end;
+        except
+          on E: Exception do
+          begin
+            lResults := nil;
+            lError := E.Message;
+          end;
         end;
-      end;
 
-      lCurrentGeneration := TInterlocked.CompareExchange(fLatestQueuedGeneration, 0, 0);
-      if lGeneration <> lCurrentGeneration then
-      begin
-        Exit;
-      end;
+        if TInterlocked.CompareExchange(fShutdownRequested, 0, 0) <> 0 then
+        begin
+          Exit;
+        end;
 
-      if Assigned(fOnCompleted) then
-      begin
-        fOnCompleted(lGeneration, lResults, lError);
+        lCurrentGeneration := TInterlocked.CompareExchange(fLatestQueuedGeneration, 0, 0);
+        if lGeneration <> lCurrentGeneration then
+        begin
+          Exit;
+        end;
+
+        if Assigned(fOnCompleted) then
+        begin
+          fOnCompleted(lGeneration, lResults, lError);
+        end;
+      finally
+        if TInterlocked.Decrement(fActiveTaskCount) = 0 then
+        begin
+          fIdleEvent.SetEvent;
+        end;
       end;
     end
   );

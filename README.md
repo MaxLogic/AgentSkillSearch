@@ -12,7 +12,7 @@ It scans paths from `Sources.lst`, indexes content into a local SQLite cache, an
 
 - Windows x64
 - `bin/AgentSkillSearch.exe`
-- `bin/sqlite3.dll` and `bin/vec0.dll`
+- `bin/sqlite3.dll`
 - `bin/settings.ini` and `bin/Sources.lst`
 - `bin/excludes.lst` (optional path exclusions for scan/index)
 - Git installed and available as `git.exe` (for pull/update stage)
@@ -22,9 +22,9 @@ Everything is portable and runs from the `bin/` folder.
 ## Quick Start
 
 1. Edit `bin/Sources.lst` and add one local path per line.
-2. (Optional but recommended) Start Ollama Docker for semantic rerank (see next section).
+2. The app auto-attempts to start the configured Ollama Docker stack on launch; the `Start GPU` button lets us retry manually if needed.
 3. Run `bin/AgentSkillSearch.exe`.
-4. Use `Start GPU` (optional) to launch the configured Docker GPU stack from the app.
+4. If auto-start does not bring Ollama up, use `Start GPU` to retry the configured Docker GPU stack command.
 5. Press `F5` (`Scan/Update`) to discover repos and index skills (an indeterminate progress bar is shown during scan).
 6. Use the search box to query skills.
 
@@ -38,7 +38,7 @@ F:\projects\3rdParty\AI-Related
 ```
 
 2. Start `bin/AgentSkillSearch.exe`.
-3. Optional: click `Start GPU` to launch Ollama docker stack from configured command.
+3. If Ollama is still unavailable after startup, click `Start GPU` to retry the configured Docker command.
 4. Press `F5` and wait for scan/index to finish (watch the scan progress bar and status bar).
 5. In search, try:
    - `embedding`
@@ -156,12 +156,13 @@ From WSL:
 bash projects/build-win64.sh
 ```
 
-This builds and packages runtime templates into `bin/`.
+This builds and packages a Release runtime into `bin/`.
+Existing `bin/settings.ini`, `bin/Sources.lst`, and `bin/excludes.lst` are preserved so local portable configuration is not overwritten.
 
 Output layout:
-- app runtime: `bin/` (`AgentSkillSearch.exe`, SQLite DLLs, runtime templates)
-- tests/check binaries: `tests/bin/`
-- test runtime dependencies (`sqlite3.dll`, `vec0.dll`, `settings.ini`, `Sources.lst`) are copied to `tests/bin/`
+- app runtime: `bin/` (`AgentSkillSearch.exe`, `sqlite3.dll`, runtime templates)
+- shared test/runtime support files: `tests/bin/`
+- `settings.ini`, `Sources.lst`, `excludes.lst`, help image, and `sqlite3.dll` are staged into `tests/bin/` for the console test projects
 
 This keeps `bin/` focused on day-to-day app usage instead of test executables.
 
@@ -176,3 +177,4 @@ Expected outcome: Win32 build fails with an explicit fatal message.
 RAD Studio:
 - open `projects/AgentSkillSearch.dproj`
 - build target `Win64`
+- packaged runtime assets are staged by `projects/build-win64.sh`; an IDE build alone compiles the EXE but does not perform the portable-runtime packaging step

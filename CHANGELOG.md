@@ -32,8 +32,11 @@
 - Scan now runs with a visible indeterminate progress bar and supports safe cancellation requests via `Esc` while in progress (`T-027`).
 - Added Docker operations in UI: configurable `Start GPU` action with diagnostics/log feedback and a 10-second background health indicator updated via `TThread.Queue` (`T-028`, `T-029`).
 - Added a `Syntax` help button next to search input with concise query examples (`"phrase"`, `-exclude`, `name:`, `tag:`, `path:`, `has:scripts`, `limit:`) (`T-030`).
+- Documented the app’s Ollama auto-start behavior and updated Win64 packaging to build a Release runtime without overwriting existing portable config files in `bin/` (`T-032`).
 
 ### Fixed
+- Serialized asynchronous search execution and dropped queued Docker health callbacks after `Stop`, preventing stale completion delivery in those paths (`T-032`).
+- Pipeline cancellation now stops before DB batch writes once the cancel token is set, and scan summary count queries no longer read a freed DB manager (`T-032`).
 - Scan start now blocks immediately when `Sources.lst` has no usable source directories and prompts us to edit the file before retrying (`T-031`).
 - Diagnostics modal now closes on `Esc` via standard cancel-button behavior, restoring expected keyboard dismiss flow (`T-022`).
 - Indexing now repairs missing frontmatter closing fences at file start (within defined scope) and records a non-fatal diagnostics notice (`T-024`).

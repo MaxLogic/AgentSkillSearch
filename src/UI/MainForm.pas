@@ -48,12 +48,14 @@ type
     fAppSettings: TAppSettings;
     fDatabaseManager: TDatabaseManager;
     fDbPath: string;
+    fDockerStartThread: TThread;
     fExcludesListPath: string;
     fLogPath: string;
     fResults: TArray<TSkillSearchResult>;
     fScanCancelToken: TPipelineCancellationToken;
     fScanInProgress: Boolean;
     fScanHourGlass: IInterface;
+    fScanThread: TThread;
     fDockerHealthMonitor: TDockerHealthMonitor;
     fDockerHealthState: TDockerHealthState;
     fDockerStartInProgress: Boolean;
@@ -76,8 +78,6 @@ type
     procedure LoadSearchHelpImage;
     procedure StartDockerStackAsync;
     function ResolveSearchHelpImagePath: string;
-    function ExecuteScanUpdate(const aSourceRoots: TArray<string>; const aCancelToken: TPipelineCancellationToken;
-      out aResult: TPipelineRunResult; out aStatusText: string): Boolean;
     function BuildEffectiveQuery: string;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
@@ -93,6 +93,7 @@ type
     procedure ShowEmptyPreview;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
     procedure UpdateStatus(const aText: string);
+    procedure WaitForWorkerThread(var aThread: TThread);
   published
     procedure HandleCopyPathClick(Sender: TObject);
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
@@ -147,6 +148,47 @@ resourcestring
   rsScanNeedsSourcesListEdit =
     'Scan cannot start because %s does not contain any usable source directories.' + sLineBreak + sLineBreak +
     'Edit the file first, save it, and then retry Scan.';
+
+function ExecuteScanUpdate(const aDatabasePath, aSqliteDllPath: string; const aOptions: TPipelineOptions;
+  const aSourceRoots: TArray<string>; const aCancelToken: TPipelineCancellationToken; out aResult: TPipelineRunResult;
+  out aStatusText: string): Boolean;
+var
+  lCoordinator: TPipelineCoordinator;
+  lDatabaseManager: TDatabaseManager;
+begin
+  aResult := Default(TPipelineRunResult);
+  aStatusText := '';
+
+  LogInfo('Scan started from UI. Sources=' + IntToStr(Length(aSourceRoots)));
+  lDatabaseManager := TDatabaseManager.Create(aDatabasePath, aSqliteDllPath);
+  try
+    lDatabaseManager.Initialize;
+    lCoordinator := TPipelineCoordinator.Create(lDatabaseManager, aOptions);
+    try
+      aResult := lCoordinator.Run(aSourceRoots, aCancelToken);
+    finally
+      lCoordinator.Free;
+    end;
+  finally
+    lDatabaseManager.Free;
+  end;
+
+  aStatusText := Format(
+    'Scan complete. Repos queued/pulled/throttled/failed: %d/%d/%d/%d | Skills queued/written: %d/%d | Errors: %d',
+    [aResult.ReposQueued, aResult.ReposPulled, aResult.ReposThrottled, aResult.ReposFailed, aResult.SkillsQueued,
+     aResult.SkillsWritten, aResult.ErrorCount]
+  );
+  if aResult.Cancelled then
+  begin
+    aStatusText := aStatusText + ' | Cancelled';
+  end;
+  if Trim(aResult.LastError) <> '' then
+  begin
+    aStatusText := aStatusText + ' | Last error: ' + aResult.LastError;
+  end;
+
+  Result := True;
+end;
 
 { TMainForm }
 
@@ -209,13 +251,26 @@ begin
   );
   fSearchController.OnCompleted := HandleSearchCompleted;
   fDockerStartInProgress := False;
+  fDockerStartThread := nil;
   fDockerHealthState := TDockerHealthState.dhsUnknown;
   fDockerHealthLabel.Caption := 'Ollama: checking...';
   fDockerHealthLabel.Hint := '';
+  fScanThread := nil;
   fDockerHealthMonitor := TDockerHealthMonitor.Create(
     fAppSettings.Docker.HealthCheckCommand,
     10000,
-    HandleDockerHealthPolled
+    procedure(const aState: TDockerHealthState; const aDetail: string)
+    var
+      lForm: TMainForm;
+    begin
+      lForm := AppMainForm;
+      if not Assigned(lForm) then
+      begin
+        Exit;
+      end;
+
+      lForm.HandleDockerHealthPolled(aState, aDetail);
+    end
   );
   fDockerHealthMonitor.Start;
   StartDockerStackAsync;
@@ -230,14 +285,16 @@ begin
   if Assigned(fScanCancelToken) then
   begin
     fScanCancelToken.Cancel;
-    if not fScanInProgress then
-    begin
-      fScanCancelToken.Free;
-      fScanCancelToken := nil;
-    end;
   end;
 
   LogInfo('Application shutdown.');
+  WaitForWorkerThread(fScanThread);
+  if Assigned(fScanCancelToken) then
+  begin
+    fScanCancelToken.Free;
+    fScanCancelToken := nil;
+  end;
+  WaitForWorkerThread(fDockerStartThread);
   fDockerHealthMonitor.Free;
   fSearchController.Free;
   fSearchService.Free;
@@ -488,6 +545,19 @@ begin
   Result := Length(aSourceRoots) > 0;
 end;
 
+procedure TMainForm.WaitForWorkerThread(var aThread: TThread);
+begin
+  if not Assigned(aThread) then
+  begin
+    Exit;
+  end;
+
+  aThread.WaitFor;
+  TThread.RemoveQueuedEvents(aThread);
+  aThread.Free;
+  aThread := nil;
+end;
+
 procedure TMainForm.BeginScanProgress;
 begin
   fScanInProgress := True;
@@ -515,20 +585,28 @@ begin
 end;
 
 procedure TMainForm.StartDockerStackAsync;
+var
+  lStartCommand: string;
 begin
   if fDockerStartInProgress then
   begin
     Exit;
   end;
 
+  if Assigned(fDockerStartThread) then
+  begin
+    WaitForWorkerThread(fDockerStartThread);
+  end;
+
+  lStartCommand := fAppSettings.Docker.StartGpuCommand;
   BeginDockerStart;
-  TThread.CreateAnonymousThread(
+  fDockerStartThread := TThread.CreateAnonymousThread(
     procedure
     var
       lResult: TDockerCommandResult;
     begin
-      lResult := StartDockerGpuStack(fAppSettings.Docker.StartGpuCommand, 45);
-      TThread.Queue(nil,
+      lResult := StartDockerGpuStack(lStartCommand, 45);
+      TThread.Queue(fDockerStartThread,
         procedure
         var
           lForm: TMainForm;
@@ -543,7 +621,9 @@ begin
         end
       );
     end
-  ).Start;
+  );
+  fDockerStartThread.FreeOnTerminate := False;
+  fDockerStartThread.Start;
 end;
 
 procedure TMainForm.EndScanProgress;
@@ -631,43 +711,8 @@ begin
     UpdateStatus(lMessage);
   finally
     EndDockerStart;
+    WaitForWorkerThread(fDockerStartThread);
   end;
-end;
-
-function TMainForm.ExecuteScanUpdate(const aSourceRoots: TArray<string>; const aCancelToken: TPipelineCancellationToken;
-  out aResult: TPipelineRunResult; out aStatusText: string): Boolean;
-var
-  lCoordinator: TPipelineCoordinator;
-  lOptions: TPipelineOptions;
-begin
-  aResult := Default(TPipelineRunResult);
-  aStatusText := '';
-
-  lOptions := BuildPipelineOptions;
-  LogInfo('Scan started from UI. Sources=' + IntToStr(Length(aSourceRoots)));
-
-  lCoordinator := TPipelineCoordinator.Create(fDatabaseManager, lOptions);
-  try
-    aResult := lCoordinator.Run(aSourceRoots, aCancelToken);
-  finally
-    lCoordinator.Free;
-  end;
-
-  aStatusText := Format(
-    'Scan complete. Repos queued/pulled/throttled/failed: %d/%d/%d/%d | Skills queued/written: %d/%d | Errors: %d',
-    [aResult.ReposQueued, aResult.ReposPulled, aResult.ReposThrottled, aResult.ReposFailed, aResult.SkillsQueued,
-     aResult.SkillsWritten, aResult.ErrorCount]
-  );
-  if aResult.Cancelled then
-  begin
-    aStatusText := aStatusText + ' | Cancelled';
-  end;
-  if Trim(aResult.LastError) <> '' then
-  begin
-    aStatusText := aStatusText + ' | Last error: ' + aResult.LastError;
-  end;
-
-  Result := True;
 end;
 
 procedure TMainForm.QueueSearch(const aImmediate: Boolean);
@@ -807,11 +852,15 @@ begin
     QueueSearch(True);
   finally
     EndScanProgress;
+    WaitForWorkerThread(fScanThread);
   end;
 end;
 
 procedure TMainForm.HandleScanButtonClick(Sender: TObject);
 var
+  lDatabasePath: string;
+  lOptions: TPipelineOptions;
+  lSqliteDllPath: string;
   lSourceRoots: TArray<string>;
 begin
   if fScanInProgress then
@@ -827,10 +876,18 @@ begin
     Exit;
   end;
 
+  lOptions := BuildPipelineOptions;
+  lDatabasePath := fDatabaseManager.DatabasePath;
+  lSqliteDllPath := fDatabaseManager.SqliteDllPath;
   BeginScanProgress;
   fScanCancelToken := TPipelineCancellationToken.Create;
 
-  TThread.CreateAnonymousThread(
+  if Assigned(fScanThread) then
+  begin
+    WaitForWorkerThread(fScanThread);
+  end;
+
+  fScanThread := TThread.CreateAnonymousThread(
     procedure
     var
       lResult: TPipelineRunResult;
@@ -841,7 +898,8 @@ begin
       lExecuted := False;
       lFailure := '';
       try
-        lExecuted := ExecuteScanUpdate(lSourceRoots, fScanCancelToken, lResult, lStatusText);
+        lExecuted := ExecuteScanUpdate(lDatabasePath, lSqliteDllPath, lOptions, lSourceRoots, fScanCancelToken,
+          lResult, lStatusText);
       except
         on E: Exception do
         begin
@@ -849,7 +907,7 @@ begin
         end;
       end;
 
-      TThread.Queue(nil,
+      TThread.Queue(fScanThread,
         procedure
         var
           lForm: TMainForm;
@@ -864,7 +922,9 @@ begin
         end
       );
     end
-  ).Start;
+  );
+  fScanThread.FreeOnTerminate := False;
+  fScanThread.Start;
 end;
 
 procedure TMainForm.HandleDiagnosticsButtonClick(Sender: TObject);
@@ -882,12 +942,29 @@ procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aR
 begin
   if GetCurrentThreadId <> MainThreadID then
   begin
-    TThread.Queue(nil,
+    TThread.Queue(TThread.CurrentThread,
       procedure
+      var
+        lForm: TMainForm;
       begin
-        HandleSearchCompleted(aGenerationId, aResults, aError);
+        lForm := AppMainForm;
+        if not Assigned(lForm) then
+        begin
+          Exit;
+        end;
+
+        lForm.HandleSearchCompleted(aGenerationId, aResults, aError);
       end
     );
+    Exit;
+  end;
+
+  if not Assigned(fSearchController) then
+  begin
+    Exit;
+  end;
+  if aGenerationId <> fSearchController.CurrentGeneration then
+  begin
     Exit;
   end;
 
