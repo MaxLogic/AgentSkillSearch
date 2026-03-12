@@ -9,9 +9,9 @@ implementation
 uses
   System.Classes, System.Diagnostics, System.IniFiles, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
   Winapi.Windows,
-  Vcl.Menus,
+  Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   AppPaths, DatabaseManager, DockerHealthMonitor, ExternalTools, Logging, PipelineCoordinator, Settings,
-  SettingsModel;
+  SettingsModel, SkillTypes, TagBrowserActions;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -60,6 +60,23 @@ begin
   Result.SkipFolders := aSettings.Git.SkipFolders;
   Result.SkillFileName := aSettings.Index.SkillFileName;
   Result.TreatWorktreesAsRepos := aSettings.Git.TreatWorktreesAsRepos;
+end;
+
+function BuildIndexedSkill(const aSkillRoot, aTags: string): TIndexedSkill;
+begin
+  Result := Default(TIndexedSkill);
+  Result.BodyHash := aSkillRoot;
+  Result.BodyMarkdown := '# Skill' + sLineBreak + sLineBreak + 'Fixture body';
+  Result.Description := 'Fixture';
+  Result.FileMtimeUtc := '2026-03-12T00:00:00Z';
+  Result.HasScripts := 0;
+  Result.IndexedUtc := '2026-03-12T00:00:00Z';
+  Result.Name := ExtractFileName(aSkillRoot);
+  Result.RepoId := 0;
+  Result.SkillFile := TPath.Combine(aSkillRoot, 'SKILL.md');
+  Result.SkillRoot := aSkillRoot;
+  Result.SourceId := 1;
+  Result.Tags := aTags;
 end;
 
 procedure RunShellOrFail(const aWorkingDir, aCommand: string);
@@ -457,6 +474,73 @@ begin
     'Expected resolved launch to keep the selected skill root as parameters');
 end;
 
+procedure TestDatabaseSkillTagCounts;
+var
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lTags: TArray<TSkillTagInfo>;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchTagBrowserFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    lDbManager.Initialize;
+    lDbManager.WriteBatch(
+      nil,
+      [
+        BuildIndexedSkill('C:\skills\docker-delphi', 'docker;delphi'),
+        BuildIndexedSkill('C:\skills\docker-only', 'docker'),
+        BuildIndexedSkill('C:\skills\git-delphi', 'git;Delphi')
+      ]
+    );
+
+    lTags := lDbManager.GetSkillTagCounts;
+    AssertEqualInt(3, Length(lTags), 'Expected unique tags from the skill database');
+    AssertEqualText('delphi', lTags[0].Name, 'Expected tag list to sort alphabetically');
+    AssertEqualInt(2, lTags[0].SkillCount, 'Expected case-insensitive delphi tag count');
+    AssertEqualText('docker', lTags[1].Name, 'Expected docker tag in second position');
+    AssertEqualInt(2, lTags[1].SkillCount, 'Expected docker tag count');
+    AssertEqualText('git', lTags[2].Name, 'Expected git tag in third position');
+    AssertEqualInt(1, lTags[2].SkillCount, 'Expected git tag count');
+  finally
+    lDbManager.Free;
+  end;
+end;
+
+procedure TestTagBrowserActions;
+var
+  lForm: TForm;
+  lListBox: TListBox;
+  lSelectedTag: string;
+  lTags: TArray<TSkillTagInfo>;
+begin
+  SetLength(lTags, 2);
+  lTags[0].Name := 'docker';
+  lTags[0].SkillCount := 2;
+  lTags[1].Name := 'git';
+  lTags[1].SkillCount := 1;
+
+  lForm := TForm.Create(nil);
+  try
+    lListBox := TListBox.Create(lForm);
+    lListBox.Parent := lForm;
+    PopulateTagListBox(lListBox, lTags);
+    AssertEqualInt(2, lListBox.Items.Count, 'Expected one list-box row per tag');
+    AssertEqualText('docker (2)', lListBox.Items[0], 'Expected formatted tag count text');
+    AssertEqualText('git (1)', lListBox.Items[1], 'Expected formatted tag count text');
+
+    lListBox.ItemIndex := 1;
+    AssertTrue(TryGetSelectedTag(lListBox, lTags, lSelectedTag), 'Expected selected tag lookup from the list box');
+    AssertEqualText('git', lSelectedTag, 'Expected selected tag name to map from the clicked row');
+  finally
+    lForm.Free;
+  end;
+end;
+
 procedure TestPipelineAutoCancelStopsBeforeDbWrites;
 var
   lCoordinator: TPipelineCoordinator;
@@ -683,6 +767,8 @@ begin
   TestSettingsPersistUiStateAndSearchHistory;
   TestSettingsLoadExternalTools;
   TestExternalToolCommandFormatting;
+  TestDatabaseSkillTagCounts;
+  TestTagBrowserActions;
   TestPipelineAutoCancelStopsBeforeDbWrites;
   TestGitPullIsThrottledOnSecondRun;
   TestGitPullFailureDoesNotBlockOtherRepos;

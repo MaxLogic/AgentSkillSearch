@@ -12,13 +12,14 @@ procedure ExecuteHistorySelection(const aQuery: string; var aHistory: TSearchHis
   const aApplySelectedQuery, aOnPrepared: TPreparedSearchProc);
 procedure ExecuteImmediateSearch(const aQuery: string; var aHistory: TSearchHistorySettings;
   const aOnPrepared: TPreparedSearchProc);
+function AppendTagFilterQuery(const aQuery, aTag: string): string;
 function PrepareImmediateSearchQuery(const aQuery: string; var aHistory: TSearchHistorySettings): string;
 function ScaleStoredUiValue(const aValue, aStoredPPI, aCurrentPPI: Integer): Integer;
 
 implementation
 
 uses
-  System.SysUtils,
+  System.StrUtils, System.SysUtils,
   Winapi.Windows,
   Settings;
 
@@ -42,6 +43,33 @@ begin
     aApplySelectedQuery(aQuery);
   end;
   ExecuteImmediateSearch(aQuery, aHistory, aOnPrepared);
+end;
+
+function AppendTagFilterQuery(const aQuery, aTag: string): string;
+var
+  lQuery: string;
+  lTag: string;
+  lTagToken: string;
+begin
+  lQuery := Trim(aQuery);
+  lTag := Trim(aTag);
+  if lTag = '' then
+  begin
+    Exit(lQuery);
+  end;
+
+  if ContainsText(lTag, ' ') then
+  begin
+    lTagToken := 'tag:"' + StringReplace(lTag, '"', '', [rfReplaceAll]) + '"';
+  end else begin
+    lTagToken := 'tag:' + lTag;
+  end;
+
+  if lQuery = '' then
+  begin
+    Exit(lTagToken);
+  end;
+  Result := lQuery + ' ' + lTagToken;
 end;
 
 function PrepareImmediateSearchQuery(const aQuery: string; var aHistory: TSearchHistorySettings): string;
