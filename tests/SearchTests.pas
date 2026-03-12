@@ -8,7 +8,8 @@ implementation
 
 uses
   System.DateUtils, System.Hash, System.IOUtils, System.StrUtils, System.SysUtils,
-  AppPaths, DatabaseManager, PreviewRenderer, QueryParser, SkillSearchService, SkillTypes;
+  AppPaths, DatabaseManager, PreviewRenderer, QueryParser, SearchInteraction, SettingsModel, SkillSearchService,
+  SkillTypes;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -187,6 +188,63 @@ begin
   AssertEqualText('(retry* AND backoff*)', lExpression, 'Explicit AND should preserve AND semantics');
 end;
 
+procedure TestSearchInteractionHelpers;
+var
+  lHistory: TSearchHistorySettings;
+  lPreparedCount: Integer;
+  lQuery: string;
+  lSelectedQuery: string;
+begin
+  lHistory.MaxItems := 3;
+  lHistory.Items := ['jwt', 'backoff'];
+
+  lPreparedCount := 0;
+  lQuery := '';
+  ExecuteImmediateSearch(
+    ' retry tag:docker ',
+    lHistory,
+    procedure(const aPreparedQuery: string)
+    begin
+      Inc(lPreparedCount);
+      lQuery := aPreparedQuery;
+    end
+  );
+  AssertEqualInt(1, lPreparedCount, 'Expected immediate search to trigger one prepared callback');
+  AssertEqualText('retry tag:docker', lQuery, 'Expected trimmed immediate search query');
+  AssertEqualInt(3, Length(lHistory.Items), 'Expected history to keep max-item limit');
+  AssertEqualText('retry tag:docker', lHistory.Items[0], 'Expected immediate search to promote query to top history');
+  AssertEqualText('jwt', lHistory.Items[1], 'Expected previous top history item to shift down');
+  AssertEqualText('backoff', lHistory.Items[2], 'Expected oldest retained history item to remain last');
+
+  lPreparedCount := 0;
+  lQuery := '';
+  lSelectedQuery := '';
+  ExecuteHistorySelection(
+    'jwt',
+    lHistory,
+    procedure(const aSelected: string)
+    begin
+      lSelectedQuery := aSelected;
+    end,
+    procedure(const aPreparedQuery: string)
+    begin
+      Inc(lPreparedCount);
+      lQuery := aPreparedQuery;
+    end
+  );
+  AssertEqualText('jwt', lSelectedQuery, 'Expected history selection to apply the selected query text');
+  AssertEqualInt(1, lPreparedCount, 'Expected history selection to trigger one prepared search');
+  AssertEqualText('jwt', lQuery, 'Expected selected history item to trigger the same query');
+  AssertEqualText('jwt', lHistory.Items[0], 'Expected selected history query to move to the top');
+  AssertEqualText('retry tag:docker', lHistory.Items[1], 'Expected previous top history query to shift down');
+  AssertEqualText('backoff', lHistory.Items[2], 'Expected remaining history order to stay stable');
+
+  AssertEqualInt(-1440, ScaleStoredUiValue(-960, 96, 144),
+    'Expected negative restored monitor coordinates to scale across DPI changes');
+  AssertEqualInt(1080, ScaleStoredUiValue(720, 96, 144), 'Expected positive UI dimensions to scale across DPI');
+  AssertEqualInt(0, ScaleStoredUiValue(0, 96, 144), 'Expected zero UI dimensions to remain zero');
+end;
+
 procedure TestSearchFiltersAndRanking;
 var
   lDbManager: TDatabaseManager;
@@ -354,6 +412,7 @@ end;
 procedure RunSearchTests;
 begin
   TestQueryParserSupportsBooleanOperatorsAndExtensionFilters;
+  TestSearchInteractionHelpers;
   TestSearchFiltersAndRanking;
   TestPreviewSnippetHtmlIsSanitizedAndHighlighted;
 end;

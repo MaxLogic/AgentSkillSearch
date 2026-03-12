@@ -12,6 +12,7 @@ object AppMainForm: TMainForm
   Font.Style = []
   KeyPreview = True
   Position = poScreenCenter
+  OnClose = HandleFormClose
   OnKeyDown = HandleFormKeyDown
   TextHeight = 17
   object fSearchPanel: TPanel
@@ -107,7 +108,7 @@ object AppMainForm: TMainForm
       object fSearchEdit: TEdit
         Left = 0
         Top = 34
-        Width = 744
+        Width = 675
         Height = 25
         Anchors = [akLeft, akTop, akRight]
         TabOrder = 0
@@ -126,8 +127,19 @@ object AppMainForm: TMainForm
         Caption = 'Search query'
         TabStop = False
       end
+      object fSearchHistoryButton: TButton
+        Left = 683
+        Top = 30
+        Width = 92
+        Height = 32
+        Anchors = [akTop, akRight]
+        Caption = 'Recent'
+        Enabled = False
+        TabOrder = 1
+        OnClick = HandleSearchHistoryButtonClick
+      end
       object fSearchHelpImage: TImage
-        Left = 759
+        Left = 783
         Top = 2
         Width = 64
         Height = 64
@@ -396,5 +408,9 @@ object AppMainForm: TMainForm
       Caption = 'Copy Skill Path'
       OnClick = HandleCopyPathClick
     end
+  end
+  object fSearchHistoryPopupMenu: TPopupMenu
+    Left = 488
+    Top = 152
   end
 end

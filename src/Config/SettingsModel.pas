@@ -36,6 +36,7 @@ type
 
   TSearchSettings = record
     MaxResults: Integer;
+    RecentQueryLimit: Integer;
     SearchAsYouType: Boolean;
     SearchDebounceMs: Integer;
     SnippetMaxChars: Integer;
@@ -61,14 +62,34 @@ type
     ShowPreviewPane: Boolean;
   end;
 
+  TUiStateSettings = record
+    CurrentPPI: Integer;
+    DuplicateInfoWidth: Integer;
+    LastQuery: string;
+    ResultsColumnWidths: string;
+    ResultsPaneWidth: Integer;
+    SearchAsYouType: Boolean;
+    WindowHeight: Integer;
+    WindowLeft: Integer;
+    WindowTop: Integer;
+    WindowWidth: Integer;
+  end;
+
+  TSearchHistorySettings = record
+    Items: TArray<string>;
+    MaxItems: Integer;
+  end;
+
   TAppSettings = record
+    Docker: TDockerSettings;
     General: TGeneralSettings;
     Git: TGitSettings;
     Index: TIndexSettings;
-    Docker: TDockerSettings;
     Search: TSearchSettings;
+    SearchHistory: TSearchHistorySettings;
     Semantic: TSemanticSettings;
     Ui: TUiSettings;
+    UiState: TUiStateSettings;
   end;
 
 function DefaultAppSettings: TAppSettings;
@@ -109,6 +130,7 @@ begin
   Result.Search.SearchAsYouType := False;
   Result.Search.SearchDebounceMs := 2000;
   Result.Search.MaxResults := 500;
+  Result.Search.RecentQueryLimit := 20;
   Result.Search.SnippetMaxChars := 600;
 
   Result.Semantic.Enabled := True;
@@ -121,6 +143,19 @@ begin
 
   Result.Ui.ShowPreviewPane := True;
   Result.Ui.OpenFileOnEnter := True;
+
+  Result.UiState.CurrentPPI := 0;
+  Result.UiState.DuplicateInfoWidth := 0;
+  Result.UiState.LastQuery := '';
+  Result.UiState.ResultsColumnWidths := '';
+  Result.UiState.ResultsPaneWidth := 0;
+  Result.UiState.SearchAsYouType := Result.Search.SearchAsYouType;
+  Result.UiState.WindowHeight := 0;
+  Result.UiState.WindowLeft := -1;
+  Result.UiState.WindowTop := -1;
+  Result.UiState.WindowWidth := 0;
+
+  Result.SearchHistory.MaxItems := Result.Search.RecentQueryLimit;
 end;
 
 end.
