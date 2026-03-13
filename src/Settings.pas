@@ -18,6 +18,7 @@ function NormalizeSearchHistory(const aItems: TArray<string>; const aMaxItems: I
 procedure PushSearchHistoryEntry(var aHistory: TSearchHistorySettings; const aQuery: string);
 function ResolveSettingsPath(const aValue, aBaseDirectory: string): string;
 procedure SaveSearchHistory(const aSettingsPath: string; const aSearchHistory: TSearchHistorySettings);
+procedure SaveUiSettings(const aSettingsPath: string; const aUiSettings: TUiSettings);
 procedure SaveUiState(const aSettingsPath: string; const aUiState: TUiStateSettings);
 
 implementation
@@ -363,6 +364,23 @@ begin
   end;
 end;
 
+procedure SaveUiSettings(const aSettingsPath: string; const aUiSettings: TUiSettings);
+var
+  lIni: TMemIniFile;
+begin
+  ForceDirectories(ExtractFilePath(aSettingsPath));
+  lIni := TMemIniFile.Create(aSettingsPath, TEncoding.UTF8);
+  try
+    lIni.WriteString('UI', 'CloseToTray', BoolToIniValue(aUiSettings.CloseToTray));
+    lIni.WriteString('UI', 'OpenFileOnEnter', BoolToIniValue(aUiSettings.OpenFileOnEnter));
+    lIni.WriteString('UI', 'ShowPreviewPane', BoolToIniValue(aUiSettings.ShowPreviewPane));
+    lIni.WriteString('UI', 'TrayHotkey', aUiSettings.TrayHotkey);
+    lIni.UpdateFile;
+  finally
+    lIni.Free;
+  end;
+end;
+
 procedure SaveSearchHistory(const aSettingsPath: string; const aSearchHistory: TSearchHistorySettings);
 var
   i: Integer;
@@ -491,6 +509,8 @@ begin
     Result.Settings.Semantic.EmbeddingCache := ReadRequiredBool(lIni, Result, 'Semantic', 'EmbeddingCache',
       lDefault.Semantic.EmbeddingCache);
 
+    Result.Settings.Ui.CloseToTray := ReadRequiredBool(lIni, Result, 'UI', 'CloseToTray',
+      lDefault.Ui.CloseToTray);
     Result.Settings.Ui.ShowPreviewPane := ReadRequiredBool(lIni, Result, 'UI', 'ShowPreviewPane',
       lDefault.Ui.ShowPreviewPane);
     Result.Settings.Ui.OpenFileOnEnter := ReadRequiredBool(lIni, Result, 'UI', 'OpenFileOnEnter',

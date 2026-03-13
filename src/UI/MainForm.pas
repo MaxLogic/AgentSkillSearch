@@ -3,63 +3,66 @@ unit MainForm;
 interface
 
 uses
-  System.Classes, System.Types, Winapi.Messages, Winapi.ShellAPI, Vcl.ComCtrls, Vcl.Controls, Vcl.ExtCtrls,
-  Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
+  System.Classes, System.Types, Winapi.Messages, Winapi.ShellAPI, System.Skia, Vcl.ComCtrls, Vcl.Controls,
+  Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.Skia, Vcl.StdCtrls,
   VCL.TMSFNCWebBrowser,
   DatabaseManager, DockerHealthMonitor, DockerOps, ExternalTools, PipelineCoordinator, RelatedSkillActions,
   SearchController, SearchInteraction, SearchResultActions, SettingsModel, SkillSearchService, TagBrowserActions,
-  TrayActions;
+  TrayActions, Vcl.ImgList;
 
 type
   TMainForm = class(TForm)
   published
-    fSearchPanel: TPanel;
-    fSearchActionsPanel: TPanel;
-    fSearchFieldPanel: TPanel;
-    fSearchEdit: TEdit;
-    fSearchHistoryButton: TButton;
-    fSearchEditLabel: TStaticText;
-    fSearchHelpImage: TImage;
-    fSearchButton: TButton;
-    fScanButton: TButton;
-    fScanProgressBar: TProgressBar;
-    fDiagnosticsButton: TButton;
-    fSearchAsYouTypeCheckBox: TCheckBox;
-    fDockerGpuButton: TButton;
-    fFiltersPanel: TPanel;
-    fDockerHealthLabel: TStaticText;
-    fHasScriptsCheckBox: TCheckBox;
-    fSortButton: TButton;
-    fTagToggleButton: TButton;
-    fEditSourcesButton: TButton;
-    fMainPanel: TPanel;
-    fTagBrowserPanel: TPanel;
-    fTagBrowserSplitter: TSplitter;
-    fTagListBox: TListBox;
-    fTagBrowserLabel: TStaticText;
-    fResultsPanePanel: TPanel;
-    fResultsListView: TListView;
-    fResultsPreviewSplitter: TSplitter;
-    fPreviewHostPanel: TPanel;
-    fPreviewInfoSplitter: TSplitter;
-    fPreviewPanel: TPanel;
-    fRelatedPanel: TPanel;
-    fRelatedListBox: TListBox;
-    fRelatedLabel: TStaticText;
-    fPreviewLabel: TStaticText;
-    fDuplicateInfoPanel: TPanel;
-    fDuplicateInfoMemo: TMemo;
-    fDuplicateInfoLabel: TStaticText;
-    fResultsListLabel: TStaticText;
-    fPreviewBrowser: TTMSFNCWebBrowser;
-    fStatusBar: TStatusBar;
-    fPopupMenu: TPopupMenu;
-    fSortPopupMenu: TPopupMenu;
-    fSearchHistoryPopupMenu: TPopupMenu;
-    fExportResultsMenuItem: TMenuItem;
-    fOpenFileMenuItem: TMenuItem;
-    fOpenFolderMenuItem: TMenuItem;
-    fCopyPathMenuItem: TMenuItem;
+    SearchPanel: TPanel;
+    SearchActionsPanel: TPanel;
+    SearchFieldPanel: TPanel;
+    SearchEdit: TEdit;
+    SearchHistoryButton: TButton;
+    SearchEditLabel: TStaticText;
+    SearchHelpButton: TButton;
+    SearchButton: TButton;
+    ScanButton: TButton;
+    ScanProgressBar: TProgressBar;
+    DiagnosticsButton: TButton;
+    SearchAsYouTypeCheckBox: TCheckBox;
+    DockerGpuButton: TButton;
+    FiltersPanel: TPanel;
+    DockerHealthLabel: TStaticText;
+    HasScriptsCheckBox: TCheckBox;
+    SortButton: TButton;
+    TagToggleButton: TButton;
+    EditSourcesButton: TButton;
+    ScanAnimation: TSkAnimatedImage;
+    MainPanel: TPanel;
+    TagBrowserPanel: TPanel;
+    TagBrowserSplitter: TSplitter;
+    TagBrowserLabel: TStaticText;
+    TagFilterEdit: TEdit;
+    TagListBox: TListBox;
+    ResultsPanePanel: TPanel;
+    ResultsListView: TListView;
+    ResultsPreviewSplitter: TSplitter;
+    PreviewHostPanel: TPanel;
+    PreviewInfoSplitter: TSplitter;
+    PreviewPanel: TPanel;
+    RelatedPanel: TPanel;
+    RelatedListBox: TListBox;
+    RelatedLabel: TStaticText;
+    PreviewLabel: TStaticText;
+    DuplicateInfoPanel: TPanel;
+    DuplicateInfoMemo: TMemo;
+    DuplicateInfoLabel: TStaticText;
+    ResultsListLabel: TStaticText;
+    PreviewBrowser: TTMSFNCWebBrowser;
+    StatusBar: TStatusBar;
+    IconImages: TImageList;
+    ResultsPopupMenu: TPopupMenu;
+    SortPopupMenu: TPopupMenu;
+    SearchHistoryPopupMenu: TPopupMenu;
+    ExportResultsMenuItem: TMenuItem;
+    OpenFileMenuItem: TMenuItem;
+    OpenFolderMenuItem: TMenuItem;
+    CopyPathMenuItem: TMenuItem;
   private
     fTrayHotkeyRegistered: Boolean;
     fTrayIconData: TNotifyIconData;
@@ -88,6 +91,8 @@ type
     fSkillsFoundCount: Integer;
     fRelatedItems: TArray<TRelatedSkillResult>;
     fTagBrowserItems: TArray<TSkillTagInfo>;
+    fTagFilterGeneration: Integer;
+    fTagFilterTimer: TTimer;
     fSkillsUniqueCount: Integer;
     fSkillsValidCount: Integer;
     fSourcesListPath: string;
@@ -96,12 +101,12 @@ type
     procedure BeginScanProgress;
     procedure BeginDockerStart;
     procedure EndDockerStart;
+    procedure HandleTagFilterTimer(Sender: TObject);
     procedure HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
     procedure HandleDockerStartCompleted(const aResult: TDockerCommandResult);
     procedure EndScanProgress;
-    procedure LoadSearchHelpImage;
+    procedure LoadButtonIcons;
     procedure StartDockerStackAsync;
-    function ResolveSearchHelpImagePath: string;
     function BuildEffectiveQuery: string;
     procedure CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
     function CaptureUiState: TUiStateSettings;
@@ -179,9 +184,11 @@ type
     procedure HandleScanButtonClick(Sender: TObject);
     procedure HandleSortButtonClick(Sender: TObject);
     procedure HandleSortMenuItemClick(Sender: TObject);
+    procedure HandleTagFilterEditChange(Sender: TObject);
     procedure HandleTagListBoxClick(Sender: TObject);
     procedure HandleTagToggleButtonClick(Sender: TObject);
     procedure HandleTrayExitClick(Sender: TObject);
+    procedure HandleTraySettingsClick(Sender: TObject);
     procedure HandleTrayShowClick(Sender: TObject);
   public
     constructor Create(aOwner: TComponent); override;
@@ -196,22 +203,23 @@ implementation
 uses
   System.IOUtils, System.StrUtils, System.SysUtils,
   Winapi.Windows,
-  Vcl.Clipbrd,
-  Vcl.Dialogs,
-  Vcl.Imaging.pngimage,
-  AppPaths, AutoHourGlass, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings, SourcesEditorForm,
-  SourcesList;
+  Vcl.Clipbrd, Vcl.Dialogs, Vcl.Graphics,
+  MaxLogic.StrUtils,
+  AppPaths, AutoHourGlass, ConfigDlg, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings,
+  SourcesEditorForm, SourcesList;
 
 {$R *.dfm}
 
+procedure QueueToMain(const aProc: TThreadProcedure);
+begin
+  TThread.Queue(nil, aProc);
+end;
+
 const
   cStatusPanelStatus = 0;
-  cStatusPanelFound = 1;
-  cStatusPanelValid = 2;
-  cStatusPanelUnique = 3;
-  cStatusPanelResults = 4;
-  cStatusPanelLastScan = 5;
-  cStatusPanelCache = 6;
+  cStatusPanelCounters = 1;
+  cStatusPanelLastScan = 2;
+  cStatusPanelCache = 3;
   cTrayHotkeyId = 1;
   cTrayIconId = 1;
 
@@ -317,14 +325,14 @@ begin
   end;
   UpdateSearchHistoryMenu;
   LoadUiState;
-  LoadSearchHelpImage;
+  LoadButtonIcons;
   PopulateExternalToolsMenu;
   RefreshTagBrowser;
   UpdateTagBrowserUi;
 
-  fSearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
-  fStatusBar.Panels[cStatusPanelCache].Text := 'Cache: ' + fDbPath;
-  fStatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: n/a';
+  SearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
+  StatusBar.Panels[cStatusPanelCache].Text := 'Cache: ' + fDbPath;
+  StatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: n/a';
   fSkillsFoundCount := 0;
   RefreshInventoryCounters;
   RefreshCountPanels;
@@ -340,8 +348,8 @@ begin
   fDockerStartInProgress := False;
   fDockerStartThread := nil;
   fDockerHealthState := TDockerHealthState.dhsUnknown;
-  fDockerHealthLabel.Caption := 'Ollama: checking...';
-  fDockerHealthLabel.Hint := '';
+  DockerHealthLabel.Caption := 'Ollama: checking...';
+  DockerHealthLabel.Hint := '';
   fScanThread := nil;
   fDockerHealthMonitor := TDockerHealthMonitor.Create(
     fAppSettings.Docker.HealthCheckCommand,
@@ -370,9 +378,19 @@ begin
   fTrayPopupMenu.Items.Add(lMenuItem);
 
   lMenuItem := TMenuItem.Create(fTrayPopupMenu);
+  lMenuItem.Caption := 'Settings...';
+  lMenuItem.OnClick := HandleTraySettingsClick;
+  fTrayPopupMenu.Items.Add(lMenuItem);
+
+  lMenuItem := TMenuItem.Create(fTrayPopupMenu);
   lMenuItem.Caption := 'Exit';
   lMenuItem.OnClick := HandleTrayExitClick;
   fTrayPopupMenu.Items.Add(lMenuItem);
+
+  fTagFilterTimer := TTimer.Create(Self);
+  fTagFilterTimer.Interval := 300;
+  fTagFilterTimer.Enabled := False;
+  fTagFilterTimer.OnTimer := HandleTagFilterTimer;
 
   QueueSearch(True);
 end;
@@ -417,34 +435,34 @@ end;
 
 procedure TMainForm.ConfigureColumns;
 begin
-  fResultsListView.Columns.BeginUpdate;
+  ResultsListView.Columns.BeginUpdate;
   try
-    fResultsListView.Columns.Clear;
-    with fResultsListView.Columns.Add do
+    ResultsListView.Columns.Clear;
+    with ResultsListView.Columns.Add do
     begin
       Caption := 'Name';
       Width := 230;
     end;
 
-    with fResultsListView.Columns.Add do
+    with ResultsListView.Columns.Add do
     begin
       Caption := 'Rating';
       Width := 90;
     end;
 
-    with fResultsListView.Columns.Add do
+    with ResultsListView.Columns.Add do
     begin
       Caption := 'Description';
       Width := 250;
     end;
 
-    with fResultsListView.Columns.Add do
+    with ResultsListView.Columns.Add do
     begin
       Caption := 'Path';
       Width := 560;
     end;
   finally
-    fResultsListView.Columns.EndUpdate;
+    ResultsListView.Columns.EndUpdate;
   end;
 end;
 
@@ -532,13 +550,13 @@ var
   i: Integer;
 begin
   Result := '';
-  for i := 0 to Pred(fResultsListView.Columns.Count) do
+  for i := 0 to Pred(ResultsListView.Columns.Count) do
   begin
     if Result <> '' then
     begin
       Result := Result + ';';
     end;
-    Result := Result + IntToStr(fResultsListView.Columns[i].Width);
+    Result := Result + IntToStr(ResultsListView.Columns[i].Width);
   end;
 end;
 
@@ -546,12 +564,12 @@ function TMainForm.CaptureUiState: TUiStateSettings;
 begin
   Result := fAppSettings.UiState;
   Result.CurrentPPI := CurrentPPI;
-  Result.DuplicateInfoWidth := fDuplicateInfoPanel.Width;
-  Result.LastQuery := Trim(fSearchEdit.Text);
+  Result.DuplicateInfoWidth := DuplicateInfoPanel.Height;
+  Result.LastQuery := Trim(SearchEdit.Text);
   Result.ResultSortMode := SearchSortModeToString(fCurrentSortMode);
   Result.ResultsColumnWidths := SerializeColumnWidths;
-  Result.ResultsPaneWidth := fResultsPanePanel.Width;
-  Result.SearchAsYouType := fSearchAsYouTypeCheckBox.Checked;
+  Result.ResultsPaneWidth := PreviewHostPanel.Width;
+  Result.SearchAsYouType := SearchAsYouTypeCheckBox.Checked;
   CaptureWindowBounds(Result.WindowLeft, Result.WindowTop, Result.WindowWidth, Result.WindowHeight);
 end;
 
@@ -573,8 +591,8 @@ begin
   end;
   UpdateSortUi;
 
-  fSearchEdit.Text := fAppSettings.UiState.LastQuery;
-  fSearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
+  SearchEdit.Text := fAppSettings.UiState.LastQuery;
+  SearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
 
   if (fAppSettings.UiState.WindowWidth > 0) and (fAppSettings.UiState.WindowHeight > 0) and
     ((fAppSettings.UiState.WindowLeft <> -1) or (fAppSettings.UiState.WindowTop <> -1)) then
@@ -592,11 +610,11 @@ begin
 
   if fAppSettings.UiState.ResultsPaneWidth > 0 then
   begin
-    fResultsPanePanel.Width := ScaleStoredUiValue(fAppSettings.UiState.ResultsPaneWidth, lStoredPPI);
+    PreviewHostPanel.Width := ScaleStoredUiValue(fAppSettings.UiState.ResultsPaneWidth, lStoredPPI);
   end;
   if fAppSettings.UiState.DuplicateInfoWidth > 0 then
   begin
-    fDuplicateInfoPanel.Width := ScaleStoredUiValue(fAppSettings.UiState.DuplicateInfoWidth, lStoredPPI);
+    DuplicateInfoPanel.Height := ScaleStoredUiValue(fAppSettings.UiState.DuplicateInfoWidth, lStoredPPI);
   end;
 
   if Trim(fAppSettings.UiState.ResultsColumnWidths) <> '' then
@@ -604,11 +622,11 @@ begin
     lParts := SplitString(fAppSettings.UiState.ResultsColumnWidths, ';');
     for i := 0 to Pred(Length(lParts)) do
     begin
-      if i >= fResultsListView.Columns.Count then
+      if i >= ResultsListView.Columns.Count then
       begin
         Break;
       end;
-      fResultsListView.Columns[i].Width := ScaleStoredUiValue(StrToIntDef(Trim(lParts[i]), 0), lStoredPPI);
+      ResultsListView.Columns[i].Width := ScaleStoredUiValue(StrToIntDef(Trim(lParts[i]), 0), lStoredPPI);
     end;
   end;
 end;
@@ -624,11 +642,11 @@ end;
 
 procedure TMainForm.ShowEmptyPreview;
 begin
-  fPreviewBrowser.LoadHTML('<html><body><p>No skill selected.</p></body></html>');
-  fDuplicateInfoMemo.Lines.Text := 'No duplicate details available.';
+  PreviewBrowser.LoadHTML('<html><body><p>No skill selected.</p></body></html>');
+  DuplicateInfoMemo.Lines.Text := 'No duplicate details available.';
   fRelatedItems := nil;
-  PopulateRelatedSkillsListBox(fRelatedListBox, fRelatedItems);
-  fRelatedPanel.Visible := False;
+  PopulateRelatedSkillsListBox(RelatedListBox, fRelatedItems);
+  RelatedPanel.Visible := False;
 end;
 
 procedure TMainForm.RenderPreview(const aResult: TSkillSearchResult);
@@ -654,7 +672,7 @@ begin
     '<p><b>Path:</b> ' + EscapeHtml(aResult.SkillFile) + '</p>' +
     '</body></html>';
 
-  fPreviewBrowser.LoadHTML(lHtml);
+  PreviewBrowser.LoadHTML(lHtml);
   if aResult.DuplicateCount <= 1 then
   begin
     lDuplicateText := 'No duplicate skills detected for this result.';
@@ -663,7 +681,7 @@ begin
       'Canonical:' + sLineBreak + aResult.SkillFile + sLineBreak + sLineBreak +
       'Other locations:' + sLineBreak + aResult.DuplicatePaths;
   end;
-  fDuplicateInfoMemo.Lines.Text := lDuplicateText;
+  DuplicateInfoMemo.Lines.Text := lDuplicateText;
   RefreshRelatedSkills(aResult.SkillFile);
 end;
 
@@ -676,7 +694,7 @@ begin
     Exit('');
   end;
 
-  lIndex := fResultsListView.Selected.Index;
+  lIndex := ResultsListView.Selected.Index;
   Result := fResults[lIndex].SkillFile;
 end;
 
@@ -689,7 +707,7 @@ begin
     Exit('');
   end;
 
-  lIndex := fResultsListView.Selected.Index;
+  lIndex := ResultsListView.Selected.Index;
   Result := fResults[lIndex].SkillRoot;
 end;
 
@@ -813,14 +831,14 @@ end;
 
 function TMainForm.IsResultSelectionValid: Boolean;
 begin
-  Result := Assigned(fResultsListView.Selected) and
-    (fResultsListView.Selected.Index >= 0) and
-    (fResultsListView.Selected.Index < Length(fResults));
+  Result := Assigned(ResultsListView.Selected) and
+    (ResultsListView.Selected.Index >= 0) and
+    (ResultsListView.Selected.Index < Length(fResults));
 end;
 
 procedure TMainForm.UpdateStatus(const aText: string);
 begin
-  fStatusBar.Panels[cStatusPanelStatus].Text := aText;
+  StatusBar.Panels[cStatusPanelStatus].Text := aText;
 end;
 
 procedure TMainForm.BuildSortMenu;
@@ -838,16 +856,16 @@ var
   lItem: TMenuItem;
   lSortMode: TSearchSortMode;
 begin
-  fSortPopupMenu.Items.Clear;
+  SortPopupMenu.Items.Clear;
   for lSortMode := Low(TSearchSortMode) to High(TSearchSortMode) do
   begin
-    lItem := TMenuItem.Create(fSortPopupMenu);
+    lItem := TMenuItem.Create(SortPopupMenu);
     lItem.AutoCheck := False;
     lItem.Caption := cSortCaptions[lSortMode];
     lItem.RadioItem := True;
     lItem.Tag := Ord(lSortMode);
     lItem.OnClick := HandleSortMenuItemClick;
-    fSortPopupMenu.Items.Add(lItem);
+    SortPopupMenu.Items.Add(lItem);
   end;
   UpdateSortUi;
 end;
@@ -866,10 +884,10 @@ const
 var
   i: Integer;
 begin
-  fSortButton.Caption := 'Sort: ' + cSortLabels[fCurrentSortMode];
-  for i := 0 to Pred(fSortPopupMenu.Items.Count) do
+  SortButton.Caption := 'Sort: ' + cSortLabels[fCurrentSortMode];
+  for i := 0 to Pred(SortPopupMenu.Items.Count) do
   begin
-    fSortPopupMenu.Items[i].Checked := fSortPopupMenu.Items[i].Tag = Ord(fCurrentSortMode);
+    SortPopupMenu.Items[i].Checked := SortPopupMenu.Items[i].Tag = Ord(fCurrentSortMode);
   end;
 end;
 
@@ -904,11 +922,18 @@ end;
 
 procedure TMainForm.PopulateExternalToolsMenu;
 begin
-  PopulateExternalToolsPopupMenu(fPopupMenu, fAppSettings.ExternalTools, HandleExternalToolClick, 1);
+  PopulateExternalToolsPopupMenu(ResultsPopupMenu, fAppSettings.ExternalTools, HandleExternalToolClick, 1);
 end;
 
 procedure TMainForm.DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
 begin
+  if not fScanInProgress then
+  begin
+    ScanAnimation.Visible := True;
+    ScanAnimation.Animation.Loop := True;
+    ScanAnimation.Animation.Enabled := True;
+    ScanAnimation.Animation.Start;
+  end;
   if aImmediate then
   begin
     fSearchController.QueueSearch(aQuery, 0);
@@ -930,16 +955,16 @@ var
   i: Integer;
   lItem: TMenuItem;
 begin
-  fSearchHistoryPopupMenu.Items.Clear;
+  SearchHistoryPopupMenu.Items.Clear;
   for i := 0 to Pred(Length(fSearchHistory.Items)) do
   begin
-    lItem := TMenuItem.Create(fSearchHistoryPopupMenu);
+    lItem := TMenuItem.Create(SearchHistoryPopupMenu);
     lItem.Caption := fSearchHistory.Items[i];
     lItem.OnClick := HandleSearchHistoryItemClick;
-    fSearchHistoryPopupMenu.Items.Add(lItem);
+    SearchHistoryPopupMenu.Items.Add(lItem);
   end;
 
-  fSearchHistoryButton.Enabled := Length(fSearchHistory.Items) > 0;
+  SearchHistoryButton.Enabled := Length(fSearchHistory.Items) > 0;
 end;
 
 procedure TMainForm.SelectHistoryQuery(const aQuery: string);
@@ -949,7 +974,7 @@ begin
     fSearchHistory,
     procedure(const aSelectedQuery: string)
     begin
-      fSearchEdit.Text := aSelectedQuery;
+      SearchEdit.Text := aSelectedQuery;
     end,
     procedure(const aPreparedQuery: string)
     begin
@@ -966,12 +991,12 @@ var
   lSelectedIndex: Integer;
 begin
   lSelectedIndex := -1;
-  fResultsListView.Items.BeginUpdate;
+  ResultsListView.Items.BeginUpdate;
   try
-    fResultsListView.Items.Clear;
+    ResultsListView.Items.Clear;
     for i := 0 to Pred(Length(fResults)) do
     begin
-      lItem := fResultsListView.Items.Add;
+      lItem := ResultsListView.Items.Add;
       lItem.Caption := fResults[i].Name;
       lItem.SubItems.Add(FormatFloat('0.000', fResults[i].FinalScore));
       lItem.SubItems.Add(fResults[i].Description);
@@ -982,10 +1007,10 @@ begin
       end;
     end;
   finally
-    fResultsListView.Items.EndUpdate;
+    ResultsListView.Items.EndUpdate;
   end;
 
-  if fResultsListView.Items.Count = 0 then
+  if ResultsListView.Items.Count = 0 then
   begin
     ShowEmptyPreview;
     Exit;
@@ -995,17 +1020,16 @@ begin
   begin
     lSelectedIndex := 0;
   end;
-  fResultsListView.Items[lSelectedIndex].Selected := True;
-  fResultsListView.Items[lSelectedIndex].Focused := True;
+  ResultsListView.Items[lSelectedIndex].Selected := True;
+  ResultsListView.Items[lSelectedIndex].Focused := True;
   RenderPreview(fResults[lSelectedIndex]);
 end;
 
 procedure TMainForm.RefreshCountPanels;
 begin
-  fStatusBar.Panels[cStatusPanelFound].Text := Format('Found: %d', [fSkillsFoundCount]);
-  fStatusBar.Panels[cStatusPanelValid].Text := Format('Valid: %d', [fSkillsValidCount]);
-  fStatusBar.Panels[cStatusPanelUnique].Text := Format('Unique: %d', [fSkillsUniqueCount]);
-  fStatusBar.Panels[cStatusPanelResults].Text := Format('Results: %d', [Length(fResults)]);
+  StatusBar.Panels[cStatusPanelCounters].Text := Format(
+    'Found: %d | Valid: %d | Unique: %d | Results: %d',
+    [fSkillsFoundCount, fSkillsValidCount, fSkillsUniqueCount, Length(fResults)]);
 end;
 
 procedure TMainForm.RefreshInventoryCounters;
@@ -1019,81 +1043,123 @@ begin
   if (not fAppSettings.Semantic.Enabled) or (Trim(aSkillFile) = '') then
   begin
     fRelatedItems := nil;
-    PopulateRelatedSkillsListBox(fRelatedListBox, fRelatedItems);
-    fRelatedPanel.Visible := False;
+    PopulateRelatedSkillsListBox(RelatedListBox, fRelatedItems);
+    RelatedPanel.Visible := False;
     Exit;
   end;
 
   fRelatedItems := fSearchService.FindRelatedSkills(aSkillFile, 3);
-  PopulateRelatedSkillsListBox(fRelatedListBox, fRelatedItems);
-  fRelatedPanel.Visible := Length(fRelatedItems) > 0;
+  PopulateRelatedSkillsListBox(RelatedListBox, fRelatedItems);
+  RelatedPanel.Visible := Length(fRelatedItems) > 0;
 end;
 
 procedure TMainForm.RefreshTagBrowser;
 begin
   fTagBrowserItems := fDatabaseManager.GetSkillTagCounts;
-  PopulateTagListBox(fTagListBox, fTagBrowserItems);
+  PopulateTagListBox(TagListBox, fTagBrowserItems);
 end;
 
-function TMainForm.ResolveSearchHelpImagePath: string;
+procedure TMainForm.LoadButtonIcons;
 const
-  cImageFileName = 'search-syntax-help-64.png';
+  cS = '#374151'; // Tailwind gray-700 – readable on light backgrounds
+  cA = ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+  cH = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + cS + '"' + cA;
+
+  cSvgSearch   = cH + '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>';
+  cSvgRefresh  = cH +
+    '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>' +
+    '<path d="M21 3v5h-5"/>' +
+    '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>' +
+    '<path d="M8 16H3v5"/></svg>';
+  cSvgHistory  = cH +
+    '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>' +
+    '<path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>';
+  cSvgInfo     = cH +
+    '<circle cx="12" cy="12" r="10"/>' +
+    '<path d="M12 16v-4"/><path d="M12 8h.01"/></svg>';
+  cSvgSort     = cH +
+    '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/>' +
+    '<path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>';
+  cSvgTag      = cH +
+    '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 ' +
+    '.586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>' +
+    '<circle cx="7.5" cy="7.5" r=".5" fill="' + cS + '"/></svg>';
+  cSvgFolder   = cH +
+    '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6' +
+    'a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9' +
+    'l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>';
+  cSvgSettings = cH +
+    '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915' +
+    ' 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033' +
+    ' 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915' +
+    ' 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051' +
+    ' a2.34 2.34 0 0 0 3.319-1.915"/>' +
+    '<circle cx="12" cy="12" r="3"/></svg>';
+  cSvgCpu      = cH +
+    '<path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/>' +
+    '<path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/>' +
+    '<path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/>' +
+    '<rect x="4" y="4" width="16" height="16" rx="2"/>' +
+    '<rect x="8" y="8" width="8" height="8" rx="1"/></svg>';
+
+  cIconSize = 20;
+  cSvgs: array[0..8] of string = (
+    cSvgSearch, cSvgRefresh, cSvgHistory, cSvgInfo,
+    cSvgSort, cSvgTag, cSvgFolder, cSvgSettings, cSvgCpu
+  );
 var
-  i: Integer;
-  lCandidate: string;
-  lDir: string;
-  lParent: string;
+  lBmp: TBitmap;
+  lSvg: string;
 begin
-  Result := '';
-  lDir := ExcludeTrailingPathDelimiter(GetExeDirectory);
-  for i := 0 to 6 do
+  if not Assigned(IconImages) then
   begin
-    lCandidate := TPath.Combine(lDir, cImageFileName);
-    if TFile.Exists(lCandidate) then
-    begin
-      Exit(lCandidate);
-    end;
-
-    lCandidate := TPath.Combine(TPath.Combine(TPath.Combine(lDir, 'assets'), 'runtime'), cImageFileName);
-    if TFile.Exists(lCandidate) then
-    begin
-      Exit(lCandidate);
-    end;
-
-    lParent := ExtractFileDir(lDir);
-    if SameText(lParent, lDir) then
-    begin
-      Break;
-    end;
-    lDir := lParent;
+    IconImages := TImageList.Create(Self);
+    IconImages.Width := cIconSize;
+    IconImages.Height := cIconSize;
+    IconImages.ColorDepth := cd32Bit;
   end;
-end;
+  IconImages.Clear;
 
-procedure TMainForm.LoadSearchHelpImage;
-var
-  lImagePath: string;
-begin
-  lImagePath := ResolveSearchHelpImagePath;
-  if lImagePath = '' then
+  for lSvg in cSvgs do
   begin
-    RecordPipelineNotice('Search syntax help image not found.');
-    Exit;
-  end;
-
-  try
-    fSearchHelpImage.Picture.LoadFromFile(lImagePath);
-  except
-    on E: Exception do
-    begin
-      RecordPipelineError('Failed to load search syntax help image "' + lImagePath + '": ' + E.Message);
+    lBmp := TBitmap.Create;
+    try
+      lBmp.SetSize(cIconSize, cIconSize);
+      lBmp.PixelFormat := pf32bit;
+      lBmp.AlphaFormat := afDefined;
+      lBmp.SkiaDraw(
+        procedure(const ACanvas: ISkCanvas)
+        var
+          lDom: ISkSVGDOM;
+        begin
+          lDom := TSkSVGDOM.Make(lSvg);
+          if Assigned(lDom) then
+          begin
+            lDom.SetContainerSize(TSizeF.Create(cIconSize, cIconSize));
+            lDom.Render(ACanvas);
+          end;
+        end);
+      IconImages.Add(lBmp, nil);
+    finally
+      lBmp.Free;
     end;
   end;
+
+  SearchButton.Images        := IconImages; SearchButton.ImageIndex        := 0;
+  ScanButton.Images          := IconImages; ScanButton.ImageIndex          := 1;
+  SearchHistoryButton.Images := IconImages; SearchHistoryButton.ImageIndex := 2;
+  SearchHelpButton.Images    := IconImages; SearchHelpButton.ImageIndex    := 3;
+  SortButton.Images          := IconImages; SortButton.ImageIndex          := 4;
+  TagToggleButton.Images     := IconImages; TagToggleButton.ImageIndex     := 5;
+  EditSourcesButton.Images   := IconImages; EditSourcesButton.ImageIndex   := 6;
+  DiagnosticsButton.Images   := IconImages; DiagnosticsButton.ImageIndex   := 7;
+  DockerGpuButton.Images     := IconImages; DockerGpuButton.ImageIndex     := 8;
 end;
 
 function TMainForm.BuildEffectiveQuery: string;
 begin
-  Result := Trim(fSearchEdit.Text);
-  if fHasScriptsCheckBox.Checked and (not ContainsText(Result, 'has:scripts')) and
+  Result := Trim(SearchEdit.Text);
+  if HasScriptsCheckBox.Checked and (not ContainsText(Result, 'has:scripts')) and
     (not ContainsText(Result, '-has:scripts')) then
   begin
     if Result <> '' then
@@ -1129,8 +1195,7 @@ begin
   Result.OnEmbeddingProgress :=
     procedure(const aCurrent, aTotal: Integer; const aStatusText: string)
     begin
-      TThread.Queue(nil,
-        procedure
+      QueueToMain(procedure
         var
           lForm: TMainForm;
         begin
@@ -1141,8 +1206,7 @@ begin
           end;
 
           lForm.UpdateStatus(aStatusText);
-        end
-      );
+        end);
     end;
   Result.IndexOptions.ComputeHasScripts := fAppSettings.Index.ComputeHasScripts;
   Result.IndexOptions.HasScriptsMaxFilesToScan := fAppSettings.Index.HasScriptsMaxFilesToScan;
@@ -1206,10 +1270,14 @@ procedure TMainForm.BeginScanProgress;
 begin
   fScanInProgress := True;
   fScanHourGlass := AutoHourGlass.MakeCHG;
-  fScanButton.Enabled := False;
-  fScanProgressBar.Visible := True;
-  fScanProgressBar.Style := pbstMarquee;
-  fScanProgressBar.MarqueeInterval := 30;
+  ScanButton.Enabled := False;
+  ScanProgressBar.Visible := True;
+  ScanProgressBar.Style := pbstMarquee;
+  ScanProgressBar.MarqueeInterval := 30;
+  ScanAnimation.Visible := True;
+  ScanAnimation.Animation.Loop := True;
+  ScanAnimation.Animation.Enabled := True;
+  ScanAnimation.Animation.Start;
   UpdateStatus('Scan running... (indeterminate)');
 end;
 
@@ -1217,14 +1285,14 @@ procedure TMainForm.BeginDockerStart;
 begin
   fDockerStartInProgress := True;
   fDockerStartHourGlass := AutoHourGlass.MakeCHG;
-  fDockerGpuButton.Enabled := False;
+  DockerGpuButton.Enabled := False;
   UpdateStatus('Starting Ollama container...');
 end;
 
 procedure TMainForm.EndDockerStart;
 begin
   fDockerStartHourGlass := nil;
-  fDockerGpuButton.Enabled := True;
+  DockerGpuButton.Enabled := True;
   fDockerStartInProgress := False;
 end;
 
@@ -1250,8 +1318,7 @@ begin
       lResult: TDockerCommandResult;
     begin
       lResult := StartDockerGpuStack(lStartCommand, 45);
-      TThread.Queue(nil,
-        procedure
+      QueueToMain(procedure
         var
           lForm: TMainForm;
         begin
@@ -1262,8 +1329,7 @@ begin
           end;
 
           lForm.HandleDockerStartCompleted(lResult);
-        end
-      );
+        end);
     end
   );
   fDockerStartThread.FreeOnTerminate := False;
@@ -1273,9 +1339,12 @@ end;
 procedure TMainForm.EndScanProgress;
 begin
   fScanHourGlass := nil;
-  fScanProgressBar.Visible := False;
-  fScanButton.Enabled := True;
+  ScanProgressBar.Visible := False;
+  ScanButton.Enabled := True;
   fScanInProgress := False;
+  ScanAnimation.Animation.Loop := False;
+  ScanAnimation.Animation.Enabled := False;
+  ScanAnimation.Visible := False;
 
   if Assigned(fScanCancelToken) then
   begin
@@ -1312,19 +1381,19 @@ begin
   case aState of
     TDockerHealthState.dhsHealthy:
       begin
-        fDockerHealthLabel.Caption := cHealthyCaption;
+        DockerHealthLabel.Caption := cHealthyCaption;
       end;
     TDockerHealthState.dhsUnhealthy:
       begin
-        fDockerHealthLabel.Caption := cUnhealthyCaption;
+        DockerHealthLabel.Caption := cUnhealthyCaption;
       end;
   else
     begin
-      fDockerHealthLabel.Caption := cUnknownCaption;
+      DockerHealthLabel.Caption := cUnknownCaption;
     end;
   end;
 
-  fDockerHealthLabel.Hint := aDetail;
+  DockerHealthLabel.Hint := aDetail;
 end;
 
 procedure TMainForm.HandleDockerStartCompleted(const aResult: TDockerCommandResult);
@@ -1382,6 +1451,12 @@ end;
 
 procedure TMainForm.ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
 begin
+  if not fScanInProgress then
+  begin
+    ScanAnimation.Animation.Loop := False;
+    ScanAnimation.Animation.Enabled := False;
+    ScanAnimation.Visible := False;
+  end;
   fResults := aResults;
   SortSearchResults(fResults, fCurrentSortMode);
   RenderResultsList('');
@@ -1477,7 +1552,7 @@ begin
     RefreshInventoryCounters;
     RefreshTagBrowser;
     RefreshCountPanels;
-    fStatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
+    StatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
     QueueSearch(True);
   finally
     EndScanProgress;
@@ -1536,8 +1611,7 @@ begin
         end;
       end;
 
-      TThread.Queue(nil,
-        procedure
+      QueueToMain(procedure
         var
           lForm: TMainForm;
         begin
@@ -1548,8 +1622,7 @@ begin
           end;
 
           lForm.HandleScanCompleted(lExecuted, lResult, lStatusText, lFailure);
-        end
-      );
+        end);
     end
   );
   fScanThread.FreeOnTerminate := False;
@@ -1602,7 +1675,7 @@ end;
 procedure TMainForm.HandleFormClose(Sender: TObject; var Action: TCloseAction);
 begin
   SaveRuntimeState;
-  if ShouldHideToTrayOnClose(fTrayState.ExitRequested) then
+  if fAppSettings.Ui.CloseToTray and ShouldHideToTrayOnClose(fTrayState.ExitRequested) then
   begin
     HideToTray;
     if fTrayState.TrayIconVisible then
@@ -1635,8 +1708,7 @@ procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aR
 begin
   if GetCurrentThreadId <> MainThreadID then
   begin
-    TThread.Queue(nil,
-      procedure
+    QueueToMain(procedure
       var
         lForm: TMainForm;
       begin
@@ -1647,8 +1719,7 @@ begin
         end;
 
         lForm.HandleSearchCompleted(aGenerationId, aResults, aError);
-      end
-    );
+      end);
     Exit;
   end;
 
@@ -1663,6 +1734,12 @@ begin
 
   if aError <> '' then
   begin
+    if not fScanInProgress then
+    begin
+      ScanAnimation.Animation.Loop := False;
+      ScanAnimation.Animation.Enabled := False;
+      ScanAnimation.Visible := False;
+    end;
     UpdateStatus('Search failed: ' + aError);
     Exit;
   end;
@@ -1672,7 +1749,7 @@ end;
 
 procedure TMainForm.HandleSearchEditChange(Sender: TObject);
 begin
-  if fSearchAsYouTypeCheckBox.Checked then
+  if SearchAsYouTypeCheckBox.Checked then
   begin
     QueueSearch(False);
   end;
@@ -1691,14 +1768,14 @@ procedure TMainForm.HandleSearchHistoryButtonClick(Sender: TObject);
 var
   lPoint: TPoint;
 begin
-  if fSearchHistoryPopupMenu.Items.Count = 0 then
+  if SearchHistoryPopupMenu.Items.Count = 0 then
   begin
     UpdateStatus('No recent queries yet.');
     Exit;
   end;
 
-  lPoint := fSearchHistoryButton.ClientToScreen(Point(0, fSearchHistoryButton.Height));
-  fSearchHistoryPopupMenu.Popup(lPoint.X, lPoint.Y);
+  lPoint := SearchHistoryButton.ClientToScreen(Point(0, SearchHistoryButton.Height));
+  SearchHistoryPopupMenu.Popup(lPoint.X, lPoint.Y);
 end;
 
 procedure TMainForm.HandleSearchHistoryItemClick(Sender: TObject);
@@ -1775,9 +1852,9 @@ begin
 
   if (Key = VK_APPS) or ((Key = VK_F10) and (ssShift in Shift)) then
   begin
-    if Assigned(fResultsListView.Selected) then
+    if Assigned(ResultsListView.Selected) then
     begin
-      fPopupMenu.Popup(Mouse.CursorPos.X, Mouse.CursorPos.Y);
+      ResultsPopupMenu.Popup(Mouse.CursorPos.X, Mouse.CursorPos.Y);
       Key := 0;
     end;
   end;
@@ -1787,8 +1864,8 @@ procedure TMainForm.HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TSh
 begin
   if (Key = Ord('L')) and (ssCtrl in Shift) then
   begin
-    fSearchEdit.SetFocus;
-    fSearchEdit.SelectAll;
+    SearchEdit.SetFocus;
+    SearchEdit.SelectAll;
     Key := 0;
     Exit;
   end;
@@ -1838,7 +1915,7 @@ var
   lNavigation: TRelatedSkillNavigation;
   lRelatedItem: TRelatedSkillResult;
 begin
-  if not TryGetSelectedRelatedSkill(fRelatedListBox, fRelatedItems, lRelatedItem) then
+  if not TryGetSelectedRelatedSkill(RelatedListBox, fRelatedItems, lRelatedItem) then
   begin
     Exit;
   end;
@@ -1847,8 +1924,8 @@ begin
   case lNavigation.Action of
     TRelatedSkillAction.rsaSelectResult:
       begin
-        fResultsListView.Items[lNavigation.ResultIndex].Selected := True;
-        fResultsListView.Items[lNavigation.ResultIndex].Focused := True;
+        ResultsListView.Items[lNavigation.ResultIndex].Selected := True;
+        ResultsListView.Items[lNavigation.ResultIndex].Focused := True;
         RenderPreview(fResults[lNavigation.ResultIndex]);
       end;
     TRelatedSkillAction.rsaOpenFile:
@@ -1867,8 +1944,8 @@ procedure TMainForm.HandleSortButtonClick(Sender: TObject);
 var
   lPoint: TPoint;
 begin
-  lPoint := fSortButton.ClientToScreen(Point(0, fSortButton.Height));
-  fSortPopupMenu.Popup(lPoint.X, lPoint.Y);
+  lPoint := SortButton.ClientToScreen(Point(0, SortButton.Height));
+  SortPopupMenu.Popup(lPoint.X, lPoint.Y);
 end;
 
 procedure TMainForm.HandleSortMenuItemClick(Sender: TObject);
@@ -1884,19 +1961,92 @@ end;
 procedure TMainForm.HandleTagListBoxClick(Sender: TObject);
 var
   lTag: string;
+  lText: string;
+  lParenPos: Integer;
 begin
-  if not TryGetSelectedTag(fTagListBox, fTagBrowserItems, lTag) then
+  if TagListBox.ItemIndex < 0 then
   begin
     Exit;
   end;
 
-  fSearchEdit.Text := AppendTagFilterQuery(fSearchEdit.Text, lTag);
+  lText := TagListBox.Items[TagListBox.ItemIndex];
+  lParenPos := LastDelimiter('(', lText);
+  if lParenPos > 1 then
+  begin
+    lTag := Trim(Copy(lText, 1, lParenPos - 1));
+  end else begin
+    lTag := Trim(lText);
+  end;
+
+  if lTag = '' then
+  begin
+    Exit;
+  end;
+
+  SearchEdit.Text := AppendTagFilterQuery(SearchEdit.Text, lTag);
   QueueSearch(True);
+end;
+
+procedure TMainForm.HandleTagFilterEditChange(Sender: TObject);
+begin
+  Inc(fTagFilterGeneration);
+  fTagFilterTimer.Enabled := False;
+  fTagFilterTimer.Enabled := True;
+end;
+
+procedure TMainForm.HandleTagFilterTimer(Sender: TObject);
+var
+  lFilter: string;
+  lGeneration: Integer;
+  lItems: TArray<TSkillTagInfo>;
+begin
+  fTagFilterTimer.Enabled := False;
+  lFilter := Trim(TagFilterEdit.Text);
+  lGeneration := fTagFilterGeneration;
+  lItems := Copy(fTagBrowserItems);
+
+  TThread.CreateAnonymousThread(
+    procedure
+    var
+      lFilterEx: TFilterEx;
+      lItem: TSkillTagInfo;
+      lResult: TStringList;
+    begin
+      lResult := TStringList.Create;
+      try
+        if lFilter <> '' then
+          lFilterEx := TFilterEx.Create(lFilter);
+        for lItem in lItems do
+        begin
+          if (lFilter = '') or lFilterEx.Matches(lItem.Name) then
+            lResult.Add(Format('%s (%d)', [lItem.Name, lItem.SkillCount]));
+        end;
+        QueueToMain(procedure
+          begin
+            try
+              if lGeneration = fTagFilterGeneration then
+              begin
+                TagListBox.Items.BeginUpdate;
+                try
+                  TagListBox.Items.Assign(lResult);
+                finally
+                  TagListBox.Items.EndUpdate;
+                end;
+              end;
+            finally
+              lResult.Free;
+            end;
+          end);
+        lResult := nil;
+      finally
+        lResult.Free;
+      end;
+    end).Start;
 end;
 
 procedure TMainForm.HandleTagToggleButtonClick(Sender: TObject);
 begin
-  fTagBrowserPanel.Visible := not fTagBrowserPanel.Visible;
+  TagBrowserPanel.Visible := not TagBrowserPanel.Visible;
   UpdateTagBrowserUi;
 end;
 
@@ -1945,12 +2095,29 @@ end;
 
 procedure TMainForm.UpdateTagBrowserUi;
 begin
-  fTagBrowserSplitter.Visible := fTagBrowserPanel.Visible;
-  if fTagBrowserPanel.Visible then
+  TagBrowserSplitter.Visible := TagBrowserPanel.Visible;
+  if TagBrowserPanel.Visible then
   begin
-    fTagToggleButton.Caption := 'Hide Tags';
+    TagToggleButton.Caption := 'Hide Tags';
   end else begin
-    fTagToggleButton.Caption := 'Show Tags';
+    TagToggleButton.Caption := 'Show Tags';
+  end;
+end;
+
+procedure TMainForm.HandleTraySettingsClick(Sender: TObject);
+var
+  lDlg: TConfigDlg;
+begin
+  lDlg := TConfigDlg.Create(Self);
+  try
+    lDlg.CloseToTray := fAppSettings.Ui.CloseToTray;
+    if lDlg.ShowModal = mrOK then
+    begin
+      fAppSettings.Ui.CloseToTray := lDlg.CloseToTray;
+      SaveUiSettings(fSettingsPath, fAppSettings.Ui);
+    end;
+  finally
+    lDlg.Free;
   end;
 end;
 

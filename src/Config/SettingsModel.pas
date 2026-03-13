@@ -58,6 +58,7 @@ type
   end;
 
   TUiSettings = record
+    CloseToTray: Boolean;
     OpenFileOnEnter: Boolean;
     ShowPreviewPane: Boolean;
     TrayHotkey: string;
@@ -149,6 +150,7 @@ begin
   Result.Semantic.MinScoreToShow := 0.0;
   Result.Semantic.EmbeddingCache := True;
 
+  Result.Ui.CloseToTray := False;
   Result.Ui.ShowPreviewPane := True;
   Result.Ui.OpenFileOnEnter := True;
   Result.Ui.TrayHotkey := '';
