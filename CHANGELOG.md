@@ -33,6 +33,13 @@
 - Added Docker operations in UI: configurable `Start GPU` action with diagnostics/log feedback and a 10-second background health indicator updated via `TThread.Queue` (`T-028`, `T-029`).
 - Added a `Syntax` help button next to search input with concise query examples (`"phrase"`, `-exclude`, `name:`, `tag:`, `path:`, `has:scripts`, `limit:`) (`T-030`).
 - Expanded query syntax with boolean `OR`/grouping support and `ext:` script-extension filtering, including updated in-app syntax help (`T-037`, `T-038`).
+- **UI redesign (Clean Dashboard)**: compact search header, dedicated filter bar, flexible results panel, tag browser sidebar, preview panel with structured card header, consolidated 4-panel status bar, and animated Lottie scan indicator.
+- **SVG button icons**: all toolbar buttons now carry Lucide SVG icons (search, refresh, history, info, sort, tag, folder, settings, cpu) rendered at runtime via Skia into a 32-bit TImageList; no raster files required.
+- **Tag filter** now uses `MaxLogic.StrUtils.TFilterEx` (Everything-style syntax: space=AND, `!` negate, `|` OR, wildcard `*`/`?`) with 300 ms debounce and a background thread; stale results are discarded via a generation counter.
+- **Application icon** regenerated with Gemini AI (magnifying-glass + neural-network motif, 7 sizes 16–256 px) and injected into the project resource.
+- **Config dialog** (`ConfigDlg`) added for tray-close behaviour; accessible from the tray icon context menu via *Settings…*.
+- Published form component names cleaned up (removed `f` prefix; used by VCL forms infrastructure).
+- `QueueToMain` helper added to implementation section to eliminate TMS-induced `TThread.Queue` overload ambiguity.
 - Preview pane now renders full markdown bodies with headings, lists, fenced code blocks, inline emphasis, and highlighted matches while blocking remote image loads (`T-034`).
 - Search UI now persists window/layout state, restores the last query and search-as-you-type preference, and exposes a recent-query dropdown backed by persisted history in `settings.ini` (`T-035`, `T-045`).
 - Results can now be re-sorted in memory by score, name, path, or indexed date, and the result context menu can copy the current list as markdown links (`T-039`, `T-042`).
