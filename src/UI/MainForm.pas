@@ -1,4 +1,4 @@
-unit MainForm;
+﻿unit MainForm;
 
 interface
 
@@ -8,11 +8,12 @@ uses
   VCL.TMSFNCWebBrowser,
   DatabaseManager, DockerHealthMonitor, DockerOps, ExternalTools, PipelineCoordinator, RelatedSkillActions,
   SearchController, SearchInteraction, SearchResultActions, SettingsModel, SkillSearchService, TagBrowserActions,
-  TrayActions, Vcl.ImgList;
+  TrayActions, Vcl.ImgList, VCL.TMSFNCTypes, VCL.TMSFNCUtils,
+  VCL.TMSFNCGraphics, VCL.TMSFNCGraphicsTypes, System.ImageList,
+  VCL.TMSFNCCustomControl;
 
 type
-  TMainForm = class(TForm)
-  published
+  TAppMainForm = class(TForm)
     SearchPanel: TPanel;
     SearchActionsPanel: TPanel;
     SearchFieldPanel: TPanel;
@@ -196,7 +197,7 @@ type
   end;
 
 var
-  AppMainForm: TMainForm;
+  AppMainForm: TAppMainForm;
 
 implementation
 
@@ -271,9 +272,9 @@ begin
   Result := True;
 end;
 
-{ TMainForm }
+{ TAppMainForm }
 
-constructor TMainForm.Create(aOwner: TComponent);
+constructor TAppMainForm.Create(aOwner: TComponent);
 var
   i: Integer;
   lMenuItem: TMenuItem;
@@ -356,7 +357,7 @@ begin
     10000,
     procedure(const aState: TDockerHealthState; const aDetail: string)
     var
-      lForm: TMainForm;
+      lForm: TAppMainForm;
     begin
       lForm := AppMainForm;
       if not Assigned(lForm) then
@@ -395,7 +396,7 @@ begin
   QueueSearch(True);
 end;
 
-destructor TMainForm.Destroy;
+destructor TAppMainForm.Destroy;
 begin
   RemoveTrayIcon;
   UnregisterTrayHotkey;
@@ -421,19 +422,19 @@ begin
   inherited Destroy;
 end;
 
-procedure TMainForm.CreateWnd;
+procedure TAppMainForm.CreateWnd;
 begin
   inherited CreateWnd;
   RegisterTrayHotkey;
 end;
 
-procedure TMainForm.DestroyWnd;
+procedure TAppMainForm.DestroyWnd;
 begin
   UnregisterTrayHotkey;
   inherited DestroyWnd;
 end;
 
-procedure TMainForm.ConfigureColumns;
+procedure TAppMainForm.ConfigureColumns;
 begin
   ResultsListView.Columns.BeginUpdate;
   try
@@ -466,12 +467,12 @@ begin
   end;
 end;
 
-function TMainForm.ScaleStoredUiValue(const aValue, aStoredPPI: Integer): Integer;
+function TAppMainForm.ScaleStoredUiValue(const aValue, aStoredPPI: Integer): Integer;
 begin
   Result := SearchInteraction.ScaleStoredUiValue(aValue, aStoredPPI, CurrentPPI);
 end;
 
-procedure TMainForm.CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
+procedure TAppMainForm.CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
 var
   lBounds: TRect;
   lPlacement: TWindowPlacement;
@@ -496,7 +497,7 @@ begin
   aHeight := lBounds.Bottom - lBounds.Top;
 end;
 
-function TMainForm.ClampWindowRectToWorkArea(const aBounds: TRect): TRect;
+function TAppMainForm.ClampWindowRectToWorkArea(const aBounds: TRect): TRect;
 var
   lHeight: Integer;
   lMonitor: TMonitor;
@@ -545,7 +546,7 @@ begin
   end;
 end;
 
-function TMainForm.SerializeColumnWidths: string;
+function TAppMainForm.SerializeColumnWidths: string;
 var
   i: Integer;
 begin
@@ -560,7 +561,7 @@ begin
   end;
 end;
 
-function TMainForm.CaptureUiState: TUiStateSettings;
+function TAppMainForm.CaptureUiState: TUiStateSettings;
 begin
   Result := fAppSettings.UiState;
   Result.CurrentPPI := CurrentPPI;
@@ -573,7 +574,7 @@ begin
   CaptureWindowBounds(Result.WindowLeft, Result.WindowTop, Result.WindowWidth, Result.WindowHeight);
 end;
 
-procedure TMainForm.LoadUiState;
+procedure TAppMainForm.LoadUiState;
 var
   i: Integer;
   lBounds: TRect;
@@ -631,7 +632,7 @@ begin
   end;
 end;
 
-function TMainForm.EscapeHtml(const aText: string): string;
+function TAppMainForm.EscapeHtml(const aText: string): string;
 begin
   Result := StringReplace(aText, '&', '&amp;', [rfReplaceAll]);
   Result := StringReplace(Result, '<', '&lt;', [rfReplaceAll]);
@@ -640,7 +641,7 @@ begin
   Result := StringReplace(Result, '''', '&#39;', [rfReplaceAll]);
 end;
 
-procedure TMainForm.ShowEmptyPreview;
+procedure TAppMainForm.ShowEmptyPreview;
 begin
   PreviewBrowser.LoadHTML('<html><body><p>No skill selected.</p></body></html>');
   DuplicateInfoMemo.Lines.Text := 'No duplicate details available.';
@@ -649,7 +650,7 @@ begin
   RelatedPanel.Visible := False;
 end;
 
-procedure TMainForm.RenderPreview(const aResult: TSkillSearchResult);
+procedure TAppMainForm.RenderPreview(const aResult: TSkillSearchResult);
 var
   lBodyHtml: string;
   lBodyMarkdown: string;
@@ -685,7 +686,7 @@ begin
   RefreshRelatedSkills(aResult.SkillFile);
 end;
 
-function TMainForm.GetSelectedSkillFile: string;
+function TAppMainForm.GetSelectedSkillFile: string;
 var
   lIndex: Integer;
 begin
@@ -698,7 +699,7 @@ begin
   Result := fResults[lIndex].SkillFile;
 end;
 
-function TMainForm.GetSelectedSkillRoot: string;
+function TAppMainForm.GetSelectedSkillRoot: string;
 var
   lIndex: Integer;
 begin
@@ -711,7 +712,7 @@ begin
   Result := fResults[lIndex].SkillRoot;
 end;
 
-procedure TMainForm.ShowTrayIcon;
+procedure TAppMainForm.ShowTrayIcon;
 begin
   if fTrayState.TrayIconVisible then
   begin
@@ -736,7 +737,7 @@ begin
   fTrayState.TrayIconVisible := True;
 end;
 
-procedure TMainForm.RemoveTrayIcon;
+procedure TAppMainForm.RemoveTrayIcon;
 begin
   if not fTrayState.TrayIconVisible then
   begin
@@ -747,7 +748,7 @@ begin
   fTrayState.TrayIconVisible := False;
 end;
 
-procedure TMainForm.HideToTray;
+procedure TAppMainForm.HideToTray;
 begin
   ShowTrayIcon;
   if not fTrayState.TrayIconVisible then
@@ -759,7 +760,7 @@ begin
   fTrayState := ApplyHideToTray(fTrayState);
 end;
 
-procedure TMainForm.RestoreFromTray;
+procedure TAppMainForm.RestoreFromTray;
 begin
   RemoveTrayIcon;
   Show;
@@ -774,7 +775,7 @@ begin
   fTrayState := ApplyRestoreFromTray(fTrayState);
 end;
 
-procedure TMainForm.PopupTrayMenu;
+procedure TAppMainForm.PopupTrayMenu;
 var
   lPoint: TPoint;
 begin
@@ -789,7 +790,7 @@ begin
   PostMessage(Handle, WM_NULL, 0, 0);
 end;
 
-procedure TMainForm.UnregisterTrayHotkey;
+procedure TAppMainForm.UnregisterTrayHotkey;
 begin
   if not fTrayHotkeyRegistered then
   begin
@@ -800,7 +801,7 @@ begin
   fTrayHotkeyRegistered := False;
 end;
 
-procedure TMainForm.RegisterTrayHotkey;
+procedure TAppMainForm.RegisterTrayHotkey;
 var
   lError: string;
   lHotkey: TTrayHotkey;
@@ -829,19 +830,19 @@ begin
   fTrayHotkeyRegistered := True;
 end;
 
-function TMainForm.IsResultSelectionValid: Boolean;
+function TAppMainForm.IsResultSelectionValid: Boolean;
 begin
   Result := Assigned(ResultsListView.Selected) and
     (ResultsListView.Selected.Index >= 0) and
     (ResultsListView.Selected.Index < Length(fResults));
 end;
 
-procedure TMainForm.UpdateStatus(const aText: string);
+procedure TAppMainForm.UpdateStatus(const aText: string);
 begin
   StatusBar.Panels[cStatusPanelStatus].Text := aText;
 end;
 
-procedure TMainForm.BuildSortMenu;
+procedure TAppMainForm.BuildSortMenu;
 const
   cSortCaptions: array[TSearchSortMode] of string = (
     'Score',
@@ -870,7 +871,7 @@ begin
   UpdateSortUi;
 end;
 
-procedure TMainForm.UpdateSortUi;
+procedure TAppMainForm.UpdateSortUi;
 const
   cSortLabels: array[TSearchSortMode] of string = (
     'Score',
@@ -891,7 +892,7 @@ begin
   end;
 end;
 
-procedure TMainForm.SetSortMode(const aSortMode: TSearchSortMode; const aResortResults: Boolean);
+procedure TAppMainForm.SetSortMode(const aSortMode: TSearchSortMode; const aResortResults: Boolean);
 var
   lSelectedSkillFile: string;
 begin
@@ -906,7 +907,7 @@ begin
   end;
 end;
 
-procedure TMainForm.ExportResultsAsMarkdown;
+procedure TAppMainForm.ExportResultsAsMarkdown;
 var
   lMarkdown: string;
 begin
@@ -920,12 +921,12 @@ begin
   UpdateStatus(Format('Copied %d results as markdown list.', [Length(fResults)]));
 end;
 
-procedure TMainForm.PopulateExternalToolsMenu;
+procedure TAppMainForm.PopulateExternalToolsMenu;
 begin
   PopulateExternalToolsPopupMenu(ResultsPopupMenu, fAppSettings.ExternalTools, HandleExternalToolClick, 1);
 end;
 
-procedure TMainForm.DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
+procedure TAppMainForm.DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
 begin
   if not fScanInProgress then
   begin
@@ -943,14 +944,14 @@ begin
   UpdateStatus('Searching...');
 end;
 
-procedure TMainForm.SaveRuntimeState;
+procedure TAppMainForm.SaveRuntimeState;
 begin
   fAppSettings.UiState := CaptureUiState;
   SaveUiState(fSettingsPath, fAppSettings.UiState);
   SaveSearchHistory(fSettingsPath, fSearchHistory);
 end;
 
-procedure TMainForm.UpdateSearchHistoryMenu;
+procedure TAppMainForm.UpdateSearchHistoryMenu;
 var
   i: Integer;
   lItem: TMenuItem;
@@ -967,7 +968,7 @@ begin
   SearchHistoryButton.Enabled := Length(fSearchHistory.Items) > 0;
 end;
 
-procedure TMainForm.SelectHistoryQuery(const aQuery: string);
+procedure TAppMainForm.SelectHistoryQuery(const aQuery: string);
 begin
   ExecuteHistorySelection(
     aQuery,
@@ -984,7 +985,7 @@ begin
   );
 end;
 
-procedure TMainForm.RenderResultsList(const aPreferredSkillFile: string);
+procedure TAppMainForm.RenderResultsList(const aPreferredSkillFile: string);
 var
   i: Integer;
   lItem: TListItem;
@@ -1025,20 +1026,20 @@ begin
   RenderPreview(fResults[lSelectedIndex]);
 end;
 
-procedure TMainForm.RefreshCountPanels;
+procedure TAppMainForm.RefreshCountPanels;
 begin
   StatusBar.Panels[cStatusPanelCounters].Text := Format(
     'Found: %d | Valid: %d | Unique: %d | Results: %d',
     [fSkillsFoundCount, fSkillsValidCount, fSkillsUniqueCount, Length(fResults)]);
 end;
 
-procedure TMainForm.RefreshInventoryCounters;
+procedure TAppMainForm.RefreshInventoryCounters;
 begin
   fSkillsValidCount := fDatabaseManager.GetValidSkillCount;
   fSkillsUniqueCount := fDatabaseManager.GetUniqueSkillCount;
 end;
 
-procedure TMainForm.RefreshRelatedSkills(const aSkillFile: string);
+procedure TAppMainForm.RefreshRelatedSkills(const aSkillFile: string);
 begin
   if (not fAppSettings.Semantic.Enabled) or (Trim(aSkillFile) = '') then
   begin
@@ -1053,13 +1054,13 @@ begin
   RelatedPanel.Visible := Length(fRelatedItems) > 0;
 end;
 
-procedure TMainForm.RefreshTagBrowser;
+procedure TAppMainForm.RefreshTagBrowser;
 begin
   fTagBrowserItems := fDatabaseManager.GetSkillTagCounts;
   PopulateTagListBox(TagListBox, fTagBrowserItems);
 end;
 
-procedure TMainForm.LoadButtonIcons;
+procedure TAppMainForm.LoadButtonIcons;
 const
   cS = '#374151'; // Tailwind gray-700 – readable on light backgrounds
   cA = ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
@@ -1156,7 +1157,7 @@ begin
   DockerGpuButton.Images     := IconImages; DockerGpuButton.ImageIndex     := 8;
 end;
 
-function TMainForm.BuildEffectiveQuery: string;
+function TAppMainForm.BuildEffectiveQuery: string;
 begin
   Result := Trim(SearchEdit.Text);
   if HasScriptsCheckBox.Checked and (not ContainsText(Result, 'has:scripts')) and
@@ -1170,7 +1171,7 @@ begin
   end;
 end;
 
-function TMainForm.BuildPipelineOptions: TPipelineOptions;
+function TAppMainForm.BuildPipelineOptions: TPipelineOptions;
 var
   i: Integer;
   lExclusions: TPathExclusionsParseResult;
@@ -1197,7 +1198,7 @@ begin
     begin
       QueueToMain(procedure
         var
-          lForm: TMainForm;
+          lForm: TAppMainForm;
         begin
           lForm := AppMainForm;
           if not Assigned(lForm) or (Trim(aStatusText) = '') then
@@ -1226,7 +1227,7 @@ begin
   end;
 end;
 
-function TMainForm.TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
+function TAppMainForm.TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
 var
   i: Integer;
   lParseResult: TSourcesListParseResult;
@@ -1253,7 +1254,7 @@ begin
   Result := Length(aSourceRoots) > 0;
 end;
 
-procedure TMainForm.WaitForWorkerThread(var aThread: TThread);
+procedure TAppMainForm.WaitForWorkerThread(var aThread: TThread);
 begin
   if not Assigned(aThread) then
   begin
@@ -1266,7 +1267,7 @@ begin
   aThread := nil;
 end;
 
-procedure TMainForm.BeginScanProgress;
+procedure TAppMainForm.BeginScanProgress;
 begin
   fScanInProgress := True;
   fScanHourGlass := AutoHourGlass.MakeCHG;
@@ -1281,7 +1282,7 @@ begin
   UpdateStatus('Scan running... (indeterminate)');
 end;
 
-procedure TMainForm.BeginDockerStart;
+procedure TAppMainForm.BeginDockerStart;
 begin
   fDockerStartInProgress := True;
   fDockerStartHourGlass := AutoHourGlass.MakeCHG;
@@ -1289,14 +1290,14 @@ begin
   UpdateStatus('Starting Ollama container...');
 end;
 
-procedure TMainForm.EndDockerStart;
+procedure TAppMainForm.EndDockerStart;
 begin
   fDockerStartHourGlass := nil;
   DockerGpuButton.Enabled := True;
   fDockerStartInProgress := False;
 end;
 
-procedure TMainForm.StartDockerStackAsync;
+procedure TAppMainForm.StartDockerStackAsync;
 var
   lStartCommand: string;
 begin
@@ -1320,7 +1321,7 @@ begin
       lResult := StartDockerGpuStack(lStartCommand, 45);
       QueueToMain(procedure
         var
-          lForm: TMainForm;
+          lForm: TAppMainForm;
         begin
           lForm := AppMainForm;
           if not Assigned(lForm) then
@@ -1336,7 +1337,7 @@ begin
   fDockerStartThread.Start;
 end;
 
-procedure TMainForm.EndScanProgress;
+procedure TAppMainForm.EndScanProgress;
 begin
   fScanHourGlass := nil;
   ScanProgressBar.Visible := False;
@@ -1353,7 +1354,7 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
+procedure TAppMainForm.HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
 const
   cHealthyCaption = 'Ollama: running';
   cUnhealthyCaption = 'Ollama: unavailable';
@@ -1396,7 +1397,7 @@ begin
   DockerHealthLabel.Hint := aDetail;
 end;
 
-procedure TMainForm.HandleDockerStartCompleted(const aResult: TDockerCommandResult);
+procedure TAppMainForm.HandleDockerStartCompleted(const aResult: TDockerCommandResult);
 var
   lMessage: string;
 begin
@@ -1428,7 +1429,7 @@ begin
   end;
 end;
 
-procedure TMainForm.QueueSearch(const aImmediate: Boolean);
+procedure TAppMainForm.QueueSearch(const aImmediate: Boolean);
 var
   lQuery: string;
 begin
@@ -1449,7 +1450,7 @@ begin
   end;
 end;
 
-procedure TMainForm.ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
+procedure TAppMainForm.ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
 begin
   if not fScanInProgress then
   begin
@@ -1465,7 +1466,7 @@ begin
   UpdateStatus(Format('Results: %d | Query: %s', [Length(fResults), BuildEffectiveQuery]));
 end;
 
-procedure TMainForm.OpenSelectedSkillFile;
+procedure TAppMainForm.OpenSelectedSkillFile;
 var
   lSkillFile: string;
 begin
@@ -1478,7 +1479,7 @@ begin
   ShellExecute(Handle, 'open', PChar(lSkillFile), nil, nil, SW_SHOWNORMAL);
 end;
 
-procedure TMainForm.OpenSelectedSkillFolder;
+procedure TAppMainForm.OpenSelectedSkillFolder;
 var
   lArgs: string;
   lSkillFile: string;
@@ -1493,7 +1494,7 @@ begin
   ShellExecute(Handle, 'open', 'explorer.exe', PChar(lArgs), nil, SW_SHOWNORMAL);
 end;
 
-procedure TMainForm.CopySelectedPathToClipboard;
+procedure TAppMainForm.CopySelectedPathToClipboard;
 var
   lSkillFile: string;
 begin
@@ -1507,12 +1508,12 @@ begin
   UpdateStatus('Copied: ' + lSkillFile);
 end;
 
-procedure TMainForm.HandleSearchButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleSearchButtonClick(Sender: TObject);
 begin
   QueueSearch(True);
 end;
 
-procedure TMainForm.HandleSearchHelpButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleSearchHelpButtonClick(Sender: TObject);
 const
   cSearchHelpText =
     'Search syntax:' + sLineBreak +
@@ -1530,7 +1531,7 @@ begin
   MessageDlg(cSearchHelpText, TMsgDlgType.mtInformation, [TMsgDlgBtn.mbOK], 0);
 end;
 
-procedure TMainForm.HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
+procedure TAppMainForm.HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
   aFailure: string);
 begin
   try
@@ -1560,7 +1561,7 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleScanButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleScanButtonClick(Sender: TObject);
 var
   lDatabasePath: string;
   lOptions: TPipelineOptions;
@@ -1613,7 +1614,7 @@ begin
 
       QueueToMain(procedure
         var
-          lForm: TMainForm;
+          lForm: TAppMainForm;
         begin
           lForm := AppMainForm;
           if not Assigned(lForm) then
@@ -1629,17 +1630,17 @@ begin
   fScanThread.Start;
 end;
 
-procedure TMainForm.HandleDiagnosticsButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleDiagnosticsButtonClick(Sender: TObject);
 begin
   ShowDiagnosticsDialog(self);
 end;
 
-procedure TMainForm.HandleExportResultsClick(Sender: TObject);
+procedure TAppMainForm.HandleExportResultsClick(Sender: TObject);
 begin
   ExportResultsAsMarkdown;
 end;
 
-procedure TMainForm.HandleExternalToolClick(Sender: TObject);
+procedure TAppMainForm.HandleExternalToolClick(Sender: TObject);
 var
   lLaunch: TExternalToolLaunch;
   lSelectedSkillRoot: string;
@@ -1672,7 +1673,7 @@ begin
   UpdateStatus('Launched: ' + lLaunch.Name);
 end;
 
-procedure TMainForm.HandleFormClose(Sender: TObject; var Action: TCloseAction);
+procedure TAppMainForm.HandleFormClose(Sender: TObject; var Action: TCloseAction);
 begin
   SaveRuntimeState;
   if fAppSettings.Ui.CloseToTray and ShouldHideToTrayOnClose(fTrayState.ExitRequested) then
@@ -1688,12 +1689,12 @@ begin
   RemoveTrayIcon;
 end;
 
-procedure TMainForm.HandleDockerGpuButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleDockerGpuButtonClick(Sender: TObject);
 begin
   StartDockerStackAsync;
 end;
 
-procedure TMainForm.HandleEditSourcesButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleEditSourcesButtonClick(Sender: TObject);
 begin
   if not TSourcesEditorForm.Execute(Self, fSourcesListPath, GetExeDirectory) then
   begin
@@ -1703,14 +1704,14 @@ begin
   UpdateStatus(rsSourcesListSaved);
 end;
 
-procedure TMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
+procedure TAppMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
   const aError: string);
 begin
   if GetCurrentThreadId <> MainThreadID then
   begin
     QueueToMain(procedure
       var
-        lForm: TMainForm;
+        lForm: TAppMainForm;
       begin
         lForm := AppMainForm;
         if not Assigned(lForm) then
@@ -1747,7 +1748,7 @@ begin
   ApplySearchResults(aResults);
 end;
 
-procedure TMainForm.HandleSearchEditChange(Sender: TObject);
+procedure TAppMainForm.HandleSearchEditChange(Sender: TObject);
 begin
   if SearchAsYouTypeCheckBox.Checked then
   begin
@@ -1755,7 +1756,7 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleSearchEditKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+procedure TAppMainForm.HandleSearchEditKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
   if Key = VK_RETURN then
   begin
@@ -1764,7 +1765,7 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleSearchHistoryButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleSearchHistoryButtonClick(Sender: TObject);
 var
   lPoint: TPoint;
 begin
@@ -1778,7 +1779,7 @@ begin
   SearchHistoryPopupMenu.Popup(lPoint.X, lPoint.Y);
 end;
 
-procedure TMainForm.HandleSearchHistoryItemClick(Sender: TObject);
+procedure TAppMainForm.HandleSearchHistoryItemClick(Sender: TObject);
 begin
   if not (Sender is TMenuItem) then
   begin
@@ -1788,7 +1789,7 @@ begin
   SelectHistoryQuery(TMenuItem(Sender).Caption);
 end;
 
-procedure TMainForm.HandleResultsColumnClick(Sender: TObject; Column: TListColumn);
+procedure TAppMainForm.HandleResultsColumnClick(Sender: TObject; Column: TListColumn);
 begin
   case Column.Index of
     0:
@@ -1816,7 +1817,7 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleResultSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);
+procedure TAppMainForm.HandleResultSelectItem(Sender: TObject; Item: TListItem; Selected: Boolean);
 begin
   if not Selected then
   begin
@@ -1831,12 +1832,12 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleResultDoubleClick(Sender: TObject);
+procedure TAppMainForm.HandleResultDoubleClick(Sender: TObject);
 begin
   OpenSelectedSkillFile;
 end;
 
-procedure TMainForm.HandleResultKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+procedure TAppMainForm.HandleResultKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
   if Key = VK_RETURN then
   begin
@@ -1860,7 +1861,7 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+procedure TAppMainForm.HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
   if (Key = Ord('L')) and (ssCtrl in Shift) then
   begin
@@ -1900,17 +1901,17 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleOpenFileClick(Sender: TObject);
+procedure TAppMainForm.HandleOpenFileClick(Sender: TObject);
 begin
   OpenSelectedSkillFile;
 end;
 
-procedure TMainForm.HandleOpenFolderClick(Sender: TObject);
+procedure TAppMainForm.HandleOpenFolderClick(Sender: TObject);
 begin
   OpenSelectedSkillFolder;
 end;
 
-procedure TMainForm.HandleRelatedListBoxClick(Sender: TObject);
+procedure TAppMainForm.HandleRelatedListBoxClick(Sender: TObject);
 var
   lNavigation: TRelatedSkillNavigation;
   lRelatedItem: TRelatedSkillResult;
@@ -1935,12 +1936,12 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleCopyPathClick(Sender: TObject);
+procedure TAppMainForm.HandleCopyPathClick(Sender: TObject);
 begin
   CopySelectedPathToClipboard;
 end;
 
-procedure TMainForm.HandleSortButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleSortButtonClick(Sender: TObject);
 var
   lPoint: TPoint;
 begin
@@ -1948,7 +1949,7 @@ begin
   SortPopupMenu.Popup(lPoint.X, lPoint.Y);
 end;
 
-procedure TMainForm.HandleSortMenuItemClick(Sender: TObject);
+procedure TAppMainForm.HandleSortMenuItemClick(Sender: TObject);
 begin
   if not (Sender is TMenuItem) then
   begin
@@ -1958,7 +1959,7 @@ begin
   SetSortMode(TSearchSortMode(TMenuItem(Sender).Tag));
 end;
 
-procedure TMainForm.HandleTagListBoxClick(Sender: TObject);
+procedure TAppMainForm.HandleTagListBoxClick(Sender: TObject);
 var
   lTag: string;
   lText: string;
@@ -1987,14 +1988,14 @@ begin
   QueueSearch(True);
 end;
 
-procedure TMainForm.HandleTagFilterEditChange(Sender: TObject);
+procedure TAppMainForm.HandleTagFilterEditChange(Sender: TObject);
 begin
   Inc(fTagFilterGeneration);
   fTagFilterTimer.Enabled := False;
   fTagFilterTimer.Enabled := True;
 end;
 
-procedure TMainForm.HandleTagFilterTimer(Sender: TObject);
+procedure TAppMainForm.HandleTagFilterTimer(Sender: TObject);
 var
   lFilter: string;
   lGeneration: Integer;
@@ -2044,24 +2045,24 @@ begin
     end).Start;
 end;
 
-procedure TMainForm.HandleTagToggleButtonClick(Sender: TObject);
+procedure TAppMainForm.HandleTagToggleButtonClick(Sender: TObject);
 begin
   TagBrowserPanel.Visible := not TagBrowserPanel.Visible;
   UpdateTagBrowserUi;
 end;
 
-procedure TMainForm.HandleTrayShowClick(Sender: TObject);
+procedure TAppMainForm.HandleTrayShowClick(Sender: TObject);
 begin
   RestoreFromTray;
 end;
 
-procedure TMainForm.HandleTrayExitClick(Sender: TObject);
+procedure TAppMainForm.HandleTrayExitClick(Sender: TObject);
 begin
   fTrayState := ApplyTrayExitRequest(fTrayState);
   Close;
 end;
 
-procedure TMainForm.HandleTrayHotkeyMessage(var Msg: TMessage);
+procedure TAppMainForm.HandleTrayHotkeyMessage(var Msg: TMessage);
 begin
   if Msg.WParam <> cTrayHotkeyId then
   begin
@@ -2071,7 +2072,7 @@ begin
   RestoreFromTray;
 end;
 
-procedure TMainForm.HandleTrayIconMessage(var Msg: TMessage);
+procedure TAppMainForm.HandleTrayIconMessage(var Msg: TMessage);
 var
   lAction: TTrayMessageAction;
 begin
@@ -2088,12 +2089,12 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleHasScriptsClick(Sender: TObject);
+procedure TAppMainForm.HandleHasScriptsClick(Sender: TObject);
 begin
   QueueSearch(False);
 end;
 
-procedure TMainForm.UpdateTagBrowserUi;
+procedure TAppMainForm.UpdateTagBrowserUi;
 begin
   TagBrowserSplitter.Visible := TagBrowserPanel.Visible;
   if TagBrowserPanel.Visible then
@@ -2104,7 +2105,7 @@ begin
   end;
 end;
 
-procedure TMainForm.HandleTraySettingsClick(Sender: TObject);
+procedure TAppMainForm.HandleTraySettingsClick(Sender: TObject);
 var
   lDlg: TConfigDlg;
 begin
