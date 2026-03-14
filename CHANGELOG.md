@@ -34,10 +34,10 @@
 - Added a `Syntax` help button next to search input with concise query examples (`"phrase"`, `-exclude`, `name:`, `tag:`, `path:`, `has:scripts`, `limit:`) (`T-030`).
 - Expanded query syntax with boolean `OR`/grouping support and `ext:` script-extension filtering, including updated in-app syntax help (`T-037`, `T-038`).
 - **UI redesign (Clean Dashboard)**: compact search header, dedicated filter bar, flexible results panel, tag browser sidebar, preview panel with structured card header, consolidated 4-panel status bar, and animated Lottie scan indicator.
-- **SVG button icons**: all toolbar buttons now carry Lucide SVG icons (search, refresh, history, info, sort, tag, folder, settings, cpu) rendered at runtime via Skia into a 32-bit TImageList; no raster files required.
+- **SVG button icons**: main-toolbar actions now use DFM-wired SVG assets through `TAdvSVGImageCollection` and `TVirtualImageList`, replacing the old runtime Skia string-constant pipeline while keeping DPI-safe vector rendering.
 - **Tag filter** now uses `MaxLogic.StrUtils.TFilterEx` (Everything-style syntax: space=AND, `!` negate, `|` OR, wildcard `*`/`?`) with 300 ms debounce and a background thread; stale results are discarded via a generation counter.
 - **Application icon** regenerated with Gemini AI (magnifying-glass + neural-network motif, 7 sizes 16–256 px) and injected into the project resource.
-- **Config dialog** (`ConfigDlg`) added for tray-close behaviour; accessible from the tray icon context menu via *Settings…*.
+- **Config dialog** (`ConfigDlg`) now exposes both tray-close behaviour and the persisted search-as-you-type preference, and the main toolbar includes a visible `Settings` button alongside the tray-menu entry point.
 - Published form component names cleaned up (removed `f` prefix; used by VCL forms infrastructure).
 - `QueueToMain` helper added to implementation section to eliminate TMS-induced `TThread.Queue` overload ambiguity.
 - Preview pane now renders full markdown bodies with headings, lists, fenced code blocks, inline emphasis, and highlighted matches while blocking remote image loads (`T-034`).
@@ -47,6 +47,18 @@
 - The main window now includes a collapsible tag browser with per-tag skill counts, click-to-filter behavior, and automatic refresh after scans (`T-041`).
 - Semantic-enabled scans now surface embedding warm-up progress and unavailable notices in the status bar, and the preview pane shows a Related list of cosine-ranked similar skills with click-to-select or open behavior (`T-043`, `T-044`).
 - MainForm now exposes an in-app `Edit Sources...` dialog that filters invalid existing entries, supports browse/add/remove/save, and writes `Sources.lst` for the next scan without restarting (`T-036`).
+- Main, settings, and sources dialogs now use flatter panel-based layout composition with `TBitBtn` actions, consistent spacing, and less coordinate-heavy toolbar wiring (`T-048`).
+- Main-form header polish rebalanced the search trailing controls, made the syntax-help affordance icon-only, enlarged the scan animation/progress area, and swapped the Settings glyph for a simpler preferences icon that reads better at small sizes (`T-049`).
+- The main form now keeps sort/settings/diagnostics as compact icon actions, moves Sources editing into Settings, replaces the old left tag browser with a modal multi-select tag dialog, and uses balloon-hint formatting for icon-heavy controls (`T-050`).
+- Header layout polish made the Recent action a compact icon button, reduced the Search and Scan button heights, moved Settings and Diagnostics into the right-side primary action cluster, and added more breathing room before the first settings checkbox (`T-051`).
+- Search-header layout now keeps the Recent / Syntax / Tags buttons evenly spaced, anchors Search / Scan / Settings / Diagnostics to the search-input row without vertical stretching, and gives the preview browser proper inner margins (`T-052`).
+- Docker/Ollama health now sits in the bottom status bar, startup failures surface through a dedicated `Start now` alert strip under the search area, and the scan/search progress moved into its own independent activity panel so those strips disappear again when idle (`T-053`).
+- The scan activity strip now uses a large left-side Lottie, a centered progress bar, and a live summary with repo/skill counts, elapsed time, and current stage; ordinary searches no longer open that large panel (`T-054`).
+- Header utility buttons now use DFM-wired `TSpeedButton` image-list icons instead of runtime glyph assignment, and scan completion no longer floods the VCL thread with queued progress callbacks before the final UI refresh (`T-056`).
+- The search caption now shows the real `Ctrl+L` focus shortcut so it is easier to discover while navigating the main form (`T-057`).
+- The main form now also supports `Ctrl+R` to move focus to the results list, and the results caption shows that shortcut for easier recall (`T-058`).
+- The preview browser now shows a designed empty-state page after initialization and when no result is selected, using a casual prompt, keyboard hints, and animated Lottie placeholders sourced from a dedicated Delphi HTML-constant unit (`T-059`).
+- The duplicate-details panel now stays hidden unless the selected skill actually has duplicate paths to show, which frees preview space for the common non-duplicate case (`T-060`).
 - Closing the app window now hides it to a tray icon with Show/Exit actions, and an optional `UI.TrayHotkey` setting can restore/focus the window globally when configured with a modifier-backed shortcut (`T-033`).
 - Documented the app’s Ollama auto-start behavior and updated Win64 packaging to build a Release runtime without overwriting existing portable config files in `bin/` (`T-032`).
 
