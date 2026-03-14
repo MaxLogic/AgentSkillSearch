@@ -1,4 +1,5 @@
-object MainForm: TMainForm
+object AppMainForm: TAppMainForm
+  AlignWithMargins = True
   Left = 0
   Top = 0
   Caption = 'Agent Skill Search'
@@ -13,254 +14,417 @@ object MainForm: TMainForm
   KeyPreview = True
   Position = poScreenCenter
   OnClose = HandleFormClose
+  OnCreate = FormCreate
   OnKeyDown = HandleFormKeyDown
   TextHeight = 17
   object SearchPanel: TPanel
     Left = 0
     Top = 0
     Width = 1384
-    Height = 72
+    Height = 132
     Align = alTop
     BevelOuter = bvNone
-    Color = clWhitesmoke
+    Color = 16382457
     Padding.Left = 16
-    Padding.Top = 8
+    Padding.Top = 16
     Padding.Right = 16
-    Padding.Bottom = 8
+    Padding.Bottom = 12
     ParentBackground = False
     TabOrder = 0
     object SearchActionsPanel: TPanel
       AlignWithMargins = True
-      Left = 897
-      Top = 11
-      Width = 468
-      Height = 50
+      Left = 998
+      Top = 48
+      Width = 367
+      Height = 34
       Margins.Left = 16
+      Margins.Top = 32
+      Margins.Bottom = 38
       Align = alRight
       BevelOuter = bvNone
       TabOrder = 1
-      object SearchAsYouTypeCheckBox: TCheckBox
+      object SettingsToolsPanel: TPanel
         AlignWithMargins = True
-        Left = 339
-        Top = 10
-        Width = 126
-        Height = 30
-        Margins.Left = 12
-        Margins.Top = 10
-        Margins.Bottom = 10
+        Left = 291
+        Top = 0
+        Width = 76
+        Height = 34
+        Margins.Left = 8
+        Margins.Top = 0
+        Margins.Right = 0
+        Margins.Bottom = 0
         Align = alRight
-        Caption = 'Search as you type'
-        TabOrder = 2
-      end
-      object ScanButton: TButton
-        AlignWithMargins = True
-        Left = 214
-        Top = 4
-        Width = 110
-        Height = 42
-        Margins.Left = 12
-        Margins.Top = 4
-        Margins.Bottom = 4
-        Align = alRight
-        Caption = 'S&can/Update'
+        AutoSize = True
+        BevelOuter = bvNone
         TabOrder = 1
-        OnClick = HandleScanButtonClick
+        object SettingsButton: TSpeedButton
+          AlignWithMargins = True
+          Left = 3
+          Top = 1
+          Width = 32
+          Height = 32
+          Hint = 'Settings|Open application settings and source management.|0'
+          Margins.Top = 1
+          Margins.Right = 0
+          Margins.Bottom = 1
+          Align = alLeft
+          ImageIndex = 7
+          ImageName = 'settings'
+          Images = ButtonImages
+          Flat = True
+          ParentShowHint = False
+          ShowHint = True
+          OnClick = HandleTraySettingsClick
+        end
+        object DiagnosticsButton: TSpeedButton
+          AlignWithMargins = True
+          Left = 41
+          Top = 1
+          Width = 32
+          Height = 32
+          Hint = 'Diagnostics|Open scan logs and diagnostic details.|0'
+          Margins.Left = 6
+          Margins.Top = 1
+          Margins.Bottom = 1
+          Align = alLeft
+          ImageIndex = 8
+          ImageName = 'diagnostics'
+          Images = ButtonImages
+          Flat = True
+          ParentShowHint = False
+          ShowHint = True
+          OnClick = HandleDiagnosticsButtonClick
+        end
       end
-      object SearchButton: TButton
+      object PrimaryActionsPanel: TPanel
         AlignWithMargins = True
-        Left = 99
-        Top = 4
-        Width = 100
-        Height = 42
-        Margins.Top = 4
-        Margins.Bottom = 4
+        Left = 43
+        Top = 0
+        Width = 240
+        Height = 34
+        Margins.Left = 8
+        Margins.Top = 0
+        Margins.Right = 0
+        Margins.Bottom = 0
         Align = alRight
-        Caption = '&Search'
+        AutoSize = True
+        BevelOuter = bvNone
         TabOrder = 0
-        OnClick = HandleSearchButtonClick
+        object SearchButton: TBitBtn
+          AlignWithMargins = True
+          Left = 3
+          Top = 1
+          Width = 106
+          Height = 32
+          Hint = 'Search|Run the current query now.|0'
+          Margins.Top = 1
+          Margins.Right = 0
+          Margins.Bottom = 1
+          Align = alLeft
+          Caption = '&Search'
+          ImageIndex = 0
+          Images = ButtonImages
+          Margin = 8
+          ParentShowHint = False
+          ShowHint = True
+          Spacing = 8
+          TabOrder = 0
+          OnClick = HandleSearchButtonClick
+        end
+        object ScanButton: TBitBtn
+          AlignWithMargins = True
+          Left = 117
+          Top = 1
+          Width = 120
+          Height = 32
+          Hint = 
+            'Scan and update|Scan source folders, pull repositories, and refr' +
+            'esh the local cache.|0'
+          Margins.Left = 8
+          Margins.Top = 1
+          Margins.Bottom = 1
+          Align = alLeft
+          Caption = 'S&can/Update'
+          ImageIndex = 1
+          Images = ButtonImages
+          Margin = 8
+          ParentShowHint = False
+          ShowHint = True
+          Spacing = 8
+          TabOrder = 1
+          OnClick = HandleScanButtonClick
+        end
       end
     end
     object SearchFieldPanel: TPanel
       AlignWithMargins = True
       Left = 19
-      Top = 11
-      Width = 859
-      Height = 50
+      Top = 19
+      Width = 960
+      Height = 98
       Align = alClient
       BevelOuter = bvNone
       TabOrder = 0
-      DesignSize = (
-        859
-        50)
-      object SearchEdit: TEdit
+      object SearchInputPanel: TPanel
         Left = 0
-        Top = 25
-        Width = 751
-        Height = 25
-        Anchors = [akLeft, akTop, akRight]
+        Top = 20
+        Width = 960
+        Height = 36
+        Align = alTop
+        BevelOuter = bvNone
         TabOrder = 0
-        TextHint = 'Search skills (supports name:, tag:, path:, has:scripts, limit:)'
-        OnChange = HandleSearchEditChange
-        OnKeyDown = HandleSearchEditKeyDown
+        object SearchToolsPanel: TPanel
+          Left = 852
+          Top = 0
+          Width = 108
+          Height = 36
+          Align = alRight
+          AutoSize = True
+          BevelOuter = bvNone
+          TabOrder = 1
+          object SearchHistoryButton: TSpeedButton
+            AlignWithMargins = True
+            Left = 0
+            Top = 0
+            Width = 32
+            Height = 34
+            Hint = 'Recent queries|Open the recent-query list.|0'
+            Margins.Left = 0
+            Margins.Top = 0
+            Margins.Right = 0
+            Margins.Bottom = 2
+            Align = alLeft
+            ImageIndex = 2
+            ImageName = 'recent'
+            Images = ButtonImages
+            Enabled = False
+            Flat = True
+            ParentShowHint = False
+            ShowHint = True
+            OnClick = HandleSearchHistoryButtonClick
+          end
+          object SearchHelpButton: TSpeedButton
+            AlignWithMargins = True
+            Left = 38
+            Top = 0
+            Width = 32
+            Height = 34
+            Hint = 
+              'Search syntax|Show query syntax examples and supported operators' +
+              '.|0'
+            Margins.Left = 6
+            Margins.Top = 0
+            Margins.Right = 0
+            Margins.Bottom = 2
+            Align = alLeft
+            ImageIndex = 3
+            ImageName = 'syntax'
+            Images = ButtonImages
+            Flat = True
+            ParentShowHint = False
+            ShowHint = True
+            OnClick = HandleSearchHelpButtonClick
+          end
+          object TagToggleButton: TSpeedButton
+            AlignWithMargins = True
+            Left = 76
+            Top = 0
+            Width = 32
+            Height = 34
+            Hint = 'Tags|Choose one or more tags to apply to the active search.|0'
+            Margins.Left = 6
+            Margins.Top = 0
+            Margins.Right = 0
+            Margins.Bottom = 2
+            Align = alLeft
+            ImageIndex = 5
+            ImageName = 'tags'
+            Images = ButtonImages
+            Flat = True
+            ParentShowHint = False
+            ShowHint = True
+            OnClick = HandleTagToggleButtonClick
+          end
+        end
+        object SearchEditHostPanel: TPanel
+          Left = 0
+          Top = 0
+          Width = 852
+          Height = 36
+          Align = alClient
+          BevelOuter = bvNone
+          TabOrder = 0
+          object SearchEdit: TEdit
+            AlignWithMargins = True
+            Left = 0
+            Top = 0
+            Width = 844
+            Height = 33
+            Margins.Left = 0
+            Margins.Top = 0
+            Margins.Right = 8
+            Margins.Bottom = 0
+            Align = alTop
+            Font.Charset = DEFAULT_CHARSET
+            Font.Color = clWindowText
+            Font.Height = -19
+            Font.Name = 'Segoe UI'
+            Font.Style = []
+            ParentFont = False
+            TabOrder = 0
+            TextHint = 'Search skills (supports name:, tag:, path:, has:scripts, limit:)'
+            OnChange = HandleSearchEditChange
+            OnKeyDown = HandleSearchEditKeyDown
+          end
+        end
+      end
+      object HasScriptsCheckBox: TCheckBox
+        AlignWithMargins = True
+        Left = 0
+        Top = 64
+        Width = 960
+        Height = 16
+        Hint = 
+          'Scripts only|Limit results to skills that include scripts or exe' +
+          'cutable assets.|0'
+        Margins.Left = 0
+        Margins.Top = 8
+        Margins.Right = 0
+        Margins.Bottom = 0
+        Align = alTop
+        Caption = 'Has scripts'
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 1
+        OnClick = HandleHasScriptsClick
       end
       object SearchEditLabel: TStaticText
         Left = 0
         Top = 0
-        Width = 859
-        Height = 17
+        Width = 960
+        Height = 20
         Align = alTop
         AutoSize = False
-        Caption = 'Search query'
+        Caption = 'Search query (Ctrl+L)'
         Font.Charset = DEFAULT_CHARSET
         Font.Color = 4473924
         Font.Height = -13
         Font.Name = 'Segoe UI'
         Font.Style = [fsBold]
         ParentFont = False
-        TabOrder = 3
-      end
-      object SearchHistoryButton: TButton
-        Left = 759
-        Top = 22
-        Width = 72
-        Height = 32
-        Anchors = [akTop, akRight]
-        Caption = 'Recent'
-        Enabled = False
-        TabOrder = 1
-        OnClick = HandleSearchHistoryButtonClick
-      end
-      object SearchHelpButton: TButton
-        Left = 835
-        Top = 22
-        Width = 32
-        Height = 32
-        Anchors = [akTop, akRight]
-        Caption = '?'
         TabOrder = 2
-        OnClick = HandleSearchHelpButtonClick
       end
     end
   end
-  object FiltersPanel: TPanel
+  object DockerAlertPanel: TPanel
     Left = 0
-    Top = 72
+    Top = 132
     Width = 1384
-    Height = 44
+    Height = 52
     Align = alTop
     BevelOuter = bvNone
-    Color = 16316664
+    Color = 15986679
     Padding.Left = 16
+    Padding.Top = 8
     Padding.Right = 16
     Padding.Bottom = 8
     ParentBackground = False
     TabOrder = 1
-    object HasScriptsCheckBox: TCheckBox
+    Visible = False
+    object DockerGpuButton: TBitBtn
       AlignWithMargins = True
-      Left = 19
-      Top = 3
-      Width = 108
-      Height = 30
-      Align = alLeft
-      Caption = 'Has scripts'
-      TabOrder = 0
-      OnClick = HandleHasScriptsClick
-    end
-    object SortButton: TButton
-      AlignWithMargins = True
-      Left = 138
-      Top = 3
-      Width = 142
-      Height = 30
-      Margins.Left = 8
-      Align = alLeft
-      Caption = 'Sort: Score'
-      TabOrder = 1
-      OnClick = HandleSortButtonClick
-    end
-    object TagToggleButton: TButton
-      AlignWithMargins = True
-      Left = 291
-      Top = 3
-      Width = 110
-      Height = 30
-      Margins.Left = 8
-      Align = alLeft
-      Caption = 'Hide Tags'
-      TabOrder = 2
-      OnClick = HandleTagToggleButtonClick
-    end
-    object EditSourcesButton: TButton
-      AlignWithMargins = True
-      Left = 412
-      Top = 3
-      Width = 118
-      Height = 30
-      Margins.Left = 8
-      Align = alLeft
-      Caption = 'Edit Sources...'
-      TabOrder = 3
-      OnClick = HandleEditSourcesButtonClick
-    end
-    object ScanProgressBar: TProgressBar
-      AlignWithMargins = True
-      Left = 1035
-      Top = 3
-      Width = 330
-      Height = 30
-      Align = alRight
-      Style = pbstMarquee
-      MarqueeInterval = 30
-      TabOrder = 7
-      Visible = False
-    end
-    object DiagnosticsButton: TButton
-      AlignWithMargins = True
-      Left = 929
-      Top = 3
-      Width = 100
-      Height = 30
-      Margins.Left = 8
-      Align = alRight
-      Caption = '&Diagnostics'
-      TabOrder = 5
-      OnClick = HandleDiagnosticsButtonClick
-    end
-    object DockerGpuButton: TButton
-      AlignWithMargins = True
-      Left = 785
-      Top = 3
-      Width = 128
-      Height = 30
-      Margins.Right = 8
-      Align = alRight
-      Caption = 'Start Docker Stack'
-      TabOrder = 4
-      OnClick = HandleDockerGpuButtonClick
-    end
-    object DockerHealthLabel: TStaticText
-      AlignWithMargins = True
-      Left = 652
-      Top = 3
-      Width = 126
-      Height = 30
-      Margins.Right = 4
-      Align = alRight
-      AutoSize = False
-      Caption = 'Docker: checking...'
-      TabOrder = 6
-    end
-    object ScanAnimation: TSkAnimatedImage
-      AlignWithMargins = True
-      Left = 609
-      Top = 0
-      Width = 36
+      Left = 1256
+      Top = 8
+      Width = 112
       Height = 36
-      Margins.Left = 4
+      Hint = 'Docker|Start the local Docker stack used by Ollama.|0'
+      Margins.Left = 12
       Margins.Top = 0
-      Margins.Right = 4
+      Margins.Right = 0
       Margins.Bottom = 0
       Align = alRight
+      Caption = 'Start now'
+      ImageIndex = 9
+      Images = ButtonImages
+      Margin = 6
+      ParentShowHint = False
+      ShowHint = True
+      Spacing = 6
+      TabOrder = 0
+      OnClick = HandleDockerGpuButtonClick
+    end
+    object DockerAlertIconText: TStaticText
+      AlignWithMargins = True
+      Left = 16
+      Top = 8
+      Width = 24
+      Height = 36
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 12
+      Margins.Bottom = 0
+      Align = alLeft
+      Alignment = taCenter
+      AutoSize = False
+      Caption = '!'
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = clWindowText
+      Font.Height = -19
+      Font.Name = 'Segoe UI'
+      Font.Style = [fsBold]
+      ParentFont = False
+      TabOrder = 1
+    end
+    object DockerAlertText: TStaticText
+      AlignWithMargins = True
+      Left = 52
+      Top = 8
+      Width = 1192
+      Height = 36
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 0
+      Align = alClient
+      AutoSize = False
+      Caption = 'Docker or Ollama is not running. Start the local stack now.'
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = 4473924
+      Font.Height = -13
+      Font.Name = 'Segoe UI'
+      Font.Style = []
+      ParentFont = False
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 2
+    end
+  end
+  object ActivityPanel: TPanel
+    Left = 0
+    Top = 184
+    Width = 1384
+    Height = 168
+    Align = alTop
+    BevelOuter = bvNone
+    Color = 15986679
+    Padding.Left = 16
+    Padding.Top = 16
+    Padding.Right = 16
+    Padding.Bottom = 16
+    ParentBackground = False
+    TabOrder = 3
+    Visible = False
+    object ScanAnimation: TSkAnimatedImage
+      AlignWithMargins = True
+      Left = 16
+      Top = 16
+      Width = 128
+      Height = 136
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 16
+      Margins.Bottom = 0
+      Align = alLeft
       Visible = False
       Animation.Enabled = False
       Animation.StartFromCurrent = True
@@ -2004,97 +2168,88 @@ object MainForm: TMainForm
         7B22746D223A37322C22636D223A223220746F2033222C226472223A32347D2C
         7B22746D223A3132302C22636D223A22456E64222C226472223A32347D5D7D}
     end
-  end
-  object MainPanel: TPanel
-    Left = 0
-    Top = 116
-    Width = 1384
-    Height = 686
-    Align = alClient
-    BevelOuter = bvNone
-    Color = clWhite
-    Padding.Left = 12
-    Padding.Top = 8
-    Padding.Right = 12
-    Padding.Bottom = 12
-    ParentBackground = False
-    TabOrder = 2
-    object TagBrowserSplitter: TSplitter
-      Left = 192
-      Top = 8
-      Width = 6
-      Height = 666
-    end
-    object ResultsPreviewSplitter: TSplitter
-      Left = 946
-      Top = 8
-      Width = 6
-      Height = 666
-      Align = alRight
-    end
-    object TagBrowserPanel: TPanel
-      Left = 12
-      Top = 8
-      Width = 180
-      Height = 666
-      Align = alLeft
+    object pnlScanningRight: TPanel
+      AlignWithMargins = True
+      Left = 163
+      Top = 19
+      Width = 1202
+      Height = 130
+      Align = alClient
       BevelOuter = bvNone
-      TabOrder = 0
-      object TagBrowserLabel: TStaticText
-        Left = 0
-        Top = 0
-        Width = 180
-        Height = 20
-        Align = alTop
+      Caption = 'pnlScanningRight'
+      ShowCaption = False
+      TabOrder = 1
+      object ActivityText: TStaticText
+        AlignWithMargins = True
+        Left = 6
+        Top = 62
+        Width = 1196
+        Height = 68
+        Margins.Left = 6
+        Margins.Top = 12
+        Margins.Right = 0
+        Margins.Bottom = 0
+        Align = alClient
         AutoSize = False
-        Caption = 'Tags'
+        Caption = 'Working...'
         Font.Charset = DEFAULT_CHARSET
         Font.Color = 4473924
         Font.Height = -13
         Font.Name = 'Segoe UI'
-        Font.Style = [fsBold]
+        Font.Style = []
         ParentFont = False
-        TabOrder = 2
-      end
-      object TagFilterEdit: TEdit
-        AlignWithMargins = True
-        Left = 0
-        Top = 24
-        Width = 180
-        Height = 25
-        Margins.Left = 0
-        Margins.Top = 4
-        Margins.Right = 0
-        Margins.Bottom = 4
-        Align = alTop
-        Hint = 'Filter tags: type words (AND), prefix ! to exclude, use | for OR, * for wildcard. Example: api !deprecated docker|http'
-        ShowHint = True
         TabOrder = 0
-        TextHint = 'Filter tags...'
-        OnChange = HandleTagFilterEditChange
       end
-      object TagListBox: TListBox
-        Left = 0
-        Top = 53
-        Width = 180
-        Height = 613
-        Align = alClient
-        ItemHeight = 17
+      object ScanProgressBar: TProgressBar
+        AlignWithMargins = True
+        Left = 6
+        Top = 0
+        Width = 1076
+        Height = 38
+        Margins.Left = 6
+        Margins.Top = 0
+        Margins.Right = 120
+        Margins.Bottom = 12
+        Align = alTop
+        Style = pbstMarquee
+        MarqueeInterval = 30
         TabOrder = 1
-        OnClick = HandleTagListBoxClick
+        Visible = False
       end
     end
+  end
+  object MainPanel: TPanel
+    Left = 0
+    Top = 352
+    Width = 1384
+    Height = 450
+    Align = alClient
+    BevelOuter = bvNone
+    Color = clWhite
+    Padding.Left = 16
+    Padding.Top = 16
+    Padding.Right = 16
+    Padding.Bottom = 16
+    ParentBackground = False
+    TabOrder = 2
+    object ResultsPreviewSplitter: TSplitter
+      Left = 942
+      Top = 16
+      Width = 6
+      Height = 418
+      Align = alRight
+    end
     object PreviewHostPanel: TPanel
-      Left = 952
-      Top = 8
+      Left = 948
+      Top = 16
       Width = 420
-      Height = 666
+      Height = 418
       Align = alRight
       BevelOuter = bvNone
       TabOrder = 1
       object PreviewInfoSplitter: TSplitter
         Left = 0
-        Top = 554
+        Top = 306
         Width = 420
         Height = 6
         Cursor = crVSplit
@@ -2102,7 +2257,7 @@ object MainForm: TMainForm
       end
       object DuplicateInfoPanel: TPanel
         Left = 0
-        Top = 560
+        Top = 312
         Width = 420
         Height = 106
         Align = alBottom
@@ -2141,7 +2296,7 @@ object MainForm: TMainForm
         Left = 0
         Top = 0
         Width = 420
-        Height = 554
+        Height = 306
         Align = alClient
         BevelOuter = bvNone
         TabOrder = 0
@@ -2163,7 +2318,7 @@ object MainForm: TMainForm
         end
         object RelatedPanel: TPanel
           Left = 0
-          Top = 422
+          Top = 174
           Width = 420
           Height = 132
           Align = alBottom
@@ -2192,46 +2347,83 @@ object MainForm: TMainForm
           end
         end
         object PreviewBrowser: TTMSFNCWebBrowser
+          AlignWithMargins = True
           Left = 0
-          Top = 20
+          Top = 24
           Width = 420
-          Height = 402
+          Height = 142
+          Margins.Left = 0
+          Margins.Top = 4
+          Margins.Right = 0
+          Margins.Bottom = 8
           Align = alClient
           ParentDoubleBuffered = False
           DoubleBuffered = True
           TabOrder = 0
+          OnInitialized = PreviewBrowserInitialized
         end
       end
     end
     object ResultsPanePanel: TPanel
-      Left = 198
-      Top = 8
-      Width = 748
-      Height = 666
+      Left = 16
+      Top = 16
+      Width = 926
+      Height = 418
       Align = alClient
       BevelOuter = bvNone
-      TabOrder = 2
-      object ResultsListLabel: TStaticText
+      TabOrder = 0
+      object ResultsHeaderPanel: TPanel
         Left = 0
         Top = 0
-        Width = 748
-        Height = 20
+        Width = 926
+        Height = 32
         Align = alTop
-        AutoSize = False
-        Caption = 'Search results'
-        Font.Charset = DEFAULT_CHARSET
-        Font.Color = 4473924
-        Font.Height = -13
-        Font.Name = 'Segoe UI'
-        Font.Style = [fsBold]
-        ParentFont = False
+        BevelOuter = bvNone
         TabOrder = 1
+        object SortButton: TSpeedButton
+          AlignWithMargins = True
+          Left = 894
+          Top = 0
+          Width = 32
+          Height = 32
+          Hint = 
+            'Sort results|Current sort: Score. Click to choose another sort o' +
+            'rder.|0'
+          Margins.Left = 8
+          Margins.Top = 0
+          Margins.Right = 0
+          Margins.Bottom = 0
+          Align = alRight
+          ImageIndex = 4
+          ImageName = 'sort'
+          Images = ButtonImages
+          Flat = True
+          ParentShowHint = False
+          ShowHint = True
+          OnClick = HandleSortButtonClick
+        end
+        object ResultsListLabel: TStaticText
+          Left = 0
+          Top = 0
+          Width = 886
+          Height = 32
+          Align = alClient
+          AutoSize = False
+          Caption = 'Search results (Ctrl+R)'
+          Font.Charset = DEFAULT_CHARSET
+          Font.Color = 4473924
+          Font.Height = -13
+          Font.Name = 'Segoe UI'
+          Font.Style = [fsBold]
+          ParentFont = False
+          TabOrder = 0
+        end
       end
       object ResultsListView: TListView
         Left = 0
-        Top = 20
-        Width = 748
-        Height = 646
+        Top = 32
+        Width = 926
+        Height = 386
         Align = alClient
         Columns = <>
         HideSelection = False
@@ -2255,7 +2447,7 @@ object MainForm: TMainForm
     Panels = <
       item
         Text = 'Ready'
-        Width = 350
+        Width = 280
       end
       item
         Text = 'Found: 0 | Valid: 0 | Unique: 0 | Results: 0'
@@ -2263,19 +2455,237 @@ object MainForm: TMainForm
       end
       item
         Text = 'Last scan: n/a'
-        Width = 280
+        Width = 220
+      end
+      item
+        Text = 'Ollama: checking...'
+        Width = 220
       end
       item
         Text = 'Cache: n/a'
-        Width = 404
+        Width = 314
       end>
   end
-  object IconImages: TImageList
+  object HintBalloon: TBalloonHint
+    Left = 120
+    Top = 160
+  end
+  object ScanActivityTimer: TTimer
+    Enabled = False
+    Interval = 200
+    OnTimer = HandleScanActivityTimer
+    Left = 40
+    Top = 160
+  end
+  object ButtonImages: TVirtualImageList
+    AutoFill = True
+    Images = <
+      item
+        CollectionIndex = 0
+        CollectionName = 'search'
+        Name = 'search'
+      end
+      item
+        CollectionIndex = 1
+        CollectionName = 'scan'
+        Name = 'scan'
+      end
+      item
+        CollectionIndex = 2
+        CollectionName = 'recent'
+        Name = 'recent'
+      end
+      item
+        CollectionIndex = 3
+        CollectionName = 'syntax'
+        Name = 'syntax'
+      end
+      item
+        CollectionIndex = 4
+        CollectionName = 'sort'
+        Name = 'sort'
+      end
+      item
+        CollectionIndex = 5
+        CollectionName = 'tags'
+        Name = 'tags'
+      end
+      item
+        CollectionIndex = 6
+        CollectionName = 'sources'
+        Name = 'sources'
+      end
+      item
+        CollectionIndex = 7
+        CollectionName = 'settings'
+        Name = 'settings'
+      end
+      item
+        CollectionIndex = 8
+        CollectionName = 'diagnostics'
+        Name = 'diagnostics'
+      end
+      item
+        CollectionIndex = 9
+        CollectionName = 'docker'
+        Name = 'docker'
+      end>
+    ImageCollection = ButtonSvgCollection
     Width = 20
     Height = 20
-    ColorDepth = cd32Bit
     Left = 200
-    Top = 152
+    Top = 160
+  end
+  object ButtonSvgCollection: TAdvSVGImageCollection
+    Images = <
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D6170DF0000003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D226D32312032312D
+          342E33352D342E3335222F3E3C636972636C652063783D223131222063793D22
+          31312220723D22372E3235222F3E3C2F7376673E}
+        Name = 'search'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D6170230100003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D224D332031326139
+          20392030203020312031352E33362D362E33364C32312038222F3E3C70617468
+          20643D224D323120337635682D35222F3E3C7061746820643D224D3231203132
+          613920392030203020312D31352E333620362E33364C33203136222F3E3C7061
+          746820643D224D3820313648337635222F3E3C2F7376673E}
+        Name = 'scan'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D6170F70000003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D224D332031326139
+          203920302031203020322E36342D362E33364C332038222F3E3C706174682064
+          3D224D33203376356835222F3E3C7061746820643D224D3132203776356C3320
+          312E38222F3E3C2F7376673E}
+        Name = 'recent'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D61700E0100003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D224D392E31203961
+          33203320302031203120352E382031633020322D322E3920322E342D322E3920
+          342E35222F3E3C7061746820643D224D31322031372E35682E3031222F3E3C63
+          6972636C652063783D223132222063793D2231322220723D2239222F3E3C2F73
+          76673E}
+        Name = 'syntax'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D6170FA0000003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D226D3720342D3320
+          3320332033222F3E3C7061746820643D224D342037683133222F3E3C70617468
+          20643D226D313720323020332D332D332D33222F3E3C7061746820643D224D32
+          302031374837222F3E3C2F7376673E}
+        Name = 'sort'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D6170640100003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D224D31322E362032
+          2E36413220322030203020302031312E31372032483461322032203020302030
+          2D32203276372E313761322032203020302030202E353920312E34326C382E37
+          20382E363961322E343220322E343220302030203020332E343220306C362E35
+          372D362E353761322E343220322E343220302030203020302D332E34327A222F
+          3E3C636972636C652063783D22372E35222063793D22372E352220723D222E35
+          35222066696C6C3D2223344235353633222F3E3C2F7376673E}
+        Name = 'tags'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D6170480100003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D224D332036613220
+          3220302030203120322D3268346C322032683861322032203020302031203220
+          327632222F3E3C7061746820643D224D33203130683138222F3E3C7061746820
+          643D226D3520323020312E342D372E314132203220302030203120382E333620
+          313148323061312031203020302031202E393820312E326C2D312E3220364132
+          20322030203020312031372E383220323048355A222F3E3C2F7376673E}
+        Name = 'sources'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D61706D0100003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C6C696E652078313D2234222079313D
+          2236222078323D223134222079323D2236222F3E3C6C696E652078313D223130
+          222079313D223138222078323D223230222079323D223138222F3E3C6C696E65
+          2078313D2234222079313D223132222078323D223230222079323D223132222F
+          3E3C636972636C652063783D223137222063793D22362220723D2232222F3E3C
+          636972636C652063783D2237222063793D2231382220723D2232222F3E3C6369
+          72636C652063783D223134222063793D2231322220723D2232222F3E3C2F7376
+          673E}
+        Name = 'settings'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D61704B0100003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D224D392037683130
+          222F3E3C7061746820643D224D39203132683130222F3E3C7061746820643D22
+          4D39203137683130222F3E3C7061746820643D224D352037682E3031222F3E3C
+          7061746820643D224D35203132682E3031222F3E3C7061746820643D224D3520
+          3137682E3031222F3E3C7265637420783D22332220793D223322207769647468
+          3D22313822206865696768743D223138222072783D2232222F3E3C2F7376673E}
+        Name = 'diagnostics'
+      end
+      item
+        Data.Data = {
+          1054544D53464E435356474269746D6170740100003C73766720786D6C6E733D
+          22687474703A2F2F7777772E77332E6F72672F323030302F7376672220766965
+          77426F783D22302030203234203234222066696C6C3D226E6F6E652220737472
+          6F6B653D222334423535363322207374726F6B652D77696474683D22312E3922
+          207374726F6B652D6C696E656361703D22726F756E6422207374726F6B652D6C
+          696E656A6F696E3D22726F756E64223E3C7061746820643D224D313220327632
+          222F3E3C7061746820643D224D313720327632222F3E3C7061746820643D224D
+          3720327632222F3E3C7061746820643D224D322038683230222F3E3C70617468
+          20643D224D32203132683230222F3E3C7061746820643D224D32203136683230
+          222F3E3C7265637420783D22342220793D2234222077696474683D2231362220
+          6865696768743D223136222072783D2232222F3E3C7265637420783D22392220
+          793D2239222077696474683D223622206865696768743D2236222072783D2231
+          222F3E3C2F7376673E}
+        Name = 'docker'
+      end>
+    Left = 288
+    Top = 160
   end
   object ResultsPopupMenu: TPopupMenu
     Left = 392

@@ -1,4 +1,4 @@
-unit SettingsModel;
+﻿unit SettingsModel;
 
 interface
 
@@ -60,6 +60,7 @@ type
   TUiSettings = record
     CloseToTray: Boolean;
     OpenFileOnEnter: Boolean;
+    SearchAsYouType: Boolean;
     ShowPreviewPane: Boolean;
     TrayHotkey: string;
   end;
@@ -153,6 +154,7 @@ begin
   Result.Ui.CloseToTray := False;
   Result.Ui.ShowPreviewPane := True;
   Result.Ui.OpenFileOnEnter := True;
+  Result.Ui.SearchAsYouType := Result.Search.SearchAsYouType;
   Result.Ui.TrayHotkey := '';
 
   Result.UiState.CurrentPPI := 0;

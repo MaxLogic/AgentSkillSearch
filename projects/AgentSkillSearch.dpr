@@ -1,4 +1,4 @@
-program AgentSkillSearch;
+﻿program AgentSkillSearch;
 
 {$IFNDEF WIN64}
   {$MESSAGE FATAL 'AgentSkillSearch requires Win64. Build target Win64 is mandatory because our SQLite runtime is x64-only.'}
@@ -17,6 +17,7 @@ uses
   DatabaseManager in '..\src\Db\DatabaseManager.pas',
   DockerHealthMonitor in '..\src\Docker\DockerHealthMonitor.pas',
   DockerOps in '..\src\Docker\DockerOps.pas',
+  DockerStatusUi in '..\src\Docker\DockerStatusUi.pas',
   ExternalTools in '..\src\ExternalTools.pas',
   GitPullWorker in '..\src\Git\GitPullWorker.pas',
   RepoDetection in '..\src\Git\RepoDetection.pas',
@@ -29,6 +30,7 @@ uses
   RepoScanner in '..\src\Scanner\RepoScanner.pas',
   ScanEngine in '..\src\Scanner\ScanEngine.pas',
   QueryParser in '..\src\Search\QueryParser.pas',
+  ScanActivityUi in '..\src\ScanActivityUi.pas',
   SearchController in '..\src\Search\SearchController.pas',
   SearchInteraction in '..\src\Search\SearchInteraction.pas',
   SearchResultActions in '..\src\Search\SearchResultActions.pas',
@@ -42,6 +44,7 @@ uses
   DiagnosticsForm in '..\src\UI\DiagnosticsForm.pas',
   MainForm in '..\src\UI\MainForm.pas' {AppMainForm},
   PreviewRenderer in '..\src\UI\PreviewRenderer.pas',
+  TagFilterDialog in '..\src\UI\TagFilterDialog.pas' {TagFilterDialog},
   SourcesEditorForm in '..\src\UI\SourcesEditorForm.pas' {SourcesEditorForm};
 
 {$R *.res}

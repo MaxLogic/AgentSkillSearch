@@ -50,6 +50,7 @@
     <DCCReference Include="..\src\Indexer\SkillIndexer.pas" />
     <DCCReference Include="..\src\Indexer\SkillTypes.pas" />
     <DCCReference Include="..\src\Pipeline\PipelineCoordinator.pas" />
+    <DCCReference Include="..\src\ScanActivityUi.pas" />
     <DCCReference Include="..\src\Scanner\RepoScanner.pas" />
     <BuildConfiguration Include="Base">
       <Key>Base</Key>

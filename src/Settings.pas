@@ -1,4 +1,4 @@
-unit Settings;
+﻿unit Settings;
 
 interface
 
@@ -347,6 +347,7 @@ begin
   ForceDirectories(ExtractFilePath(aSettingsPath));
   lIni := TMemIniFile.Create(aSettingsPath, TEncoding.UTF8);
   try
+    lIni.WriteString('UI', 'SearchAsYouType', BoolToIniValue(aUiState.SearchAsYouType));
     lIni.WriteInteger('UIState', 'CurrentPPI', aUiState.CurrentPPI);
     lIni.WriteInteger('UIState', 'DuplicateInfoWidth', aUiState.DuplicateInfoWidth);
     lIni.WriteString('UIState', 'LastQuery', aUiState.LastQuery);
@@ -373,6 +374,7 @@ begin
   try
     lIni.WriteString('UI', 'CloseToTray', BoolToIniValue(aUiSettings.CloseToTray));
     lIni.WriteString('UI', 'OpenFileOnEnter', BoolToIniValue(aUiSettings.OpenFileOnEnter));
+    lIni.WriteString('UI', 'SearchAsYouType', BoolToIniValue(aUiSettings.SearchAsYouType));
     lIni.WriteString('UI', 'ShowPreviewPane', BoolToIniValue(aUiSettings.ShowPreviewPane));
     lIni.WriteString('UI', 'TrayHotkey', aUiSettings.TrayHotkey);
     lIni.UpdateFile;
@@ -419,6 +421,7 @@ var
   lName: string;
   lSectionValues: TStringList;
   lSettingsDir: string;
+  lUiSearchAsYouTypeExists: Boolean;
 begin
   lDefault := DefaultAppSettings;
   Result.SettingsPath := aSettingsPath;
@@ -515,6 +518,9 @@ begin
       lDefault.Ui.ShowPreviewPane);
     Result.Settings.Ui.OpenFileOnEnter := ReadRequiredBool(lIni, Result, 'UI', 'OpenFileOnEnter',
       lDefault.Ui.OpenFileOnEnter);
+    lUiSearchAsYouTypeExists := lIni.ValueExists('UI', 'SearchAsYouType');
+    Result.Settings.Ui.SearchAsYouType := ReadRequiredBool(lIni, Result, 'UI', 'SearchAsYouType',
+      lDefault.Ui.SearchAsYouType);
     Result.Settings.Ui.TrayHotkey := ReadRequiredStringAllowEmpty(lIni, Result, 'UI', 'TrayHotkey',
       lDefault.Ui.TrayHotkey);
 
@@ -551,6 +557,13 @@ begin
       lDefault.UiState.ResultsPaneWidth);
     Result.Settings.UiState.SearchAsYouType := ReadRequiredBool(lIni, Result, 'UIState', 'SearchAsYouType',
       lDefault.UiState.SearchAsYouType);
+    if not lUiSearchAsYouTypeExists then
+    begin
+      Result.Settings.Ui.SearchAsYouType := Result.Settings.UiState.SearchAsYouType;
+      lIni.WriteString('UI', 'SearchAsYouType', BoolToIniValue(Result.Settings.Ui.SearchAsYouType));
+      AddRestoredKey(Result, 'UI', 'SearchAsYouType');
+    end;
+    Result.Settings.UiState.SearchAsYouType := Result.Settings.Ui.SearchAsYouType;
     Result.Settings.UiState.WindowHeight := ReadRequiredInteger(lIni, Result, 'UIState', 'WindowHeight',
       lDefault.UiState.WindowHeight);
     Result.Settings.UiState.WindowLeft := ReadRequiredInteger(lIni, Result, 'UIState', 'WindowLeft',

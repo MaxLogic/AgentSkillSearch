@@ -1,11 +1,17 @@
-unit SearchInteraction;
+﻿unit SearchInteraction;
 
 interface
 
 uses
+  System.Classes,
   SettingsModel;
 
 type
+  TMainFormFocusTarget = (
+    mfftSearch,
+    mfftResults
+  );
+
   TPreparedSearchProc = reference to procedure(const aQuery: string);
 
 procedure ExecuteHistorySelection(const aQuery: string; var aHistory: TSearchHistorySettings;
@@ -13,7 +19,10 @@ procedure ExecuteHistorySelection(const aQuery: string; var aHistory: TSearchHis
 procedure ExecuteImmediateSearch(const aQuery: string; var aHistory: TSearchHistorySettings;
   const aOnPrepared: TPreparedSearchProc);
 function AppendTagFilterQuery(const aQuery, aTag: string): string;
+function BuildSelectedTagsQuery(const aTags: TArray<string>): string;
 function PrepareImmediateSearchQuery(const aQuery: string; var aHistory: TSearchHistorySettings): string;
+function TryResolveMainFormFocusShortcut(const aKey: Word; const aShift: TShiftState;
+  out aTarget: TMainFormFocusTarget): Boolean;
 function ScaleStoredUiValue(const aValue, aStoredPPI, aCurrentPPI: Integer): Integer;
 
 implementation
@@ -72,10 +81,67 @@ begin
   Result := lQuery + ' ' + lTagToken;
 end;
 
+function BuildSelectedTagsQuery(const aTags: TArray<string>): string;
+var
+  lClauses: TStringList;
+  lTag: string;
+  lTagToken: string;
+  lJoined: string;
+begin
+  lClauses := TStringList.Create;
+  try
+    lClauses.CaseSensitive := False;
+
+    for lTag in aTags do
+    begin
+      lTagToken := AppendTagFilterQuery('', lTag);
+      if (lTagToken <> '') and (lClauses.IndexOf(lTagToken) < 0) then
+      begin
+        lClauses.Add(lTagToken);
+      end;
+    end;
+
+    case lClauses.Count of
+      0:
+        Result := '';
+      1:
+        Result := lClauses[0];
+    else
+      begin
+        lJoined := TrimRight(lClauses.Text);
+        lJoined := StringReplace(lJoined, sLineBreak, ' OR ', [rfReplaceAll]);
+        Result := '(' + lJoined + ')';
+      end;
+    end;
+  finally
+    lClauses.Free;
+  end;
+end;
+
 function PrepareImmediateSearchQuery(const aQuery: string; var aHistory: TSearchHistorySettings): string;
 begin
   Result := Trim(aQuery);
   PushSearchHistoryEntry(aHistory, Result);
+end;
+
+function TryResolveMainFormFocusShortcut(const aKey: Word; const aShift: TShiftState;
+  out aTarget: TMainFormFocusTarget): Boolean;
+begin
+  Result := True;
+  if (aKey = Ord('L')) and (aShift = [ssCtrl]) then
+  begin
+    aTarget := TMainFormFocusTarget.mfftSearch;
+    Exit;
+  end;
+
+  if (aKey = Ord('R')) and (aShift = [ssCtrl]) then
+  begin
+    aTarget := TMainFormFocusTarget.mfftResults;
+    Exit;
+  end;
+
+  aTarget := TMainFormFocusTarget.mfftSearch;
+  Result := False;
 end;
 
 function ScaleStoredUiValue(const aValue, aStoredPPI, aCurrentPPI: Integer): Integer;
