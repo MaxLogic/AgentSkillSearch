@@ -13,6 +13,7 @@ type
     BtnEditSources: TBitBtn;
     BtnCancel: TBitBtn;
     BtnOK: TBitBtn;
+    ChkCheckForUpdatesOnStartup: TCheckBox;
     ChkCloseToTray: TCheckBox;
     ChkSearchAsYouType: TCheckBox;
     GrpBehaviour: TPanel;
@@ -22,14 +23,17 @@ type
   private
     fSourcesEdited: Boolean;
     fSourcesListPath: string;
+    function GetCheckForUpdatesOnStartup: Boolean;
     function GetCloseToTray: Boolean;
     function GetSearchAsYouType: Boolean;
+    procedure SetCheckForUpdatesOnStartup(const aValue: Boolean);
     procedure SetCloseToTray(const aValue: Boolean);
     procedure SetSearchAsYouType(const aValue: Boolean);
   published
     procedure HandleEditSourcesClick(Sender: TObject);
   public
     constructor Create(aOwner: TComponent); override;
+    property CheckForUpdatesOnStartup: Boolean read GetCheckForUpdatesOnStartup write SetCheckForUpdatesOnStartup;
     property CloseToTray: Boolean read GetCloseToTray write SetCloseToTray;
     property SearchAsYouType: Boolean read GetSearchAsYouType write SetSearchAsYouType;
     property SourcesEdited: Boolean read fSourcesEdited;
@@ -69,9 +73,19 @@ begin
   Result := ChkCloseToTray.Checked;
 end;
 
+function TConfigDlg.GetCheckForUpdatesOnStartup: Boolean;
+begin
+  Result := ChkCheckForUpdatesOnStartup.Checked;
+end;
+
 function TConfigDlg.GetSearchAsYouType: Boolean;
 begin
   Result := ChkSearchAsYouType.Checked;
+end;
+
+procedure TConfigDlg.SetCheckForUpdatesOnStartup(const aValue: Boolean);
+begin
+  ChkCheckForUpdatesOnStartup.Checked := aValue;
 end;
 
 procedure TConfigDlg.SetCloseToTray(const aValue: Boolean);

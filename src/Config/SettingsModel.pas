@@ -58,6 +58,7 @@ type
   end;
 
   TUiSettings = record
+    CheckForUpdatesOnStartup: Boolean;
     CloseToTray: Boolean;
     OpenFileOnEnter: Boolean;
     SearchAsYouType: Boolean;
@@ -152,6 +153,7 @@ begin
   Result.Semantic.EmbeddingCache := True;
 
   Result.Ui.CloseToTray := False;
+  Result.Ui.CheckForUpdatesOnStartup := True;
   Result.Ui.ShowPreviewPane := True;
   Result.Ui.OpenFileOnEnter := True;
   Result.Ui.SearchAsYouType := Result.Search.SearchAsYouType;
