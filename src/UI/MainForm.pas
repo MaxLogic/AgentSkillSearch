@@ -3,43 +3,50 @@
 interface
 
 uses
-  System.Classes, System.Types, Winapi.Messages, Winapi.ShellAPI, System.Skia, Vcl.ComCtrls, Vcl.Controls,
-  Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.Skia, Vcl.StdCtrls,
+  System.Classes, System.Types, Winapi.Messages, Winapi.ShellAPI, Vcl.Buttons, Vcl.ComCtrls, Vcl.Controls,
+  Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.Skia, Vcl.StdCtrls, Vcl.VirtualImageList,
   VCL.TMSFNCWebBrowser,
-  DatabaseManager, DockerHealthMonitor, DockerOps, ExternalTools, PipelineCoordinator, RelatedSkillActions,
-  SearchController, SearchInteraction, SearchResultActions, SettingsModel, SkillSearchService, TagBrowserActions,
-  TrayActions, Vcl.ImgList, VCL.TMSFNCTypes, VCL.TMSFNCUtils,
-  VCL.TMSFNCGraphics, VCL.TMSFNCGraphicsTypes, System.ImageList,
-  VCL.TMSFNCCustomControl;
+  AdvTypes,
+  DatabaseManager, DockerHealthMonitor, DockerOps, DockerStatusUi, ExternalTools, PipelineCoordinator,
+  RelatedSkillActions, ScanActivityUi, ScanProgressBuffer,
+  SearchController, SearchInteraction, SearchResultActions, SettingsModel, SkillSearchService,
+  TrayActions, VCL.TMSFNCCustomControl, VCL.TMSFNCGraphics, VCL.TMSFNCGraphicsTypes, VCL.TMSFNCTypes,
+  VCL.TMSFNCUtils, System.Skia, Vcl.BaseImageCollection, System.ImageList,
+  Vcl.ImgList;
 
 type
+  TScanCompletionSnapshot = record
+    CompletedAt: TDateTime;
+    ErrorText: string;
+    SkillsUniqueCount: Integer;
+    SkillsValidCount: Integer;
+    TagBrowserItems: TArray<TSkillTagInfo>;
+  end;
+
   TAppMainForm = class(TForm)
     SearchPanel: TPanel;
     SearchActionsPanel: TPanel;
     SearchFieldPanel: TPanel;
     SearchEdit: TEdit;
-    SearchHistoryButton: TButton;
-    SearchEditLabel: TStaticText;
-    SearchHelpButton: TButton;
-    SearchButton: TButton;
-    ScanButton: TButton;
+    SearchHistoryButton: TSpeedButton;
+    SearchHelpButton: TSpeedButton;
+    SearchButton: TBitBtn;
+    ScanButton: TBitBtn;
     ScanProgressBar: TProgressBar;
-    DiagnosticsButton: TButton;
-    SearchAsYouTypeCheckBox: TCheckBox;
-    DockerGpuButton: TButton;
-    FiltersPanel: TPanel;
-    DockerHealthLabel: TStaticText;
+    DiagnosticsButton: TSpeedButton;
+    DockerGpuButton: TBitBtn;
+    DockerAlertPanel: TPanel;
+    DockerAlertIconText: TStaticText;
+    DockerAlertText: TStaticText;
     HasScriptsCheckBox: TCheckBox;
-    SortButton: TButton;
-    TagToggleButton: TButton;
-    EditSourcesButton: TButton;
+    SortButton: TSpeedButton;
+    TagToggleButton: TSpeedButton;
+    SettingsButton: TSpeedButton;
     ScanAnimation: TSkAnimatedImage;
+    ActivityPanel: TPanel;
+    ActivityText: TStaticText;
+    ScanActivityTimer: TTimer;
     MainPanel: TPanel;
-    TagBrowserPanel: TPanel;
-    TagBrowserSplitter: TSplitter;
-    TagBrowserLabel: TStaticText;
-    TagFilterEdit: TEdit;
-    TagListBox: TListBox;
     ResultsPanePanel: TPanel;
     ResultsListView: TListView;
     ResultsPreviewSplitter: TSplitter;
@@ -56,14 +63,20 @@ type
     ResultsListLabel: TStaticText;
     PreviewBrowser: TTMSFNCWebBrowser;
     StatusBar: TStatusBar;
-    IconImages: TImageList;
+    ButtonImages: TVirtualImageList;
+    ButtonSvgCollection: TAdvSVGImageCollection;
     ResultsPopupMenu: TPopupMenu;
     SortPopupMenu: TPopupMenu;
     SearchHistoryPopupMenu: TPopupMenu;
+    HintBalloon: TBalloonHint;
     ExportResultsMenuItem: TMenuItem;
     OpenFileMenuItem: TMenuItem;
     OpenFolderMenuItem: TMenuItem;
     CopyPathMenuItem: TMenuItem;
+    pnlScanningRight: TPanel;
+    SearchEditLabel: TStaticText;
+    procedure FormCreate(Sender: TObject);
+    procedure PreviewBrowserInitialized(Sender: TObject);
   private
     fTrayHotkeyRegistered: Boolean;
     fTrayIconData: TNotifyIconData;
@@ -79,34 +92,43 @@ type
     fScanCancelToken: TPipelineCancellationToken;
     fScanInProgress: Boolean;
     fScanHourGlass: IInterface;
+    fScanProgress: TPipelineProgress;
+    fScanStartedAt: TDateTime;
     fScanThread: TThread;
     fDockerHealthMonitor: TDockerHealthMonitor;
+    fDockerHealthDetail: string;
     fDockerHealthState: TDockerHealthState;
+    fDockerStartFailureMessage: string;
     fDockerStartInProgress: Boolean;
     fDockerStartHourGlass: IInterface;
     fCurrentSortMode: TSearchSortMode;
+    fPendingPreviewHtml: string;
+    fPreviewBrowserReady: Boolean;
+    fScanProgressBuffer: TScanProgressBuffer;
     fSearchHistory: TSearchHistorySettings;
     fSearchController: TSearchController;
     fSearchService: TSkillSearchService;
+    fSelectedTags: TStringList;
     fSettingsPath: string;
     fSkillsFoundCount: Integer;
     fRelatedItems: TArray<TRelatedSkillResult>;
     fTagBrowserItems: TArray<TSkillTagInfo>;
-    fTagFilterGeneration: Integer;
-    fTagFilterTimer: TTimer;
     fSkillsUniqueCount: Integer;
     fSkillsValidCount: Integer;
     fSourcesListPath: string;
     procedure ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
+    procedure ApplyPendingScanProgress;
     function BuildPipelineOptions: TPipelineOptions;
     procedure BeginScanProgress;
     procedure BeginDockerStart;
+    procedure ConfigureBalloonHints;
     procedure EndDockerStart;
-    procedure HandleTagFilterTimer(Sender: TObject);
     procedure HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
     procedure HandleDockerStartCompleted(const aResult: TDockerCommandResult);
     procedure EndScanProgress;
-    procedure LoadButtonIcons;
+    procedure HideActivityUi;
+    procedure HandlePendingScanProgress(const aProgress: TPipelineProgress);
+    procedure RefreshScanActivityUi;
     procedure StartDockerStackAsync;
     function BuildEffectiveQuery: string;
     procedure CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
@@ -125,6 +147,7 @@ type
     procedure HideToTray;
     function IsResultSelectionValid: Boolean;
     procedure LoadUiState;
+    procedure LoadPreviewHtml(const aHtml: string);
     procedure OpenSelectedSkillFile;
     procedure OpenSelectedSkillFolder;
     procedure PopupTrayMenu;
@@ -148,8 +171,10 @@ type
     procedure ShowTrayIcon;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
     procedure UnregisterTrayHotkey;
+    procedure UpdateActivityUi(const aText: string; const aShowProgressBar: Boolean);
+    procedure UpdateDockerStatusUi;
     procedure UpdateStatus(const aText: string);
-    procedure UpdateTagBrowserUi;
+    procedure UpdateTagFilterUi;
     procedure UpdateSortUi;
     procedure UpdateSearchHistoryMenu;
     procedure WaitForWorkerThread(var aThread: TThread);
@@ -159,14 +184,13 @@ type
     procedure HandleCopyPathClick(Sender: TObject);
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleDockerGpuButtonClick(Sender: TObject);
-    procedure HandleEditSourcesButtonClick(Sender: TObject);
     procedure HandleExportResultsClick(Sender: TObject);
     procedure HandleExternalToolClick(Sender: TObject);
     procedure HandleFormClose(Sender: TObject; var Action: TCloseAction);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleHasScriptsClick(Sender: TObject);
     procedure HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
-      aFailure: string);
+      aFailure: string; const aCompletion: TScanCompletionSnapshot);
     procedure HandleOpenFileClick(Sender: TObject);
     procedure HandleOpenFolderClick(Sender: TObject);
     procedure HandleRelatedListBoxClick(Sender: TObject);
@@ -177,6 +201,7 @@ type
     procedure HandleSearchButtonClick(Sender: TObject);
     procedure HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
       const aError: string);
+    procedure HandleScanActivityTimer(Sender: TObject);
     procedure HandleSearchEditChange(Sender: TObject);
     procedure HandleSearchEditKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure HandleSearchHistoryButtonClick(Sender: TObject);
@@ -185,8 +210,6 @@ type
     procedure HandleScanButtonClick(Sender: TObject);
     procedure HandleSortButtonClick(Sender: TObject);
     procedure HandleSortMenuItemClick(Sender: TObject);
-    procedure HandleTagFilterEditChange(Sender: TObject);
-    procedure HandleTagListBoxClick(Sender: TObject);
     procedure HandleTagToggleButtonClick(Sender: TObject);
     procedure HandleTrayExitClick(Sender: TObject);
     procedure HandleTraySettingsClick(Sender: TObject);
@@ -202,12 +225,13 @@ var
 implementation
 
 uses
-  System.IOUtils, System.StrUtils, System.SysUtils,
+  System.DateUtils, System.IOUtils, System.StrUtils, System.SysUtils,
   Winapi.Windows,
-  Vcl.Clipbrd, Vcl.Dialogs, Vcl.Graphics,
-  MaxLogic.StrUtils,
-  AppPaths, AutoHourGlass, ConfigDlg, DiagnosticsForm, Logging, PathExclusions, PreviewRenderer, Settings,
-  SourcesEditorForm, SourcesList;
+  Vcl.Clipbrd, Vcl.Dialogs,
+  MaxLogic.BalloonDefaultImageList,
+  AppPaths, AutoHourGlass, ConfigDlg, DiagnosticsForm, Logging, PathExclusions, PreviewEmptyStateHtml,
+  PreviewRenderer, Settings, SourcesList, TagFilterDialog,
+  maxLogic.madExcept;
 
 {$R *.dfm}
 
@@ -220,7 +244,8 @@ const
   cStatusPanelStatus = 0;
   cStatusPanelCounters = 1;
   cStatusPanelLastScan = 2;
-  cStatusPanelCache = 3;
+  cStatusPanelDocker = 3;
+  cStatusPanelCache = 4;
   cTrayHotkeyId = 1;
   cTrayIconId = 1;
 
@@ -272,6 +297,28 @@ begin
   Result := True;
 end;
 
+function BuildScanCompletionSnapshot(const aDatabasePath, aSqliteDllPath: string): TScanCompletionSnapshot;
+var
+  lDatabaseManager: TDatabaseManager;
+begin
+  Result := Default(TScanCompletionSnapshot);
+  Result.CompletedAt := Now;
+
+  lDatabaseManager := TDatabaseManager.Create(aDatabasePath, aSqliteDllPath);
+  try
+    lDatabaseManager.Initialize;
+    Result.SkillsValidCount := lDatabaseManager.GetValidSkillCount;
+    Result.SkillsUniqueCount := lDatabaseManager.GetUniqueSkillCount;
+    Result.TagBrowserItems := lDatabaseManager.GetSkillTagCounts;
+  except
+    on E: Exception do
+    begin
+      Result.ErrorText := E.Message;
+    end;
+  end;
+  lDatabaseManager.Free;
+end;
+
 { TAppMainForm }
 
 constructor TAppMainForm.Create(aOwner: TComponent);
@@ -284,6 +331,10 @@ begin
   inherited Create(aOwner);
   AppMainForm := Self;
   fTrayState := DefaultTrayWindowState;
+  fSelectedTags := TStringList.Create;
+  fSelectedTags.CaseSensitive := False;
+  fSelectedTags.Duplicates := dupIgnore;
+  fSelectedTags.Sorted := True;
 
   lSettings := LoadOrCreateSettings(GetSettingsFilePath);
   fAppSettings := lSettings.Settings;
@@ -319,6 +370,8 @@ begin
   ConfigureColumns;
   fCurrentSortMode := DefaultSearchSortMode;
   BuildSortMenu;
+  ConfigureBalloonHints;
+  fScanProgressBuffer := TScanProgressBuffer.Create;
   fSearchHistory := fAppSettings.SearchHistory;
   if fSearchHistory.MaxItems <= 0 then
   begin
@@ -326,12 +379,10 @@ begin
   end;
   UpdateSearchHistoryMenu;
   LoadUiState;
-  LoadButtonIcons;
   PopulateExternalToolsMenu;
   RefreshTagBrowser;
-  UpdateTagBrowserUi;
+  UpdateTagFilterUi;
 
-  SearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
   StatusBar.Panels[cStatusPanelCache].Text := 'Cache: ' + fDbPath;
   StatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: n/a';
   fSkillsFoundCount := 0;
@@ -348,10 +399,16 @@ begin
   fSearchController.OnCompleted := HandleSearchCompleted;
   fDockerStartInProgress := False;
   fDockerStartThread := nil;
+  fPendingPreviewHtml := '';
+  fPreviewBrowserReady := False;
+  fScanProgress := Default(TPipelineProgress);
+  fScanStartedAt := 0;
+  fDockerHealthDetail := '';
   fDockerHealthState := TDockerHealthState.dhsUnknown;
-  DockerHealthLabel.Caption := 'Ollama: checking...';
-  DockerHealthLabel.Hint := '';
+  fDockerStartFailureMessage := '';
   fScanThread := nil;
+  HideActivityUi;
+  UpdateDockerStatusUi;
   fDockerHealthMonitor := TDockerHealthMonitor.Create(
     fAppSettings.Docker.HealthCheckCommand,
     10000,
@@ -388,12 +445,13 @@ begin
   lMenuItem.OnClick := HandleTrayExitClick;
   fTrayPopupMenu.Items.Add(lMenuItem);
 
-  fTagFilterTimer := TTimer.Create(Self);
-  fTagFilterTimer.Interval := 300;
-  fTagFilterTimer.Enabled := False;
-  fTagFilterTimer.OnTimer := HandleTagFilterTimer;
-
+  ShowEmptyPreview;
   QueueSearch(True);
+end;
+
+procedure TAppMainForm.FormCreate(Sender: TObject);
+begin
+  maxLogic.madExcept.SetUpWebUpload('https://maxlogic.eu/bugreport_mailer/bugreport_mailer.php', 'maxlogic');
 end;
 
 destructor TAppMainForm.Destroy;
@@ -418,6 +476,8 @@ begin
   fDockerHealthMonitor.Free;
   fSearchController.Free;
   fSearchService.Free;
+  fScanProgressBuffer.Free;
+  fSelectedTags.Free;
   fDatabaseManager.Free;
   inherited Destroy;
 end;
@@ -470,6 +530,125 @@ end;
 function TAppMainForm.ScaleStoredUiValue(const aValue, aStoredPPI: Integer): Integer;
 begin
   Result := SearchInteraction.ScaleStoredUiValue(aValue, aStoredPPI, CurrentPPI);
+end;
+
+procedure TAppMainForm.ConfigureBalloonHints;
+begin
+  HintBalloon.Images := TImageListForBalloonForm.Instance.ImageList1;
+  HintBalloon.ImageIndex := 0;
+  CustomHint := HintBalloon;
+  ShowHint := True;
+end;
+
+procedure TAppMainForm.ApplyPendingScanProgress;
+var
+  lProgress: TPipelineProgress;
+begin
+  if not Assigned(fScanProgressBuffer) then
+  begin
+    Exit;
+  end;
+
+  if fScanProgressBuffer.TryConsume(lProgress) then
+  begin
+    HandlePendingScanProgress(lProgress);
+  end;
+end;
+
+procedure TAppMainForm.UpdateActivityUi(const aText: string; const aShowProgressBar: Boolean);
+begin
+  ActivityText.Caption := aText;
+  ActivityPanel.Visible := True;
+  ScanProgressBar.Visible := aShowProgressBar;
+  if aShowProgressBar then
+  begin
+    ScanProgressBar.Style := pbstMarquee;
+    ScanProgressBar.MarqueeInterval := 30;
+  end;
+  ScanAnimation.Visible := True;
+  ScanAnimation.Animation.Loop := True;
+  ScanAnimation.Animation.Enabled := True;
+  ScanAnimation.Animation.Start;
+end;
+
+procedure TAppMainForm.RefreshScanActivityUi;
+var
+  lSnapshot: TScanActivitySnapshot;
+begin
+  lSnapshot := Default(TScanActivitySnapshot);
+  if fScanStartedAt > 0 then
+  begin
+    lSnapshot.ElapsedMs := MilliSecondsBetween(Now, fScanStartedAt);
+  end else begin
+    lSnapshot.ElapsedMs := fScanProgress.ElapsedMs;
+  end;
+  lSnapshot.ReposFailed := fScanProgress.ReposFailed;
+  lSnapshot.ReposFound := fScanProgress.ReposFound;
+  lSnapshot.ReposPulled := fScanProgress.ReposPulled;
+  lSnapshot.ReposThrottled := fScanProgress.ReposThrottled;
+  lSnapshot.SkillsFound := fScanProgress.SkillsFound;
+  lSnapshot.SkillsWritten := fScanProgress.SkillsWritten;
+  lSnapshot.StatusText := fScanProgress.StatusText;
+  UpdateActivityUi(BuildScanActivitySummary(lSnapshot), True);
+end;
+
+procedure TAppMainForm.HandlePendingScanProgress(const aProgress: TPipelineProgress);
+begin
+  fScanProgress := aProgress;
+  if Trim(aProgress.StatusText) <> '' then
+  begin
+    UpdateStatus(aProgress.StatusText);
+  end;
+  if fScanInProgress then
+  begin
+    RefreshScanActivityUi;
+  end;
+end;
+
+procedure TAppMainForm.HandleScanActivityTimer(Sender: TObject);
+begin
+  ApplyPendingScanProgress;
+  if fScanInProgress then
+  begin
+    RefreshScanActivityUi;
+  end;
+end;
+
+procedure TAppMainForm.HideActivityUi;
+begin
+  ScanActivityTimer.Enabled := False;
+  ScanProgressBar.Visible := False;
+  ScanAnimation.Animation.Loop := False;
+  ScanAnimation.Animation.Enabled := False;
+  ScanAnimation.Visible := False;
+  ActivityPanel.Visible := False;
+end;
+
+procedure TAppMainForm.UpdateDockerStatusUi;
+var
+  lDetail: string;
+  lUiState: TDockerStatusUiState;
+begin
+  lUiState := BuildDockerStatusUiState(
+    fDockerHealthState,
+    fDockerHealthDetail,
+    fDockerStartFailureMessage,
+    fDockerStartInProgress
+  );
+
+  StatusBar.Panels[cStatusPanelDocker].Text := lUiState.StatusText;
+  DockerAlertPanel.Visible := lUiState.ShowAlert;
+  DockerAlertText.Caption := lUiState.AlertText;
+  DockerGpuButton.Enabled := not fDockerStartInProgress;
+
+  lDetail := Trim(fDockerStartFailureMessage);
+  if lDetail = '' then
+  begin
+    lDetail := Trim(fDockerHealthDetail);
+  end;
+
+  DockerAlertText.Hint := lDetail;
+  DockerGpuButton.Hint := 'Docker|Start the local Docker stack used by Ollama.|0';
 end;
 
 procedure TAppMainForm.CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
@@ -570,7 +749,7 @@ begin
   Result.ResultSortMode := SearchSortModeToString(fCurrentSortMode);
   Result.ResultsColumnWidths := SerializeColumnWidths;
   Result.ResultsPaneWidth := PreviewHostPanel.Width;
-  Result.SearchAsYouType := SearchAsYouTypeCheckBox.Checked;
+  Result.SearchAsYouType := fAppSettings.Ui.SearchAsYouType;
   CaptureWindowBounds(Result.WindowLeft, Result.WindowTop, Result.WindowWidth, Result.WindowHeight);
 end;
 
@@ -593,7 +772,6 @@ begin
   UpdateSortUi;
 
   SearchEdit.Text := fAppSettings.UiState.LastQuery;
-  SearchAsYouTypeCheckBox.Checked := fAppSettings.UiState.SearchAsYouType;
 
   if (fAppSettings.UiState.WindowWidth > 0) and (fAppSettings.UiState.WindowHeight > 0) and
     ((fAppSettings.UiState.WindowLeft <> -1) or (fAppSettings.UiState.WindowTop <> -1)) then
@@ -643,11 +821,21 @@ end;
 
 procedure TAppMainForm.ShowEmptyPreview;
 begin
-  PreviewBrowser.LoadHTML('<html><body><p>No skill selected.</p></body></html>');
-  DuplicateInfoMemo.Lines.Text := 'No duplicate details available.';
+  LoadPreviewHtml(GetPreviewEmptyStateHtml);
+  DuplicateInfoMemo.Clear;
+  DuplicateInfoPanel.Visible := False;
   fRelatedItems := nil;
   PopulateRelatedSkillsListBox(RelatedListBox, fRelatedItems);
   RelatedPanel.Visible := False;
+end;
+
+procedure TAppMainForm.LoadPreviewHtml(const aHtml: string);
+begin
+  fPendingPreviewHtml := aHtml;
+  if fPreviewBrowserReady and Assigned(PreviewBrowser) then
+  begin
+    PreviewBrowser.LoadHTML(fPendingPreviewHtml);
+  end;
 end;
 
 procedure TAppMainForm.RenderPreview(const aResult: TSkillSearchResult);
@@ -673,16 +861,17 @@ begin
     '<p><b>Path:</b> ' + EscapeHtml(aResult.SkillFile) + '</p>' +
     '</body></html>';
 
-  PreviewBrowser.LoadHTML(lHtml);
-  if aResult.DuplicateCount <= 1 then
+  LoadPreviewHtml(lHtml);
+  DuplicateInfoPanel.Visible := ShouldShowDuplicateDetails(aResult.DuplicateCount);
+  if DuplicateInfoPanel.Visible then
   begin
-    lDuplicateText := 'No duplicate skills detected for this result.';
-  end else begin
     lDuplicateText := Format('Duplicate skills detected: %d', [aResult.DuplicateCount]) + sLineBreak +
       'Canonical:' + sLineBreak + aResult.SkillFile + sLineBreak + sLineBreak +
       'Other locations:' + sLineBreak + aResult.DuplicatePaths;
+    DuplicateInfoMemo.Lines.Text := lDuplicateText;
+  end else begin
+    DuplicateInfoMemo.Clear;
   end;
-  DuplicateInfoMemo.Lines.Text := lDuplicateText;
   RefreshRelatedSkills(aResult.SkillFile);
 end;
 
@@ -885,7 +1074,8 @@ const
 var
   i: Integer;
 begin
-  SortButton.Caption := 'Sort: ' + cSortLabels[fCurrentSortMode];
+  SortButton.Hint := Format('Sort results|Current sort: %s. Click to choose another sort order.|0',
+    [cSortLabels[fCurrentSortMode]]);
   for i := 0 to Pred(SortPopupMenu.Items.Count) do
   begin
     SortPopupMenu.Items[i].Checked := SortPopupMenu.Items[i].Tag = Ord(fCurrentSortMode);
@@ -928,13 +1118,6 @@ end;
 
 procedure TAppMainForm.DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
 begin
-  if not fScanInProgress then
-  begin
-    ScanAnimation.Visible := True;
-    ScanAnimation.Animation.Loop := True;
-    ScanAnimation.Animation.Enabled := True;
-    ScanAnimation.Animation.Start;
-  end;
   if aImmediate then
   begin
     fSearchController.QueueSearch(aQuery, 0);
@@ -1057,107 +1240,11 @@ end;
 procedure TAppMainForm.RefreshTagBrowser;
 begin
   fTagBrowserItems := fDatabaseManager.GetSkillTagCounts;
-  PopulateTagListBox(TagListBox, fTagBrowserItems);
-end;
-
-procedure TAppMainForm.LoadButtonIcons;
-const
-  cS = '#374151'; // Tailwind gray-700 – readable on light backgrounds
-  cA = ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
-  cH = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="' + cS + '"' + cA;
-
-  cSvgSearch   = cH + '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>';
-  cSvgRefresh  = cH +
-    '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>' +
-    '<path d="M21 3v5h-5"/>' +
-    '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>' +
-    '<path d="M8 16H3v5"/></svg>';
-  cSvgHistory  = cH +
-    '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>' +
-    '<path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>';
-  cSvgInfo     = cH +
-    '<circle cx="12" cy="12" r="10"/>' +
-    '<path d="M12 16v-4"/><path d="M12 8h.01"/></svg>';
-  cSvgSort     = cH +
-    '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/>' +
-    '<path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>';
-  cSvgTag      = cH +
-    '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 ' +
-    '.586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/>' +
-    '<circle cx="7.5" cy="7.5" r=".5" fill="' + cS + '"/></svg>';
-  cSvgFolder   = cH +
-    '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6' +
-    'a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9' +
-    'l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>';
-  cSvgSettings = cH +
-    '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915' +
-    ' 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033' +
-    ' 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915' +
-    ' 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051' +
-    ' a2.34 2.34 0 0 0 3.319-1.915"/>' +
-    '<circle cx="12" cy="12" r="3"/></svg>';
-  cSvgCpu      = cH +
-    '<path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/>' +
-    '<path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/>' +
-    '<path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/>' +
-    '<rect x="4" y="4" width="16" height="16" rx="2"/>' +
-    '<rect x="8" y="8" width="8" height="8" rx="1"/></svg>';
-
-  cIconSize = 20;
-  cSvgs: array[0..8] of string = (
-    cSvgSearch, cSvgRefresh, cSvgHistory, cSvgInfo,
-    cSvgSort, cSvgTag, cSvgFolder, cSvgSettings, cSvgCpu
-  );
-var
-  lBmp: TBitmap;
-  lSvg: string;
-begin
-  if not Assigned(IconImages) then
-  begin
-    IconImages := TImageList.Create(Self);
-    IconImages.Width := cIconSize;
-    IconImages.Height := cIconSize;
-    IconImages.ColorDepth := cd32Bit;
-  end;
-  IconImages.Clear;
-
-  for lSvg in cSvgs do
-  begin
-    lBmp := TBitmap.Create;
-    try
-      lBmp.SetSize(cIconSize, cIconSize);
-      lBmp.PixelFormat := pf32bit;
-      lBmp.AlphaFormat := afDefined;
-      lBmp.SkiaDraw(
-        procedure(const ACanvas: ISkCanvas)
-        var
-          lDom: ISkSVGDOM;
-        begin
-          lDom := TSkSVGDOM.Make(lSvg);
-          if Assigned(lDom) then
-          begin
-            lDom.SetContainerSize(TSizeF.Create(cIconSize, cIconSize));
-            lDom.Render(ACanvas);
-          end;
-        end);
-      IconImages.Add(lBmp, nil);
-    finally
-      lBmp.Free;
-    end;
-  end;
-
-  SearchButton.Images        := IconImages; SearchButton.ImageIndex        := 0;
-  ScanButton.Images          := IconImages; ScanButton.ImageIndex          := 1;
-  SearchHistoryButton.Images := IconImages; SearchHistoryButton.ImageIndex := 2;
-  SearchHelpButton.Images    := IconImages; SearchHelpButton.ImageIndex    := 3;
-  SortButton.Images          := IconImages; SortButton.ImageIndex          := 4;
-  TagToggleButton.Images     := IconImages; TagToggleButton.ImageIndex     := 5;
-  EditSourcesButton.Images   := IconImages; EditSourcesButton.ImageIndex   := 6;
-  DiagnosticsButton.Images   := IconImages; DiagnosticsButton.ImageIndex   := 7;
-  DockerGpuButton.Images     := IconImages; DockerGpuButton.ImageIndex     := 8;
 end;
 
 function TAppMainForm.BuildEffectiveQuery: string;
+var
+  lSelectedTagsQuery: string;
 begin
   Result := Trim(SearchEdit.Text);
   if HasScriptsCheckBox.Checked and (not ContainsText(Result, 'has:scripts')) and
@@ -1168,6 +1255,16 @@ begin
       Result := Result + ' ';
     end;
     Result := Result + 'has:scripts';
+  end;
+
+  lSelectedTagsQuery := BuildSelectedTagsQuery(fSelectedTags.ToStringArray);
+  if lSelectedTagsQuery <> '' then
+  begin
+    if Result <> '' then
+    begin
+      Result := Result + ' ';
+    end;
+    Result := Result + lSelectedTagsQuery;
   end;
 end;
 
@@ -1195,19 +1292,29 @@ begin
   Result.TreatWorktreesAsRepos := fAppSettings.Git.TreatWorktreesAsRepos;
   Result.OnEmbeddingProgress :=
     procedure(const aCurrent, aTotal: Integer; const aStatusText: string)
+    var
+      lForm: TAppMainForm;
     begin
-      QueueToMain(procedure
-        var
-          lForm: TAppMainForm;
-        begin
-          lForm := AppMainForm;
-          if not Assigned(lForm) or (Trim(aStatusText) = '') then
-          begin
-            Exit;
-          end;
+      lForm := AppMainForm;
+      if not Assigned(lForm) or (Trim(aStatusText) = '') then
+      begin
+        Exit;
+      end;
 
-          lForm.UpdateStatus(aStatusText);
-        end);
+      lForm.fScanProgressBuffer.PublishStatus(aStatusText);
+    end;
+  Result.OnProgress :=
+    procedure(const aProgress: TPipelineProgress)
+    var
+      lForm: TAppMainForm;
+    begin
+      lForm := AppMainForm;
+      if not Assigned(lForm) then
+      begin
+        Exit;
+      end;
+
+      lForm.fScanProgressBuffer.Publish(aProgress);
     end;
   Result.IndexOptions.ComputeHasScripts := fAppSettings.Index.ComputeHasScripts;
   Result.IndexOptions.HasScriptsMaxFilesToScan := fAppSettings.Index.HasScriptsMaxFilesToScan;
@@ -1270,30 +1377,28 @@ end;
 procedure TAppMainForm.BeginScanProgress;
 begin
   fScanInProgress := True;
+  fScanProgress := Default(TPipelineProgress);
+  fScanProgress.StatusText := 'Scanning source folders...';
+  fScanStartedAt := Now;
   fScanHourGlass := AutoHourGlass.MakeCHG;
   ScanButton.Enabled := False;
-  ScanProgressBar.Visible := True;
-  ScanProgressBar.Style := pbstMarquee;
-  ScanProgressBar.MarqueeInterval := 30;
-  ScanAnimation.Visible := True;
-  ScanAnimation.Animation.Loop := True;
-  ScanAnimation.Animation.Enabled := True;
-  ScanAnimation.Animation.Start;
+  ScanActivityTimer.Enabled := True;
+  RefreshScanActivityUi;
   UpdateStatus('Scan running... (indeterminate)');
 end;
 
 procedure TAppMainForm.BeginDockerStart;
 begin
   fDockerStartInProgress := True;
+  fDockerStartFailureMessage := '';
   fDockerStartHourGlass := AutoHourGlass.MakeCHG;
-  DockerGpuButton.Enabled := False;
+  UpdateDockerStatusUi;
   UpdateStatus('Starting Ollama container...');
 end;
 
 procedure TAppMainForm.EndDockerStart;
 begin
   fDockerStartHourGlass := nil;
-  DockerGpuButton.Enabled := True;
   fDockerStartInProgress := False;
 end;
 
@@ -1340,12 +1445,10 @@ end;
 procedure TAppMainForm.EndScanProgress;
 begin
   fScanHourGlass := nil;
-  ScanProgressBar.Visible := False;
   ScanButton.Enabled := True;
   fScanInProgress := False;
-  ScanAnimation.Animation.Loop := False;
-  ScanAnimation.Animation.Enabled := False;
-  ScanAnimation.Visible := False;
+  fScanStartedAt := 0;
+  HideActivityUi;
 
   if Assigned(fScanCancelToken) then
   begin
@@ -1355,11 +1458,8 @@ begin
 end;
 
 procedure TAppMainForm.HandleDockerHealthPolled(const aState: TDockerHealthState; const aDetail: string);
-const
-  cHealthyCaption = 'Ollama: running';
-  cUnhealthyCaption = 'Ollama: unavailable';
-  cUnknownCaption = 'Ollama: unknown';
 begin
+  fDockerHealthDetail := aDetail;
   if aState <> fDockerHealthState then
   begin
     fDockerHealthState := aState;
@@ -1367,6 +1467,7 @@ begin
       TDockerHealthState.dhsHealthy:
         begin
           RecordPipelineNotice('Ollama health: healthy');
+          fDockerStartFailureMessage := '';
         end;
       TDockerHealthState.dhsUnhealthy:
         begin
@@ -1378,23 +1479,7 @@ begin
       end;
     end;
   end;
-
-  case aState of
-    TDockerHealthState.dhsHealthy:
-      begin
-        DockerHealthLabel.Caption := cHealthyCaption;
-      end;
-    TDockerHealthState.dhsUnhealthy:
-      begin
-        DockerHealthLabel.Caption := cUnhealthyCaption;
-      end;
-  else
-    begin
-      DockerHealthLabel.Caption := cUnknownCaption;
-    end;
-  end;
-
-  DockerHealthLabel.Hint := aDetail;
+  UpdateDockerStatusUi;
 end;
 
 procedure TAppMainForm.HandleDockerStartCompleted(const aResult: TDockerCommandResult);
@@ -1404,6 +1489,9 @@ begin
   try
     if aResult.Success then
     begin
+      fDockerStartFailureMessage := '';
+      fDockerHealthState := TDockerHealthState.dhsUnknown;
+      fDockerHealthDetail := '';
       lMessage := 'Ollama start request succeeded.';
       RecordPipelineNotice(lMessage);
       UpdateStatus(lMessage);
@@ -1421,10 +1509,12 @@ begin
     begin
       lMessage := lMessage + ' ' + aResult.OutputText;
     end;
+    fDockerStartFailureMessage := 'Docker or Ollama is not running. Start the local stack now.';
     RecordPipelineError(lMessage);
     UpdateStatus(lMessage);
   finally
     EndDockerStart;
+    UpdateDockerStatusUi;
     WaitForWorkerThread(fDockerStartThread);
   end;
 end;
@@ -1452,12 +1542,6 @@ end;
 
 procedure TAppMainForm.ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
 begin
-  if not fScanInProgress then
-  begin
-    ScanAnimation.Animation.Loop := False;
-    ScanAnimation.Animation.Enabled := False;
-    ScanAnimation.Visible := False;
-  end;
   fResults := aResults;
   SortSearchResults(fResults, fCurrentSortMode);
   RenderResultsList('');
@@ -1531,8 +1615,10 @@ begin
   MessageDlg(cSearchHelpText, TMsgDlgType.mtInformation, [TMsgDlgBtn.mbOK], 0);
 end;
 
-procedure TAppMainForm.HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult; const aStatusText,
-  aFailure: string);
+procedure TAppMainForm.HandleScanCompleted(const aExecuted: Boolean; const aResult: TPipelineRunResult;
+  const aStatusText, aFailure: string; const aCompletion: TScanCompletionSnapshot);
+var
+  lCompletedAt: TDateTime;
 begin
   try
     if aFailure <> '' then
@@ -1550,10 +1636,21 @@ begin
 
     UpdateStatus(aStatusText);
     fSkillsFoundCount := aResult.SkillsQueued;
-    RefreshInventoryCounters;
-    RefreshTagBrowser;
+    if aCompletion.ErrorText = '' then
+    begin
+      fSkillsValidCount := aCompletion.SkillsValidCount;
+      fSkillsUniqueCount := aCompletion.SkillsUniqueCount;
+      fTagBrowserItems := aCompletion.TagBrowserItems;
+    end else begin
+      RecordPipelineError('Post-scan refresh failed: ' + aCompletion.ErrorText);
+    end;
     RefreshCountPanels;
-    StatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now);
+    lCompletedAt := aCompletion.CompletedAt;
+    if lCompletedAt <= 0 then
+    begin
+      lCompletedAt := Now;
+    end;
+    StatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', lCompletedAt);
     QueueSearch(True);
   finally
     EndScanProgress;
@@ -1595,6 +1692,7 @@ begin
   fScanThread := TThread.CreateAnonymousThread(
     procedure
     var
+      lCompletion: TScanCompletionSnapshot;
       lResult: TPipelineRunResult;
       lStatusText: string;
       lExecuted: Boolean;
@@ -1602,9 +1700,14 @@ begin
     begin
       lExecuted := False;
       lFailure := '';
+      lCompletion := Default(TScanCompletionSnapshot);
       try
         lExecuted := ExecuteScanUpdate(lDatabasePath, lSqliteDllPath, lOptions, lSourceRoots, fScanCancelToken,
           lResult, lStatusText);
+        if lExecuted then
+        begin
+          lCompletion := BuildScanCompletionSnapshot(lDatabasePath, lSqliteDllPath);
+        end;
       except
         on E: Exception do
         begin
@@ -1622,7 +1725,7 @@ begin
             Exit;
           end;
 
-          lForm.HandleScanCompleted(lExecuted, lResult, lStatusText, lFailure);
+          lForm.HandleScanCompleted(lExecuted, lResult, lStatusText, lFailure, lCompletion);
         end);
     end
   );
@@ -1694,16 +1797,6 @@ begin
   StartDockerStackAsync;
 end;
 
-procedure TAppMainForm.HandleEditSourcesButtonClick(Sender: TObject);
-begin
-  if not TSourcesEditorForm.Execute(Self, fSourcesListPath, GetExeDirectory) then
-  begin
-    Exit;
-  end;
-
-  UpdateStatus(rsSourcesListSaved);
-end;
-
 procedure TAppMainForm.HandleSearchCompleted(const aGenerationId: Integer; const aResults: TArray<TSkillSearchResult>;
   const aError: string);
 begin
@@ -1735,12 +1828,6 @@ begin
 
   if aError <> '' then
   begin
-    if not fScanInProgress then
-    begin
-      ScanAnimation.Animation.Loop := False;
-      ScanAnimation.Animation.Enabled := False;
-      ScanAnimation.Visible := False;
-    end;
     UpdateStatus('Search failed: ' + aError);
     Exit;
   end;
@@ -1750,7 +1837,7 @@ end;
 
 procedure TAppMainForm.HandleSearchEditChange(Sender: TObject);
 begin
-  if SearchAsYouTypeCheckBox.Checked then
+  if fAppSettings.Ui.SearchAsYouType then
   begin
     QueueSearch(False);
   end;
@@ -1862,11 +1949,27 @@ begin
 end;
 
 procedure TAppMainForm.HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+var
+  lFocusTarget: TMainFormFocusTarget;
 begin
-  if (Key = Ord('L')) and (ssCtrl in Shift) then
+  if TryResolveMainFormFocusShortcut(Key, Shift, lFocusTarget) then
   begin
-    SearchEdit.SetFocus;
-    SearchEdit.SelectAll;
+    case lFocusTarget of
+      TMainFormFocusTarget.mfftSearch:
+        begin
+          SearchEdit.SetFocus;
+          SearchEdit.SelectAll;
+        end;
+      TMainFormFocusTarget.mfftResults:
+        begin
+          if (ResultsListView.Items.Count > 0) and (not Assigned(ResultsListView.Selected)) then
+          begin
+            ResultsListView.Items[0].Selected := True;
+            ResultsListView.Items[0].Focused := True;
+          end;
+          ResultsListView.SetFocus;
+        end;
+    end;
     Key := 0;
     Exit;
   end;
@@ -1959,96 +2062,23 @@ begin
   SetSortMode(TSearchSortMode(TMenuItem(Sender).Tag));
 end;
 
-procedure TAppMainForm.HandleTagListBoxClick(Sender: TObject);
+procedure TAppMainForm.HandleTagToggleButtonClick(Sender: TObject);
 var
   lTag: string;
-  lText: string;
-  lParenPos: Integer;
+  lSelectedTags: TArray<string>;
 begin
-  if TagListBox.ItemIndex < 0 then
+  if not TTagFilterDialog.SelectTags(Self, fTagBrowserItems, fSelectedTags.ToStringArray, lSelectedTags) then
   begin
     Exit;
   end;
 
-  lText := TagListBox.Items[TagListBox.ItemIndex];
-  lParenPos := LastDelimiter('(', lText);
-  if lParenPos > 1 then
+  fSelectedTags.Clear;
+  for lTag in lSelectedTags do
   begin
-    lTag := Trim(Copy(lText, 1, lParenPos - 1));
-  end else begin
-    lTag := Trim(lText);
+    fSelectedTags.Add(lTag);
   end;
-
-  if lTag = '' then
-  begin
-    Exit;
-  end;
-
-  SearchEdit.Text := AppendTagFilterQuery(SearchEdit.Text, lTag);
+  UpdateTagFilterUi;
   QueueSearch(True);
-end;
-
-procedure TAppMainForm.HandleTagFilterEditChange(Sender: TObject);
-begin
-  Inc(fTagFilterGeneration);
-  fTagFilterTimer.Enabled := False;
-  fTagFilterTimer.Enabled := True;
-end;
-
-procedure TAppMainForm.HandleTagFilterTimer(Sender: TObject);
-var
-  lFilter: string;
-  lGeneration: Integer;
-  lItems: TArray<TSkillTagInfo>;
-begin
-  fTagFilterTimer.Enabled := False;
-  lFilter := Trim(TagFilterEdit.Text);
-  lGeneration := fTagFilterGeneration;
-  lItems := Copy(fTagBrowserItems);
-
-  TThread.CreateAnonymousThread(
-    procedure
-    var
-      lFilterEx: TFilterEx;
-      lItem: TSkillTagInfo;
-      lResult: TStringList;
-    begin
-      lResult := TStringList.Create;
-      try
-        if lFilter <> '' then
-          lFilterEx := TFilterEx.Create(lFilter);
-        for lItem in lItems do
-        begin
-          if (lFilter = '') or lFilterEx.Matches(lItem.Name) then
-            lResult.Add(Format('%s (%d)', [lItem.Name, lItem.SkillCount]));
-        end;
-        QueueToMain(procedure
-          begin
-            try
-              if lGeneration = fTagFilterGeneration then
-              begin
-                TagListBox.Items.BeginUpdate;
-                try
-                  TagListBox.Items.Assign(lResult);
-                finally
-                  TagListBox.Items.EndUpdate;
-                end;
-              end;
-            finally
-              lResult.Free;
-            end;
-          end);
-        lResult := nil;
-      finally
-        lResult.Free;
-      end;
-    end).Start;
-end;
-
-procedure TAppMainForm.HandleTagToggleButtonClick(Sender: TObject);
-begin
-  TagBrowserPanel.Visible := not TagBrowserPanel.Visible;
-  UpdateTagBrowserUi;
 end;
 
 procedure TAppMainForm.HandleTrayShowClick(Sender: TObject);
@@ -2094,31 +2124,52 @@ begin
   QueueSearch(False);
 end;
 
-procedure TAppMainForm.UpdateTagBrowserUi;
+procedure TAppMainForm.UpdateTagFilterUi;
 begin
-  TagBrowserSplitter.Visible := TagBrowserPanel.Visible;
-  if TagBrowserPanel.Visible then
-  begin
-    TagToggleButton.Caption := 'Hide Tags';
-  end else begin
-    TagToggleButton.Caption := 'Show Tags';
-  end;
+  TagToggleButton.Hint := Format('Tags|Choose one or more tags to apply. Active tags: %d.|0',
+    [fSelectedTags.Count]);
 end;
 
 procedure TAppMainForm.HandleTraySettingsClick(Sender: TObject);
 var
   lDlg: TConfigDlg;
+  lQueueSearch: Boolean;
 begin
   lDlg := TConfigDlg.Create(Self);
   try
     lDlg.CloseToTray := fAppSettings.Ui.CloseToTray;
+    lDlg.SearchAsYouType := fAppSettings.Ui.SearchAsYouType;
+    lDlg.SourcesListPath := fSourcesListPath;
     if lDlg.ShowModal = mrOK then
     begin
+      lQueueSearch := (not fAppSettings.Ui.SearchAsYouType) and lDlg.SearchAsYouType;
       fAppSettings.Ui.CloseToTray := lDlg.CloseToTray;
+      fAppSettings.Ui.SearchAsYouType := lDlg.SearchAsYouType;
       SaveUiSettings(fSettingsPath, fAppSettings.Ui);
+      fAppSettings.UiState := CaptureUiState;
+      SaveUiState(fSettingsPath, fAppSettings.UiState);
+      if lQueueSearch then
+      begin
+        QueueSearch(False);
+      end;
+    end;
+    if lDlg.SourcesEdited then
+    begin
+      UpdateStatus(rsSourcesListSaved);
     end;
   finally
     lDlg.Free;
+  end;
+end;
+
+procedure TAppMainForm.PreviewBrowserInitialized(Sender: TObject);
+begin
+  fPreviewBrowserReady := True;
+  if Trim(fPendingPreviewHtml) <> '' then
+  begin
+    PreviewBrowser.LoadHTML(fPendingPreviewHtml);
+  end else begin
+    ShowEmptyPreview;
   end;
 end;
 

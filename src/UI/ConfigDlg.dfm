@@ -1,11 +1,12 @@
-object ConfigDlg: TConfigDlg
+﻿object ConfigDlg: TConfigDlg
   Left = 0
   Top = 0
+  BorderIcons = [biSystemMenu]
   BorderStyle = bsDialog
   Caption = 'Settings'
-  ClientHeight = 194
-  ClientWidth = 412
-  Color = clBtnFace
+  ClientHeight = 276
+  ClientWidth = 456
+  Color = clWhite
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
   Font.Height = -13
@@ -15,61 +16,156 @@ object ConfigDlg: TConfigDlg
   TextHeight = 17
   object PnlButtons: TPanel
     Left = 0
-    Top = 157
-    Width = 412
-    Height = 37
+    Top = 220
+    Width = 456
+    Height = 56
     Align = alBottom
     BevelOuter = bvNone
-    TabOrder = 1
-    object BtnOK: TButton
-      Left = 244
-      Top = 6
-      Width = 76
-      Height = 25
-      Anchors = [akTop, akRight]
+    Color = 16119285
+    ParentBackground = False
+    Padding.Left = 16
+    Padding.Top = 10
+    Padding.Right = 16
+    Padding.Bottom = 10
+    TabOrder = 0
+    object BtnOK: TBitBtn
+      AlignWithMargins = True
+      Left = 246
+      Top = 10
+      Width = 90
+      Height = 36
+      Margins.Top = 0
+      Margins.Right = 8
+      Margins.Bottom = 0
+      Align = alRight
       Caption = '&OK'
       Default = True
       ModalResult = 1
       TabOrder = 0
     end
-    object BtnCancel: TButton
-      Left = 328
-      Top = 6
-      Width = 76
-      Height = 25
-      Anchors = [akTop, akRight]
+    object BtnCancel: TBitBtn
+      AlignWithMargins = True
+      Left = 344
+      Top = 10
+      Width = 96
+      Height = 36
+      Margins.Top = 0
+      Margins.Bottom = 0
+      Align = alRight
       Cancel = True
       Caption = '&Cancel'
       ModalResult = 2
       TabOrder = 1
     end
   end
-  object GrpBehaviour: TGroupBox
+  object GrpBehaviour: TPanel
     AlignWithMargins = True
-    Left = 8
-    Top = 8
-    Width = 396
-    Height = 141
-    Margins.Left = 8
-    Margins.Top = 8
-    Margins.Right = 8
-    Margins.Bottom = 8
+    Left = 16
+    Top = 16
+    Width = 424
+    Height = 188
+    Margins.Left = 16
+    Margins.Top = 16
+    Margins.Right = 16
+    Margins.Bottom = 16
     Align = alClient
-    Caption = 'Application behaviour'
-    TabOrder = 0
+    BevelOuter = bvNone
+    Caption = ''
+    Color = clWhite
+    Padding.Bottom = 8
+    ParentBackground = False
+    TabOrder = 1
+    object ChkSearchAsYouType: TCheckBox
+      AlignWithMargins = True
+      Left = 0
+      Top = 101
+      Width = 424
+      Height = 20
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 12
+      Align = alTop
+      Caption = 'Run search automatically while we type'
+      TabOrder = 3
+    end
+    object BtnEditSources: TBitBtn
+      AlignWithMargins = True
+      Left = 0
+      Top = 133
+      Width = 424
+      Height = 36
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 0
+      Align = alTop
+      Caption = 'Edit Sources...'
+      Hint = 'Sources|Open the source-folder editor used by Scan and Update.|0'
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 4
+      OnClick = HandleEditSourcesClick
+    end
     object ChkCloseToTray: TCheckBox
       AlignWithMargins = True
-      Left = 14
-      Top = 24
-      Width = 368
+      Left = 0
+      Top = 69
+      Width = 424
       Height = 20
-      Margins.Left = 6
-      Margins.Top = 8
-      Margins.Right = 6
-      Margins.Bottom = 4
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 12
       Align = alTop
       Caption = 'Minimize to system tray when closing instead of exiting'
-      TabOrder = 0
+      TabOrder = 2
     end
+    object LblSection: TStaticText
+      AlignWithMargins = True
+      Left = 0
+      Top = 36
+      Width = 424
+      Height = 17
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 16
+      Align = alTop
+      AutoSize = False
+      Caption = 'Behavior'
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = 4473924
+      Font.Height = -13
+      Font.Name = 'Segoe UI'
+      Font.Style = [fsBold]
+      ParentFont = False
+      TabStop = False
+    end
+    object LblTitle: TStaticText
+      AlignWithMargins = True
+      Left = 0
+      Top = 0
+      Width = 424
+      Height = 28
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 8
+      Align = alTop
+      AutoSize = False
+      Caption = 'Settings'
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = clWindowText
+      Font.Height = -19
+      Font.Name = 'Segoe UI'
+      Font.Style = [fsBold]
+      ParentFont = False
+      TabStop = False
+    end
+  end
+  object BalloonHint: TBalloonHint
+    Left = 400
+    Top = 16
   end
 end

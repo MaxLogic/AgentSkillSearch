@@ -1,4 +1,4 @@
-unit PipelineTests;
+﻿unit PipelineTests;
 
 interface
 
@@ -10,8 +10,9 @@ uses
   System.Classes, System.Diagnostics, System.IniFiles, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
   Winapi.Messages, Winapi.Windows,
   Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
-  AppPaths, DatabaseManager, DockerHealthMonitor, ExternalTools, Logging, PipelineCoordinator, Settings,
-  RelatedSkillActions, SettingsModel, SkillSearchService, SkillTypes, TagBrowserActions, TrayActions;
+  AppPaths, DatabaseManager, DockerHealthMonitor, DockerStatusUi, ExternalTools, Logging, PipelineCoordinator, Settings,
+  RelatedSkillActions, ScanActivityUi, ScanProgressBuffer, SettingsModel, SkillSearchService, SkillTypes,
+  TagBrowserActions, TrayActions;
 
 var
   gPartialEmbeddingRequestCount: Integer;
@@ -317,6 +318,8 @@ begin
       'Expected UIState.ResultsColumnWidths key to be created');
     AssertTrue(lIni.ValueExists('SearchHistory', 'MaxItems'),
       'Expected SearchHistory.MaxItems key to be created');
+    AssertTrue(lIni.ValueExists('UI', 'SearchAsYouType'),
+      'Expected UI.SearchAsYouType key to be created');
     AssertTrue(lIni.ValueExists('UI', 'TrayHotkey'),
       'Expected UI.TrayHotkey key to be created');
     AssertEqualInt(20, lIni.ReadInteger('SearchHistory', 'MaxItems', 0),
@@ -376,6 +379,7 @@ begin
   AssertEqualText('220;90;250;540', lLoadResult.Settings.UiState.ResultsColumnWidths,
     'Expected saved results column widths');
   AssertEqualInt(720, lLoadResult.Settings.UiState.ResultsPaneWidth, 'Expected saved results pane width');
+  AssertTrue(lLoadResult.Settings.Ui.SearchAsYouType, 'Expected saved UI.SearchAsYouType preference');
   AssertTrue(lLoadResult.Settings.UiState.SearchAsYouType, 'Expected saved SearchAsYouType state');
   AssertEqualInt(900, lLoadResult.Settings.UiState.WindowHeight, 'Expected saved window height');
   AssertEqualInt(140, lLoadResult.Settings.UiState.WindowLeft, 'Expected saved window left');
@@ -448,6 +452,36 @@ begin
 
   lLoadResult := LoadOrCreateSettings(lSettingsPath);
   AssertEqualText('Win+Shift+K', lLoadResult.Settings.Ui.TrayHotkey, 'Expected configured tray hotkey to load');
+end;
+
+procedure TestSettingsLoadSearchAsYouTypeUiPreference;
+var
+  lFixtureRoot: string;
+  lLoadResult: TSettingsLoadResult;
+  lSettingsPath: string;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+  lUtf8: TStringList;
+begin
+  PrepareFixtureDirectory('SkillSearchSearchAsYouTypeUiFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+
+  lSettingsPath := TPath.Combine(lFixtureRoot, 'runtime\settings.ini');
+  ForceDirectories(ExtractFilePath(lSettingsPath));
+
+  lUtf8 := TStringList.Create;
+  try
+    lUtf8.Add('[UI]');
+    lUtf8.Add('SearchAsYouType=1');
+    lUtf8.SaveToFile(lSettingsPath, TEncoding.UTF8);
+  finally
+    lUtf8.Free;
+  end;
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+  AssertTrue(lLoadResult.Settings.Ui.SearchAsYouType,
+    'Expected UI.SearchAsYouType preference to load into the UI settings record');
+  AssertTrue(lLoadResult.Settings.UiState.SearchAsYouType,
+    'Expected UI.SearchAsYouType preference to drive the restored search-as-you-type state');
 end;
 
 procedure TestExternalToolCommandFormatting;
@@ -953,6 +987,211 @@ begin
     'Stopped docker monitor should not dispatch queued callbacks');
 end;
 
+procedure TestDockerStatusUiStateHidesAlertWhenHealthy;
+var
+  lUiState: TDockerStatusUiState;
+begin
+  lUiState := BuildDockerStatusUiState(TDockerHealthState.dhsHealthy, 'ollama container running', '', False);
+
+  AssertEqualText('Ollama: running', lUiState.StatusText, 'Healthy docker status text mismatch');
+  AssertTrue(not lUiState.ShowAlert, 'Healthy docker state should hide alert panel');
+  AssertEqualText('', lUiState.AlertText, 'Healthy docker state should clear alert text');
+end;
+
+procedure TestDockerStatusUiStateShowsDockerAlert;
+var
+  lUiState: TDockerStatusUiState;
+begin
+  lUiState := BuildDockerStatusUiState(
+    TDockerHealthState.dhsUnhealthy,
+    'docker is not available: error during connect',
+    '',
+    False
+  );
+
+  AssertEqualText('Docker: unavailable', lUiState.StatusText, 'Docker-unavailable status text mismatch');
+  AssertTrue(lUiState.ShowAlert, 'Docker outage should show the alert panel');
+  AssertEqualText('Docker is not running. Start the local stack to enable Ollama.', lUiState.AlertText,
+    'Docker outage alert text mismatch');
+end;
+
+procedure TestDockerStatusUiStateShowsOllamaAlert;
+var
+  lUiState: TDockerStatusUiState;
+begin
+  lUiState := BuildDockerStatusUiState(
+    TDockerHealthState.dhsUnhealthy,
+    'ollama container is not running',
+    '',
+    False
+  );
+
+  AssertEqualText('Ollama: unavailable', lUiState.StatusText, 'Ollama-unavailable status text mismatch');
+  AssertTrue(lUiState.ShowAlert, 'Stopped Ollama container should show the alert panel');
+  AssertEqualText('Ollama is not running. Start the local stack to enable semantic search.', lUiState.AlertText,
+    'Ollama outage alert text mismatch');
+end;
+
+procedure TestDockerStatusUiStateHidesAlertWhileStarting;
+var
+  lUiState: TDockerStatusUiState;
+begin
+  lUiState := BuildDockerStatusUiState(TDockerHealthState.dhsUnhealthy, 'docker is not available', '', True);
+
+  AssertEqualText('Ollama: starting...', lUiState.StatusText, 'Starting docker status text mismatch');
+  AssertTrue(not lUiState.ShowAlert, 'Startup-in-progress should hide the alert panel');
+end;
+
+procedure TestDockerStatusUiStateShowsExplicitStartFailure;
+var
+  lUiState: TDockerStatusUiState;
+begin
+  lUiState := BuildDockerStatusUiState(
+    TDockerHealthState.dhsUnknown,
+    '',
+    'Docker or Ollama is not running. Start the local stack now.',
+    False
+  );
+
+  AssertEqualText('Ollama: unavailable', lUiState.StatusText, 'Explicit start failure should surface unavailable status');
+  AssertTrue(lUiState.ShowAlert, 'Explicit start failure should show the alert panel');
+  AssertEqualText('Docker or Ollama is not running. Start the local stack now.', lUiState.AlertText,
+    'Explicit start failure alert text mismatch');
+end;
+
+procedure TestScanActivitySummaryIncludesCountsAndElapsed;
+var
+  lSnapshot: TScanActivitySnapshot;
+  lSummary: string;
+begin
+  lSnapshot := Default(TScanActivitySnapshot);
+  lSnapshot.ElapsedMs := 83000;
+  lSnapshot.ReposFound := 4;
+  lSnapshot.ReposPulled := 2;
+  lSnapshot.ReposThrottled := 1;
+  lSnapshot.SkillsFound := 37;
+  lSnapshot.SkillsWritten := 21;
+  lSnapshot.StatusText := 'Embedding 3 / 10 skills...';
+
+  lSummary := BuildScanActivitySummary(lSnapshot);
+
+  AssertTrue(ContainsText(lSummary, 'Repos: 4 found'), 'Summary should include repo count');
+  AssertTrue(ContainsText(lSummary, '2 pulled'), 'Summary should include pulled repo count');
+  AssertTrue(ContainsText(lSummary, '1 throttled'), 'Summary should include throttled repo count');
+  AssertTrue(ContainsText(lSummary, 'Skills: 37 found'), 'Summary should include discovered skill count');
+  AssertTrue(ContainsText(lSummary, '21 written'), 'Summary should include written skill count');
+  AssertTrue(ContainsText(lSummary, 'Elapsed: 00:01:23'), 'Summary should include formatted elapsed time');
+  AssertTrue(ContainsText(lSummary, 'Stage: Embedding 3 / 10 skills...'), 'Summary should include the stage text');
+end;
+
+procedure TestPipelineReportsProgressCounts;
+var
+  lCoordinator: TPipelineCoordinator;
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lLastProgress: TPipelineProgress;
+  lProgressCalls: Integer;
+  lOptions: TPipelineOptions;
+  lScanRoot: string;
+  lUnusedInfraRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchPipelineProgressFixture', lFixtureRoot, lUnusedInfraRoot, lScanRoot);
+  CreateSyntheticRepoFixture(lScanRoot, 1, 2);
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    lDbManager.Initialize;
+
+    lProgressCalls := 0;
+    lLastProgress := Default(TPipelineProgress);
+    lOptions := DefaultPipelineOptions;
+    lOptions.MaxGitPullThreads := 1;
+    lOptions.MaxIndexThreads := 1;
+    lOptions.MaxScanThreads := 1;
+    lOptions.PullEnabled := False;
+    lOptions.OnProgress :=
+      procedure(const aProgress: TPipelineProgress)
+      begin
+        Inc(lProgressCalls);
+        lLastProgress := aProgress;
+      end;
+
+    lCoordinator := TPipelineCoordinator.Create(lDbManager, lOptions);
+    try
+      lCoordinator.Run([lScanRoot], nil);
+    finally
+      lCoordinator.Free;
+    end;
+
+    AssertTrue(lProgressCalls > 0, 'Expected pipeline progress callbacks');
+    AssertTrue(lLastProgress.ReposFound > 0, 'Expected progress to report discovered repos');
+    AssertTrue(lLastProgress.SkillsFound > 0, 'Expected progress to report discovered skills');
+  finally
+    lDbManager.Free;
+  end;
+end;
+
+procedure TestScanProgressBufferCoalescesToLatestProgress;
+var
+  lBuffer: TScanProgressBuffer;
+  lConsumed: TPipelineProgress;
+  lFirst: TPipelineProgress;
+  lSecond: TPipelineProgress;
+begin
+  lBuffer := TScanProgressBuffer.Create;
+  try
+    lFirst := Default(TPipelineProgress);
+    lFirst.ReposFound := 2;
+    lFirst.SkillsFound := 10;
+    lFirst.StatusText := 'Scanning source folders...';
+
+    lSecond := Default(TPipelineProgress);
+    lSecond.ReposFound := 7;
+    lSecond.SkillsFound := 42;
+    lSecond.StatusText := 'Indexing skills...';
+
+    lBuffer.Publish(lFirst);
+    lBuffer.Publish(lSecond);
+
+    AssertTrue(lBuffer.TryConsume(lConsumed), 'Expected latest progress snapshot to be available');
+    AssertEqualInt(7, lConsumed.ReposFound, 'Expected latest repo count to win');
+    AssertEqualInt(42, lConsumed.SkillsFound, 'Expected latest skill count to win');
+    AssertEqualText('Indexing skills...', lConsumed.StatusText, 'Expected latest status text to win');
+    AssertTrue(not lBuffer.TryConsume(lConsumed), 'Expected progress buffer to drain after one consume');
+  finally
+    lBuffer.Free;
+  end;
+end;
+
+procedure TestScanProgressBufferKeepsCountsWhenOnlyStatusChanges;
+var
+  lBuffer: TScanProgressBuffer;
+  lConsumed: TPipelineProgress;
+  lProgress: TPipelineProgress;
+begin
+  lBuffer := TScanProgressBuffer.Create;
+  try
+    lProgress := Default(TPipelineProgress);
+    lProgress.ReposFound := 5;
+    lProgress.SkillsFound := 19;
+    lProgress.SkillsWritten := 11;
+    lProgress.StatusText := 'Writing skill cache...';
+
+    lBuffer.Publish(lProgress);
+    lBuffer.PublishStatus('Warming embeddings...');
+
+    AssertTrue(lBuffer.TryConsume(lConsumed), 'Expected status-only update to remain consumable');
+    AssertEqualInt(5, lConsumed.ReposFound, 'Status-only update should preserve repo count');
+    AssertEqualInt(19, lConsumed.SkillsFound, 'Status-only update should preserve discovered skill count');
+    AssertEqualInt(11, lConsumed.SkillsWritten, 'Status-only update should preserve written skill count');
+    AssertEqualText('Warming embeddings...', lConsumed.StatusText, 'Status-only update should replace the stage text');
+  finally
+    lBuffer.Free;
+  end;
+end;
+
 procedure TestGitPullIsThrottledOnSecondRun;
 var
   lCoordinator: TPipelineCoordinator;
@@ -1109,6 +1348,7 @@ begin
   TestSettingsPersistUiStateAndSearchHistory;
   TestSettingsLoadExternalTools;
   TestSettingsLoadTrayHotkey;
+  TestSettingsLoadSearchAsYouTypeUiPreference;
   TestExternalToolCommandFormatting;
   TestDatabaseSkillTagCounts;
   TestTagBrowserActions;
@@ -1123,6 +1363,15 @@ begin
   TestGitPullFailureDoesNotBlockOtherRepos;
   TestGitPullRunsInNonInteractiveMode;
   TestDockerHealthMonitorStopDropsQueuedCallbacks;
+  TestDockerStatusUiStateHidesAlertWhenHealthy;
+  TestDockerStatusUiStateShowsDockerAlert;
+  TestDockerStatusUiStateShowsOllamaAlert;
+  TestDockerStatusUiStateHidesAlertWhileStarting;
+  TestDockerStatusUiStateShowsExplicitStartFailure;
+  TestScanActivitySummaryIncludesCountsAndElapsed;
+  TestPipelineReportsProgressCounts;
+  TestScanProgressBufferCoalescesToLatestProgress;
+  TestScanProgressBufferKeepsCountsWhenOnlyStatusChanges;
 end;
 
 end.

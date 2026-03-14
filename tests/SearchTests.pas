@@ -1,4 +1,4 @@
-unit SearchTests;
+﻿unit SearchTests;
 
 interface
 
@@ -7,9 +7,9 @@ procedure RunSearchTests;
 implementation
 
 uses
-  System.DateUtils, System.Hash, System.IOUtils, System.StrUtils, System.SysUtils,
-  AppPaths, DatabaseManager, PreviewRenderer, QueryParser, SearchInteraction, SearchResultActions, SettingsModel,
-  SkillSearchService, SkillTypes;
+  System.Classes, System.DateUtils, System.Hash, System.IOUtils, System.StrUtils, System.SysUtils,
+  AppPaths, DatabaseManager, PreviewEmptyStateHtml, PreviewRenderer, QueryParser, SearchInteraction,
+  SearchResultActions, SettingsModel, SkillSearchService, SkillTypes;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
 begin
@@ -194,6 +194,7 @@ end;
 
 procedure TestSearchInteractionHelpers;
 var
+  lFocusTarget: TMainFormFocusTarget;
   lHistory: TSearchHistorySettings;
   lPreparedCount: Integer;
   lQuery: string;
@@ -251,6 +252,23 @@ begin
     'Expected clicked tag to append after trimming surrounding spaces');
   AssertEqualText('retry tag:"rate limit"', AppendTagFilterQuery('retry', 'rate limit'),
     'Expected clicked multi-word tag to be quoted');
+  AssertEqualText('', BuildSelectedTagsQuery([]), 'Expected empty selected-tag query when nothing is checked');
+  AssertEqualText('tag:docker', BuildSelectedTagsQuery(['docker']),
+    'Expected one selected tag to become a plain tag clause');
+  AssertEqualText('(tag:docker OR tag:"rate limit")', BuildSelectedTagsQuery(['docker', 'rate limit']),
+    'Expected multiple selected tags to form one OR group');
+  AssertEqualText('(tag:docker OR tag:"rate limit")', BuildSelectedTagsQuery(['docker', 'rate limit', 'docker']),
+    'Expected duplicate selected tags to be ignored');
+  AssertTrue(TryResolveMainFormFocusShortcut(Ord('L'), [ssCtrl], lFocusTarget),
+    'Expected Ctrl+L to resolve to a focus shortcut');
+  AssertEqualInt(Ord(TMainFormFocusTarget.mfftSearch), Ord(lFocusTarget),
+    'Expected Ctrl+L to focus the search edit');
+  AssertTrue(TryResolveMainFormFocusShortcut(Ord('R'), [ssCtrl], lFocusTarget),
+    'Expected Ctrl+R to resolve to a focus shortcut');
+  AssertEqualInt(Ord(TMainFormFocusTarget.mfftResults), Ord(lFocusTarget),
+    'Expected Ctrl+R to focus the results list');
+  AssertTrue(not TryResolveMainFormFocusShortcut(Ord('R'), [], lFocusTarget),
+    'Expected plain R not to resolve to a focus shortcut');
 
   AssertEqualInt(-1440, ScaleStoredUiValue(-960, 96, 144),
     'Expected negative restored monitor coordinates to scale across DPI changes');
@@ -314,6 +332,9 @@ begin
   );
   AssertTrue(not TryBuildResultsMarkdownList(nil, lMarkdown), 'Expected empty export list to report no export payload');
   AssertEqualText('', lMarkdown, 'Expected empty export list markdown to stay empty');
+  AssertTrue(not ShouldShowDuplicateDetails(0), 'Expected no duplicate panel for zero duplicates');
+  AssertTrue(not ShouldShowDuplicateDetails(1), 'Expected no duplicate panel for canonical-only result');
+  AssertTrue(ShouldShowDuplicateDetails(2), 'Expected duplicate panel when duplicate paths exist');
 end;
 
 procedure TestSearchFiltersAndRanking;
@@ -518,6 +539,20 @@ begin
   end;
 end;
 
+procedure TestPreviewEmptyStateHtml;
+var
+  lHtml: string;
+begin
+  lHtml := GetPreviewEmptyStateHtml;
+  AssertTrue(ContainsText(lHtml, 'Pick a skill on the left and <strong>I''ll crack it open.</strong>'),
+    'Expected casual empty-state prompt in preview HTML');
+  AssertTrue(ContainsText(lHtml, 'heroLottie'), 'Expected hero lottie host in preview HTML');
+  AssertTrue(ContainsText(lHtml, 'miniLottie'), 'Expected accent lottie host in preview HTML');
+  AssertTrue(ContainsText(lHtml, 'Ctrl+R'), 'Expected keyboard hint in preview HTML');
+  AssertTrue(ContainsText(lHtml, 'https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js'),
+    'Expected lottie runtime script in preview HTML');
+end;
+
 procedure RunSearchTests;
 begin
   TestQueryParserSupportsBooleanOperatorsAndExtensionFilters;
@@ -525,6 +560,7 @@ begin
   TestSearchResultActions;
   TestSearchFiltersAndRanking;
   TestPreviewSnippetHtmlIsSanitizedAndHighlighted;
+  TestPreviewEmptyStateHtml;
   TestFindRelatedSkills;
 end;
 

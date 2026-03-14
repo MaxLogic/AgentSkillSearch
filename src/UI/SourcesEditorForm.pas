@@ -1,18 +1,18 @@
-unit SourcesEditorForm;
+﻿unit SourcesEditorForm;
 
 interface
 
 uses
   System.Classes,
-  Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.StdCtrls,
+  Vcl.Buttons, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.StdCtrls,
   SourcesList;
 
 type
   TSourcesEditorForm = class(TForm)
     fActionsPanel: TPanel;
-    fAddButton: TButton;
-    fBrowseButton: TButton;
-    fCancelButton: TButton;
+    fAddButton: TBitBtn;
+    fBrowseButton: TBitBtn;
+    fCancelButton: TBitBtn;
     fContentPanel: TPanel;
     fEntryPanel: TPanel;
     fHeaderLabel: TStaticText;
@@ -23,8 +23,8 @@ type
     fPathsListBox: TListBox;
     fPathsListLabel: TStaticText;
     fPathsPanel: TPanel;
-    fRemoveButton: TButton;
-    fSaveButton: TButton;
+    fRemoveButton: TBitBtn;
+    fSaveButton: TBitBtn;
     procedure HandleAddButtonClick(Sender: TObject);
     procedure HandleBrowseButtonClick(Sender: TObject);
     procedure HandlePathEditChange(Sender: TObject);

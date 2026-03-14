@@ -1,4 +1,4 @@
-object SourcesEditorForm: TSourcesEditorForm
+﻿object SourcesEditorForm: TSourcesEditorForm
   Left = 0
   Top = 0
   BorderIcons = [biSystemMenu]
@@ -29,25 +29,29 @@ object SourcesEditorForm: TSourcesEditorForm
     Padding.Right = 16
     Padding.Bottom = 10
     TabOrder = 1
-    object fCancelButton: TButton
+    object fCancelButton: TBitBtn
       AlignWithMargins = True
-      Left = 721
+      Left = 719
       Top = 10
-      Width = 103
+      Width = 105
       Height = 36
+      Margins.Top = 0
+      Margins.Bottom = 0
       Align = alRight
       Cancel = True
       Caption = 'Cancel'
       ModalResult = 2
       TabOrder = 1
     end
-    object fSaveButton: TButton
+    object fSaveButton: TBitBtn
       AlignWithMargins = True
-      Left = 610
+      Left = 606
       Top = 10
-      Width = 103
+      Width = 105
       Height = 36
       Margins.Right = 8
+      Margins.Top = 0
+      Margins.Bottom = 0
       Align = alRight
       Caption = 'Save'
       Default = True
@@ -110,13 +114,15 @@ object SourcesEditorForm: TSourcesEditorForm
         BevelOuter = bvNone
         Caption = ''
         TabOrder = 1
-        object fRemoveButton: TButton
+        object fRemoveButton: TBitBtn
           AlignWithMargins = True
-          Left = 657
-          Top = 8
+          Left = 654
+          Top = 4
           Width = 151
           Height = 36
-          Margins.Top = 8
+          Margins.Top = 4
+          Margins.Right = 0
+          Margins.Bottom = 4
           Align = alRight
           Caption = 'Remove Selected'
           TabOrder = 0
@@ -149,21 +155,83 @@ object SourcesEditorForm: TSourcesEditorForm
       Left = 16
       Top = 52
       Width = 808
-      Height = 54
+      Height = 56
       Margins.Bottom = 4
       Align = alTop
       BevelOuter = bvNone
       Caption = ''
       TabOrder = 2
-      object fPathEdit: TEdit
+      object fPathRowPanel: TPanel
         Left = 0
-        Top = 29
-        Width = 570
-        Height = 25
-        Anchors = [akLeft, akTop, akRight]
+        Top = 20
+        Width = 808
+        Height = 36
+        Align = alBottom
+        BevelOuter = bvNone
+        Caption = ''
         TabOrder = 0
-        TextHint = 'C:\projects\MaxLogic'
-        OnChange = HandlePathEditChange
+        object fPathEditHostPanel: TPanel
+          Left = 0
+          Top = 0
+          Width = 578
+          Height = 36
+          Align = alClient
+          BevelOuter = bvNone
+          Caption = ''
+          TabOrder = 0
+          object fPathEdit: TEdit
+            AlignWithMargins = True
+            Left = 0
+            Top = 0
+            Width = 570
+            Height = 25
+            Margins.Left = 0
+            Margins.Top = 0
+            Margins.Right = 8
+            Margins.Bottom = 0
+            Align = alTop
+            TabOrder = 0
+            TextHint = 'C:\projects\MaxLogic'
+            OnChange = HandlePathEditChange
+          end
+        end
+        object fPathButtonsPanel: TPanel
+          Left = 578
+          Top = 0
+          Width = 230
+          Height = 36
+          Align = alRight
+          BevelOuter = bvNone
+          Caption = ''
+          TabOrder = 1
+          object fAddButton: TBitBtn
+            AlignWithMargins = True
+            Left = 126
+            Top = 0
+            Width = 104
+            Height = 36
+            Margins.Left = 8
+            Margins.Top = 0
+            Margins.Bottom = 0
+            Align = alRight
+            Caption = 'Add'
+            TabOrder = 1
+            OnClick = HandleAddButtonClick
+          end
+          object fBrowseButton: TBitBtn
+            AlignWithMargins = True
+            Left = 0
+            Top = 0
+            Width = 118
+            Height = 36
+            Margins.Top = 0
+            Margins.Bottom = 0
+            Align = alClient
+            Caption = 'Browse...'
+            TabOrder = 0
+            OnClick = HandleBrowseButtonClick
+          end
+        end
       end
       object fPathLabel: TStaticText
         Left = 0
@@ -175,26 +243,6 @@ object SourcesEditorForm: TSourcesEditorForm
         BorderStyle = sbsNone
         Caption = 'Add source path'
         TabStop = False
-      end
-      object fBrowseButton: TButton
-        Left = 578
-        Top = 22
-        Width = 110
-        Height = 32
-        Anchors = [akTop, akRight]
-        Caption = 'Browse...'
-        TabOrder = 1
-        OnClick = HandleBrowseButtonClick
-      end
-      object fAddButton: TButton
-        Left = 696
-        Top = 22
-        Width = 112
-        Height = 32
-        Anchors = [akTop, akRight]
-        Caption = 'Add'
-        TabOrder = 2
-        OnClick = HandleAddButtonClick
       end
     end
     object fHeaderLabel: TStaticText

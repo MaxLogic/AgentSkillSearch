@@ -20,6 +20,7 @@ type
 function BuildResultsMarkdownList(const aResults: TArray<TSkillSearchResult>): string;
 function DefaultSearchSortMode: TSearchSortMode;
 function SearchSortModeToString(const aSortMode: TSearchSortMode): string;
+function ShouldShowDuplicateDetails(const aDuplicateCount: Integer): Boolean;
 procedure SortSearchResults(var aResults: TArray<TSkillSearchResult>; const aSortMode: TSearchSortMode);
 function TryBuildResultsMarkdownList(const aResults: TArray<TSkillSearchResult>; out aMarkdown: string): Boolean;
 function TryParseSearchSortMode(const aValue: string; out aSortMode: TSearchSortMode): Boolean;
@@ -103,6 +104,11 @@ begin
   else
     Result := 'date-indexed-asc';
   end;
+end;
+
+function ShouldShowDuplicateDetails(const aDuplicateCount: Integer): Boolean;
+begin
+  Result := aDuplicateCount > 1;
 end;
 
 procedure SortSearchResults(var aResults: TArray<TSkillSearchResult>; const aSortMode: TSearchSortMode);

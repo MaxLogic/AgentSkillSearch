@@ -7,6 +7,21 @@ uses
   DatabaseManager, GitPullWorker, SkillIndexer, SkillSearchService, SkillTypes;
 
 type
+  TPipelineProgress = record
+    ElapsedMs: Int64;
+    ErrorCount: Integer;
+    ReposFailed: Integer;
+    ReposFound: Integer;
+    ReposPulled: Integer;
+    ReposThrottled: Integer;
+    ReposWritten: Integer;
+    SkillsFound: Integer;
+    SkillsWritten: Integer;
+    StatusText: string;
+  end;
+
+  TPipelineProgressProc = reference to procedure(const aProgress: TPipelineProgress);
+
   TPipelineOptions = record
     AutoCancelAfterMs: Integer;
     DbBatchSize: Integer;
@@ -20,6 +35,7 @@ type
     MaxScanThreads: Integer;
     MinPullIntervalMinutes: Integer;
     OnEmbeddingProgress: TEmbeddingProgressProc;
+    OnProgress: TPipelineProgressProc;
     PullEnabled: Boolean;
     SemanticOptions: TSemanticSearchOptions;
     SimulationDelayMs: Integer;
@@ -76,6 +92,7 @@ type
     function BuildUniquePaths(const aInput: TList<string>): TArray<string>;
     function IsExcludedPath(const aPath: string): Boolean;
     function IsSkippedDirectory(const aDirectoryPath: string): Boolean;
+    procedure ReportProgress(const aStatusText: string);
     function ShouldAutoCancel: Boolean;
     procedure ScanRoot(const aRootPath: string; aRepos: TList<string>; aSkills: TList<string>);
   public
@@ -106,6 +123,7 @@ begin
   Result.MaxScanThreads := 4;
   Result.MinPullIntervalMinutes := 1440;
   Result.OnEmbeddingProgress := nil;
+  Result.OnProgress := nil;
   Result.PullEnabled := True;
   Result.SemanticOptions := DefaultSemanticSearchOptions;
   Result.SimulationDelayMs := 0;
@@ -200,6 +218,28 @@ begin
   finally
     TMonitor.Exit(aSkills);
   end;
+end;
+
+procedure TPipelineCoordinator.ReportProgress(const aStatusText: string);
+var
+  lProgress: TPipelineProgress;
+begin
+  if not Assigned(fOptions.OnProgress) then
+  begin
+    Exit;
+  end;
+
+  lProgress.ElapsedMs := fStopwatch.ElapsedMilliseconds;
+  lProgress.ErrorCount := TInterlocked.CompareExchange(fErrorCount, 0, 0);
+  lProgress.ReposFailed := TInterlocked.CompareExchange(fReposFailed, 0, 0);
+  lProgress.ReposFound := TInterlocked.CompareExchange(fReposQueued, 0, 0);
+  lProgress.ReposPulled := TInterlocked.CompareExchange(fReposPulled, 0, 0);
+  lProgress.ReposThrottled := TInterlocked.CompareExchange(fReposThrottled, 0, 0);
+  lProgress.ReposWritten := TInterlocked.CompareExchange(fReposWritten, 0, 0);
+  lProgress.SkillsFound := TInterlocked.CompareExchange(fSkillsQueued, 0, 0);
+  lProgress.SkillsWritten := TInterlocked.CompareExchange(fSkillsWritten, 0, 0);
+  lProgress.StatusText := aStatusText;
+  fOptions.OnProgress(lProgress);
 end;
 
 function TPipelineCoordinator.BuildPullUpdate(const aRepoPath: string; const aPullResult: TGitPullResult): TRepoPullUpdate;
@@ -441,6 +481,7 @@ begin
 
       lReposForGit := BuildUniquePaths(lReposDiscovered);
       lSkillFilesForIndex := BuildUniquePaths(lSkillFilesDiscovered);
+      ReportProgress('Scanning source folders...');
 
       if Length(lReposForGit) > 0 then
       begin
@@ -462,6 +503,7 @@ begin
             begin
               AddRepoPullResult(lRepoPullUpdates, BuildThrottledPullUpdate(lReposForGit[i], lKnownRepoState.LastPullUtc));
               TInterlocked.Increment(fReposThrottled);
+              ReportProgress('Checking repositories...');
             end else begin
               lReposToPull.Add(lReposForGit[i]);
             end;
@@ -512,6 +554,7 @@ begin
                       AddError('Git pull failed for "' + lRepoPath + '": ' + lPullUpdate.LastPullStatus + ' ' +
                         lPullUpdate.LastPullOutput);
                     end;
+                    ReportProgress('Pulling repositories...');
 
                     if fOptions.SimulationDelayMs > 0 then
                     begin
@@ -522,6 +565,7 @@ begin
                     begin
                       TInterlocked.Increment(fReposFailed);
                       AddError('Git worker failed: ' + E.Message);
+                      ReportProgress('Pulling repositories...');
                     end;
                   end;
                 finally
@@ -565,8 +609,10 @@ begin
                   finally
                     TMonitor.Exit(lIndexedSkills);
                   end;
+                  ReportProgress('Indexing skills...');
                 end else begin
                   AddError('Skill indexing failed for "' + lSkillFilesForIndex[aIndex] + '": ' + lLocalError);
+                  ReportProgress('Indexing skills...');
                 end;
 
                 if fOptions.SimulationDelayMs > 0 then
@@ -577,6 +623,7 @@ begin
                 on E: Exception do
                 begin
                   AddError('Index worker failed: ' + E.Message);
+                  ReportProgress('Indexing skills...');
                 end;
               end;
             end,
@@ -590,6 +637,7 @@ begin
       lBatchRepos := lReposForGit;
       lBatchRepoPulls := lRepoPullUpdates.ToArray;
       lBatchSkills := lIndexedSkills.ToArray;
+      ReportProgress('Indexing skills...');
 
       lLocalDbManager := TDatabaseManager.Create(fDbManager.DatabasePath, fDbManager.SqliteDllPath);
       try
@@ -609,6 +657,7 @@ begin
 
           lLocalDbManager.WriteBatch(Copy(lBatchRepos, i, fOptions.DbBatchSize), nil);
           TInterlocked.Add(fReposWritten, Min(fOptions.DbBatchSize, Length(lBatchRepos) - i));
+          ReportProgress('Writing repository cache...');
           i := i + fOptions.DbBatchSize;
         end;
 
@@ -625,6 +674,7 @@ begin
           end;
 
           lLocalDbManager.WriteBatchWithRepoPulls(nil, Copy(lBatchRepoPulls, i, fOptions.DbBatchSize), nil);
+          ReportProgress('Writing pull results...');
           i := i + fOptions.DbBatchSize;
         end;
 
@@ -642,6 +692,7 @@ begin
 
           lLocalDbManager.WriteBatch(nil, Copy(lBatchSkills, i, fOptions.DbBatchSize));
           TInterlocked.Add(fSkillsWritten, Min(fOptions.DbBatchSize, Length(lBatchSkills) - i));
+          ReportProgress('Writing skill cache...');
           i := i + fOptions.DbBatchSize;
         end;
       except
@@ -681,6 +732,7 @@ begin
           fOptions.SemanticOptions
         );
         try
+          ReportProgress('Warming embeddings...');
           lSkillSearchService.WarmSkillEmbeddings(lSkillFilesToEmbed, fOptions.OnEmbeddingProgress);
         finally
           lSkillSearchService.Free;
