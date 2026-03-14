@@ -16,6 +16,7 @@ object AppMainForm: TAppMainForm
   OnClose = HandleFormClose
   OnCreate = FormCreate
   OnKeyDown = HandleFormKeyDown
+  OnShow = HandleFormShow
   TextHeight = 17
   object SearchPanel: TPanel
     Left = 0

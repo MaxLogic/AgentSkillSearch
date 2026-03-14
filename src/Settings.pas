@@ -372,6 +372,7 @@ begin
   ForceDirectories(ExtractFilePath(aSettingsPath));
   lIni := TMemIniFile.Create(aSettingsPath, TEncoding.UTF8);
   try
+    lIni.WriteString('UI', 'CheckForUpdatesOnStartup', BoolToIniValue(aUiSettings.CheckForUpdatesOnStartup));
     lIni.WriteString('UI', 'CloseToTray', BoolToIniValue(aUiSettings.CloseToTray));
     lIni.WriteString('UI', 'OpenFileOnEnter', BoolToIniValue(aUiSettings.OpenFileOnEnter));
     lIni.WriteString('UI', 'SearchAsYouType', BoolToIniValue(aUiSettings.SearchAsYouType));
@@ -514,6 +515,8 @@ begin
 
     Result.Settings.Ui.CloseToTray := ReadRequiredBool(lIni, Result, 'UI', 'CloseToTray',
       lDefault.Ui.CloseToTray);
+    Result.Settings.Ui.CheckForUpdatesOnStartup := ReadRequiredBool(lIni, Result, 'UI', 'CheckForUpdatesOnStartup',
+      lDefault.Ui.CheckForUpdatesOnStartup);
     Result.Settings.Ui.ShowPreviewPane := ReadRequiredBool(lIni, Result, 'UI', 'ShowPreviewPane',
       lDefault.Ui.ShowPreviewPane);
     Result.Settings.Ui.OpenFileOnEnter := ReadRequiredBool(lIni, Result, 'UI', 'OpenFileOnEnter',

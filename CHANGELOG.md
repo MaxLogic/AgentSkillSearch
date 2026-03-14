@@ -59,6 +59,7 @@
 - The main form now also supports `Ctrl+R` to move focus to the results list, and the results caption shows that shortcut for easier recall (`T-058`).
 - The preview browser now shows a designed empty-state page after initialization and when no result is selected, using a casual prompt, keyboard hints, and animated Lottie placeholders sourced from a dedicated Delphi HTML-constant unit (`T-059`).
 - The duplicate-details panel now stays hidden unless the selected skill actually has duplicate paths to show, which frees preview space for the common non-duplicate case (`T-060`).
+- The settings dialog now includes a startup update-check preference, and the app can quietly check GitHub releases on startup in the background before showing a dedicated update-available dialog with a direct GitHub action when a newer build exists (`T-062`).
 - Closing the app window now hides it to a tray icon with Show/Exit actions, and an optional `UI.TrayHotkey` setting can restore/focus the window globally when configured with a modifier-backed shortcut (`T-033`).
 - Documented the app’s Ollama auto-start behavior and updated Win64 packaging to build a Release runtime without overwriting existing portable config files in `bin/` (`T-032`).
 

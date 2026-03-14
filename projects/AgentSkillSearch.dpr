@@ -12,6 +12,7 @@ uses
   madListModules,
   FireDAC.VCLUI.Wait,
   Vcl.Forms,
+  AppUpdateActions in '..\src\AppUpdateActions.pas',
   AppPaths in '..\src\AppPaths.pas',
   SettingsModel in '..\src\Config\SettingsModel.pas',
   DatabaseManager in '..\src\Db\DatabaseManager.pas',
@@ -45,6 +46,8 @@ uses
   MainForm in '..\src\UI\MainForm.pas' {AppMainForm},
   PreviewRenderer in '..\src\UI\PreviewRenderer.pas',
   TagFilterDialog in '..\src\UI\TagFilterDialog.pas' {TagFilterDialog},
+  UpdateAvailableDialog in '..\src\UI\UpdateAvailableDialog.pas' {UpdateAvailableDialog},
+  UpdateAvailableDialogHtml in '..\src\UI\UpdateAvailableDialogHtml.pas',
   SourcesEditorForm in '..\src\UI\SourcesEditorForm.pas' {SourcesEditorForm};
 
 {$R *.res}

@@ -7,8 +7,8 @@ uses
   Vcl.ExtCtrls, Vcl.Forms, Vcl.Menus, Vcl.Skia, Vcl.StdCtrls, Vcl.VirtualImageList,
   VCL.TMSFNCWebBrowser,
   AdvTypes,
-  DatabaseManager, DockerHealthMonitor, DockerOps, DockerStatusUi, ExternalTools, PipelineCoordinator,
-  RelatedSkillActions, ScanActivityUi, ScanProgressBuffer,
+  AppUpdateActions, DatabaseManager, DockerHealthMonitor, DockerOps, DockerStatusUi, ExternalTools,
+  MaxLogic.GitHubReleaseChecker, PipelineCoordinator, RelatedSkillActions, ScanActivityUi, ScanProgressBuffer,
   SearchController, SearchInteraction, SearchResultActions, SettingsModel, SkillSearchService,
   TrayActions, VCL.TMSFNCCustomControl, VCL.TMSFNCGraphics, VCL.TMSFNCGraphicsTypes, VCL.TMSFNCTypes,
   VCL.TMSFNCUtils, System.Skia, Vcl.BaseImageCollection, System.ImageList,
@@ -76,6 +76,7 @@ type
     pnlScanningRight: TPanel;
     SearchEditLabel: TStaticText;
     procedure FormCreate(Sender: TObject);
+    procedure HandleFormShow(Sender: TObject);
     procedure PreviewBrowserInitialized(Sender: TObject);
   private
     fTrayHotkeyRegistered: Boolean;
@@ -116,6 +117,8 @@ type
     fSkillsUniqueCount: Integer;
     fSkillsValidCount: Integer;
     fSourcesListPath: string;
+    fStartupChecksStarted: Boolean;
+    fUpdateCheckThread: TThread;
     procedure ApplySearchResults(const aResults: TArray<TSkillSearchResult>);
     procedure ApplyPendingScanProgress;
     function BuildPipelineOptions: TPipelineOptions;
@@ -130,6 +133,7 @@ type
     procedure HandlePendingScanProgress(const aProgress: TPipelineProgress);
     procedure RefreshScanActivityUi;
     procedure StartDockerStackAsync;
+    procedure StartUpdateCheckAsync;
     function BuildEffectiveQuery: string;
     procedure CaptureWindowBounds(out aLeft, aTop, aWidth, aHeight: Integer);
     function CaptureUiState: TUiStateSettings;
@@ -168,6 +172,7 @@ type
     function SerializeColumnWidths: string;
     procedure SetSortMode(const aSortMode: TSearchSortMode; const aResortResults: Boolean = True);
     procedure ShowEmptyPreview;
+    procedure ShowUpdateAvailableDialog(const aCheckResult: TGitHubReleaseCheckResult);
     procedure ShowTrayIcon;
     function TryLoadSourceRoots(out aSourceRoots: TArray<string>): Boolean;
     procedure UnregisterTrayHotkey;
@@ -178,6 +183,7 @@ type
     procedure UpdateSortUi;
     procedure UpdateSearchHistoryMenu;
     procedure WaitForWorkerThread(var aThread: TThread);
+    procedure HandleUpdateCheckCompleted(const aResult: TGitHubReleaseCheckResult);
     procedure HandleTrayHotkeyMessage(var Msg: TMessage); message WM_HOTKEY;
     procedure HandleTrayIconMessage(var Msg: TMessage); message WM_APP + 42;
   published
@@ -230,8 +236,8 @@ uses
   Vcl.Clipbrd, Vcl.Dialogs,
   MaxLogic.BalloonDefaultImageList,
   AppPaths, AutoHourGlass, ConfigDlg, DiagnosticsForm, Logging, PathExclusions, PreviewEmptyStateHtml,
-  PreviewRenderer, Settings, SourcesList, TagFilterDialog,
-  maxLogic.madExcept;
+  PreviewRenderer, Settings, SourcesList, TagFilterDialog, UpdateAvailableDialog,
+  MaxMadExcept, MaxLogic.ioUtils;
 
 {$R *.dfm}
 
@@ -407,6 +413,8 @@ begin
   fDockerHealthState := TDockerHealthState.dhsUnknown;
   fDockerStartFailureMessage := '';
   fScanThread := nil;
+  fStartupChecksStarted := False;
+  fUpdateCheckThread := nil;
   HideActivityUi;
   UpdateDockerStatusUi;
   fDockerHealthMonitor := TDockerHealthMonitor.Create(
@@ -451,7 +459,22 @@ end;
 
 procedure TAppMainForm.FormCreate(Sender: TObject);
 begin
-  maxLogic.madExcept.SetUpWebUpload('https://maxlogic.eu/bugreport_mailer/bugreport_mailer.php', 'maxlogic');
+  // maxLogic.madExcept.SetUpWebUpload('https://maxlogic.eu/bugreport_mailer/bugreport_mailer.php', 'maxlogic');
+  MaxMadExcept.AdjustMadExcept(GetInstallDir);
+end;
+
+procedure TAppMainForm.HandleFormShow(Sender: TObject);
+begin
+  if fStartupChecksStarted then
+  begin
+    Exit;
+  end;
+
+  fStartupChecksStarted := True;
+  if ShouldCheckForUpdatesOnStartup(fAppSettings.Ui) then
+  begin
+    StartUpdateCheckAsync;
+  end;
 end;
 
 destructor TAppMainForm.Destroy;
@@ -473,6 +496,7 @@ begin
     fScanCancelToken := nil;
   end;
   WaitForWorkerThread(fDockerStartThread);
+  WaitForWorkerThread(fUpdateCheckThread);
   fDockerHealthMonitor.Free;
   fSearchController.Free;
   fSearchService.Free;
@@ -1442,6 +1466,56 @@ begin
   fDockerStartThread.Start;
 end;
 
+procedure TAppMainForm.StartUpdateCheckAsync;
+var
+  lCurrentVersion: string;
+begin
+  if Assigned(fUpdateCheckThread) then
+  begin
+    Exit;
+  end;
+
+  lCurrentVersion := GetBuildInfo;
+  if Trim(lCurrentVersion) = '' then
+  begin
+    LogInfo('Startup update check skipped because the current version is unavailable.');
+    Exit;
+  end;
+
+  LogInfo('Startup update check started. CurrentVersion=' + lCurrentVersion);
+  fUpdateCheckThread := TThread.CreateAnonymousThread(
+    procedure
+    var
+      lChecker: TMaxGitHubReleaseChecker;
+      lResult: TGitHubReleaseCheckResult;
+    begin
+      lChecker := TMaxGitHubReleaseChecker.Create(cUpdateRepoOwner, cUpdateRepoName);
+      try
+        lResult := lChecker.CheckLatestRelease(lCurrentVersion);
+      finally
+        lChecker.Free;
+      end;
+
+      QueueToMain(
+        procedure
+        var
+          lForm: TAppMainForm;
+        begin
+          lForm := AppMainForm;
+          if not Assigned(lForm) then
+          begin
+            Exit;
+          end;
+
+          lForm.HandleUpdateCheckCompleted(lResult);
+        end
+      );
+    end
+  );
+  fUpdateCheckThread.FreeOnTerminate := False;
+  fUpdateCheckThread.Start;
+end;
+
 procedure TAppMainForm.EndScanProgress;
 begin
   fScanHourGlass := nil;
@@ -1480,6 +1554,35 @@ begin
     end;
   end;
   UpdateDockerStatusUi;
+end;
+
+procedure TAppMainForm.HandleUpdateCheckCompleted(const aResult: TGitHubReleaseCheckResult);
+begin
+  WaitForWorkerThread(fUpdateCheckThread);
+
+  case aResult.Status of
+    TGitHubReleaseCheckStatus.gcsSuccess:
+      begin
+        LogInfo('Startup update check finished. Latest=' + aResult.LatestRelease.TagName);
+      end;
+    TGitHubReleaseCheckStatus.gcsNoRelease:
+      begin
+        LogInfo('Startup update check finished. No published release found.');
+        Exit;
+      end;
+    TGitHubReleaseCheckStatus.gcsHttpError,
+    TGitHubReleaseCheckStatus.gcsInvalidResponse,
+    TGitHubReleaseCheckStatus.gcsRequestFailed:
+      begin
+        LogInfo('Startup update check failed: ' + aResult.ErrorMessage);
+        Exit;
+      end;
+  end;
+
+  if ShouldPromptForAppUpdate(aResult) then
+  begin
+    ShowUpdateAvailableDialog(aResult);
+  end;
 end;
 
 procedure TAppMainForm.HandleDockerStartCompleted(const aResult: TDockerCommandResult);
@@ -2137,12 +2240,14 @@ var
 begin
   lDlg := TConfigDlg.Create(Self);
   try
+    lDlg.CheckForUpdatesOnStartup := fAppSettings.Ui.CheckForUpdatesOnStartup;
     lDlg.CloseToTray := fAppSettings.Ui.CloseToTray;
     lDlg.SearchAsYouType := fAppSettings.Ui.SearchAsYouType;
     lDlg.SourcesListPath := fSourcesListPath;
     if lDlg.ShowModal = mrOK then
     begin
       lQueueSearch := (not fAppSettings.Ui.SearchAsYouType) and lDlg.SearchAsYouType;
+      fAppSettings.Ui.CheckForUpdatesOnStartup := lDlg.CheckForUpdatesOnStartup;
       fAppSettings.Ui.CloseToTray := lDlg.CloseToTray;
       fAppSettings.Ui.SearchAsYouType := lDlg.SearchAsYouType;
       SaveUiSettings(fSettingsPath, fAppSettings.Ui);
@@ -2159,6 +2264,23 @@ begin
     end;
   finally
     lDlg.Free;
+  end;
+end;
+
+procedure TAppMainForm.ShowUpdateAvailableDialog(const aCheckResult: TGitHubReleaseCheckResult);
+var
+  lPrompt: TUpdatePromptInfo;
+begin
+  lPrompt := BuildUpdatePromptInfo(aCheckResult.CurrentVersion, aCheckResult.LatestRelease);
+  if not TUpdateAvailableDialog.Execute(Self, lPrompt) then
+  begin
+    Exit;
+  end;
+
+  if ShellExecute(Handle, 'open', PChar(lPrompt.ReleaseUrl), nil, nil, SW_SHOWNORMAL) <= 32 then
+  begin
+    MessageDlg('I could not open the release page automatically. Please open it from GitHub manually.', mtWarning,
+      [mbOK], 0);
   end;
 end;
 

@@ -4,7 +4,7 @@
   BorderIcons = [biSystemMenu]
   BorderStyle = bsDialog
   Caption = 'Settings'
-  ClientHeight = 276
+  ClientHeight = 308
   ClientWidth = 456
   Color = clWhite
   Font.Charset = DEFAULT_CHARSET
@@ -16,7 +16,7 @@
   TextHeight = 17
   object PnlButtons: TPanel
     Left = 0
-    Top = 220
+    Top = 252
     Width = 456
     Height = 56
     Align = alBottom
@@ -63,7 +63,7 @@
     Left = 16
     Top = 16
     Width = 424
-    Height = 188
+    Height = 220
     Margins.Left = 16
     Margins.Top = 16
     Margins.Right = 16
@@ -87,12 +87,32 @@
       Margins.Bottom = 12
       Align = alTop
       Caption = 'Run search automatically while we type'
+      Hint = 'Search while typing|Run searches automatically while we type in the query box.|0'
+      ParentShowHint = False
+      ShowHint = True
       TabOrder = 3
+    end
+    object ChkCheckForUpdatesOnStartup: TCheckBox
+      AlignWithMargins = True
+      Left = 0
+      Top = 133
+      Width = 424
+      Height = 20
+      Margins.Left = 0
+      Margins.Top = 0
+      Margins.Right = 0
+      Margins.Bottom = 12
+      Align = alTop
+      Caption = 'Check for updates on startup'
+      Hint = 'Updates|Check GitHub on startup and tell us when a newer release is available.|0'
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 4
     end
     object BtnEditSources: TBitBtn
       AlignWithMargins = True
       Left = 0
-      Top = 133
+      Top = 165
       Width = 424
       Height = 36
       Margins.Left = 0
@@ -104,7 +124,7 @@
       Hint = 'Sources|Open the source-folder editor used by Scan and Update.|0'
       ParentShowHint = False
       ShowHint = True
-      TabOrder = 4
+      TabOrder = 5
       OnClick = HandleEditSourcesClick
     end
     object ChkCloseToTray: TCheckBox
@@ -119,6 +139,9 @@
       Margins.Bottom = 12
       Align = alTop
       Caption = 'Minimize to system tray when closing instead of exiting'
+      Hint = 'Tray behavior|Hide to the tray icon when closing the main window instead of exiting right away.|0'
+      ParentShowHint = False
+      ShowHint = True
       TabOrder = 2
     end
     object LblSection: TStaticText

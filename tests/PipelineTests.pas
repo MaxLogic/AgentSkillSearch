@@ -10,8 +10,10 @@ uses
   System.Classes, System.Diagnostics, System.IniFiles, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
   Winapi.Messages, Winapi.Windows,
   Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
-  AppPaths, DatabaseManager, DockerHealthMonitor, DockerStatusUi, ExternalTools, Logging, PipelineCoordinator, Settings,
-  RelatedSkillActions, ScanActivityUi, ScanProgressBuffer, SettingsModel, SkillSearchService, SkillTypes,
+  MaxLogic.GitHubReleaseChecker,
+  AppPaths, AppUpdateActions, DatabaseManager, DockerHealthMonitor, DockerStatusUi, ExternalTools, Logging,
+  PipelineCoordinator, Settings, RelatedSkillActions, ScanActivityUi, ScanProgressBuffer, SettingsModel,
+  SkillSearchService, SkillTypes, UpdateAvailableDialogHtml,
   TagBrowserActions, TrayActions;
 
 var
@@ -320,10 +322,14 @@ begin
       'Expected SearchHistory.MaxItems key to be created');
     AssertTrue(lIni.ValueExists('UI', 'SearchAsYouType'),
       'Expected UI.SearchAsYouType key to be created');
+    AssertTrue(lIni.ValueExists('UI', 'CheckForUpdatesOnStartup'),
+      'Expected UI.CheckForUpdatesOnStartup key to be created');
     AssertTrue(lIni.ValueExists('UI', 'TrayHotkey'),
       'Expected UI.TrayHotkey key to be created');
     AssertEqualInt(20, lIni.ReadInteger('SearchHistory', 'MaxItems', 0),
       'Expected SearchHistory.MaxItems default');
+    AssertTrue(lIni.ReadBool('UI', 'CheckForUpdatesOnStartup', False),
+      'Expected UI.CheckForUpdatesOnStartup default to be enabled');
     AssertEqualText('', lIni.ReadString('UI', 'TrayHotkey', 'missing'),
       'Expected UI.TrayHotkey default to be empty');
   finally
@@ -482,6 +488,119 @@ begin
     'Expected UI.SearchAsYouType preference to load into the UI settings record');
   AssertTrue(lLoadResult.Settings.UiState.SearchAsYouType,
     'Expected UI.SearchAsYouType preference to drive the restored search-as-you-type state');
+end;
+
+procedure TestSettingsLoadCheckForUpdatesOnStartupPreference;
+var
+  lFixtureRoot: string;
+  lLoadResult: TSettingsLoadResult;
+  lSettingsPath: string;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+  lUtf8: TStringList;
+begin
+  PrepareFixtureDirectory('SkillSearchCheckUpdatesUiFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+
+  lSettingsPath := TPath.Combine(lFixtureRoot, 'runtime\settings.ini');
+  ForceDirectories(ExtractFilePath(lSettingsPath));
+
+  lUtf8 := TStringList.Create;
+  try
+    lUtf8.Add('[UI]');
+    lUtf8.Add('CheckForUpdatesOnStartup=0');
+    lUtf8.SaveToFile(lSettingsPath, TEncoding.UTF8);
+  finally
+    lUtf8.Free;
+  end;
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+  AssertTrue(not lLoadResult.Settings.Ui.CheckForUpdatesOnStartup,
+    'Expected UI.CheckForUpdatesOnStartup preference to load into the UI settings record');
+end;
+
+procedure TestSettingsPersistUiSettings;
+var
+  lFixtureRoot: string;
+  lIni: TMemIniFile;
+  lLoadResult: TSettingsLoadResult;
+  lSettingsPath: string;
+  lUiSettings: TUiSettings;
+  lUnusedInfraRoot: string;
+  lUnusedScanRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchUiSettingsPersistFixture', lFixtureRoot, lUnusedInfraRoot, lUnusedScanRoot);
+
+  lSettingsPath := TPath.Combine(lFixtureRoot, 'runtime\settings.ini');
+  ForceDirectories(ExtractFilePath(lSettingsPath));
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+
+  lUiSettings := lLoadResult.Settings.Ui;
+  lUiSettings.CloseToTray := True;
+  lUiSettings.SearchAsYouType := True;
+  lUiSettings.CheckForUpdatesOnStartup := False;
+  SaveUiSettings(lSettingsPath, lUiSettings);
+
+  lLoadResult := LoadOrCreateSettings(lSettingsPath);
+  AssertTrue(lLoadResult.Settings.Ui.CloseToTray, 'Expected saved CloseToTray preference');
+  AssertTrue(lLoadResult.Settings.Ui.SearchAsYouType, 'Expected saved SearchAsYouType preference');
+  AssertTrue(not lLoadResult.Settings.Ui.CheckForUpdatesOnStartup,
+    'Expected saved CheckForUpdatesOnStartup preference');
+
+  lIni := TMemIniFile.Create(lSettingsPath, TEncoding.UTF8);
+  try
+    AssertTrue(lIni.ValueExists('UI', 'CheckForUpdatesOnStartup'),
+      'Expected UI.CheckForUpdatesOnStartup key to be persisted');
+  finally
+    lIni.Free;
+  end;
+end;
+
+procedure TestUpdatePromptActions;
+var
+  lPrompt: TUpdatePromptInfo;
+  lRelease: TGitHubReleaseInfo;
+  lResult: TGitHubReleaseCheckResult;
+begin
+  lRelease := Default(TGitHubReleaseInfo);
+  lRelease.TagName := 'v1.4.0';
+  lRelease.Name := 'Spring Cleanup';
+  lRelease.HtmlUrl := 'https://github.com/MaxLogic/AgentSkillSearch/releases/tag/v1.4.0';
+
+  lResult := Default(TGitHubReleaseCheckResult);
+  lResult.Status := TGitHubReleaseCheckStatus.gcsSuccess;
+  lResult.CurrentVersion := '1.0.0.0';
+  lResult.LatestRelease := lRelease;
+
+  AssertTrue(ShouldPromptForAppUpdate(lResult), 'Expected newer successful release check to prompt');
+
+  lPrompt := BuildUpdatePromptInfo(lResult.CurrentVersion, lRelease);
+  AssertEqualText('1.0.0.0', lPrompt.CurrentVersion, 'Expected current version in prompt');
+  AssertEqualText('v1.4.0', lPrompt.LatestVersion, 'Expected latest version in prompt');
+  AssertEqualText('Spring Cleanup', lPrompt.ReleaseName, 'Expected release name in prompt');
+  AssertEqualText(lRelease.HtmlUrl, lPrompt.ReleaseUrl, 'Expected release URL in prompt');
+  AssertTrue(ContainsText(lPrompt.Headline, 'fresh'),
+    'Expected prompt headline to keep the fun update tone');
+
+  lResult.CurrentVersion := 'v1.4.0';
+  AssertTrue(not ShouldPromptForAppUpdate(lResult), 'Expected equal version not to prompt');
+
+  lResult.CurrentVersion := '';
+  AssertTrue(not ShouldPromptForAppUpdate(lResult), 'Expected missing current version not to prompt');
+
+  lResult.Status := TGitHubReleaseCheckStatus.gcsNoRelease;
+  lResult.CurrentVersion := '1.0.0.0';
+  AssertTrue(not ShouldPromptForAppUpdate(lResult), 'Expected no-release result not to prompt');
+end;
+
+procedure TestUpdateAvailableVisualHtml;
+var
+  lHtml: string;
+begin
+  lHtml := GetUpdateAvailableVisualHtml;
+  AssertTrue(ContainsText(lHtml, 'heroLottie'), 'Expected update visual HTML to define the lottie host');
+  AssertTrue(ContainsText(lHtml, 'Fresh build spotted'), 'Expected update visual HTML to keep the selected tone');
+  AssertTrue(ContainsText(lHtml, 'bodymovin'), 'Expected update visual HTML to load the Lottie runtime');
 end;
 
 procedure TestExternalToolCommandFormatting;
@@ -1346,9 +1465,13 @@ begin
   TestPipelineHonorsComputeHasScriptsSetting;
   TestSettingsCreateUiStateAndSearchHistoryDefaults;
   TestSettingsPersistUiStateAndSearchHistory;
+  TestSettingsPersistUiSettings;
   TestSettingsLoadExternalTools;
   TestSettingsLoadTrayHotkey;
   TestSettingsLoadSearchAsYouTypeUiPreference;
+  TestSettingsLoadCheckForUpdatesOnStartupPreference;
+  TestUpdatePromptActions;
+  TestUpdateAvailableVisualHtml;
   TestExternalToolCommandFormatting;
   TestDatabaseSkillTagCounts;
   TestTagBrowserActions;
