@@ -1,4 +1,4 @@
-object AppMainForm: TAppMainForm
+﻿object AppMainForm: TAppMainForm
   AlignWithMargins = True
   Left = 0
   Top = 0
@@ -2692,8 +2692,12 @@ object AppMainForm: TAppMainForm
     Left = 392
     Top = 152
     object ExportResultsMenuItem: TMenuItem
-      Caption = 'Copy Results as Markdown List'
+      Caption = 'Copy Results as Markdown List (Git URLs)'
       OnClick = HandleExportResultsClick
+    end
+    object ExportResultsLocalPathsMenuItem: TMenuItem
+      Caption = 'Copy Results as Markdown List (Local Skill Paths)'
+      OnClick = HandleExportResultsForSkillDirectoriesClick
     end
     object OpenFileMenuItem: TMenuItem
       Caption = 'Open Skill File'
