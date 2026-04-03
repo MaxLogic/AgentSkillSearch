@@ -70,6 +70,7 @@ type
     SearchHistoryPopupMenu: TPopupMenu;
     HintBalloon: TBalloonHint;
     ExportResultsMenuItem: TMenuItem;
+    ExportResultsLocalPathsMenuItem: TMenuItem;
     OpenFileMenuItem: TMenuItem;
     OpenFolderMenuItem: TMenuItem;
     CopyPathMenuItem: TMenuItem;
@@ -143,9 +144,11 @@ type
     procedure BuildSortMenu;
     procedure ConfigureColumns;
     procedure CopySelectedPathToClipboard;
+    procedure CopyResultsMarkdownToClipboard(const aMarkdown, aStatusText: string; const aCount: Integer);
     procedure DispatchSearchQuery(const aQuery: string; const aImmediate: Boolean);
     function EscapeHtml(const aText: string): string;
     procedure ExportResultsAsMarkdown;
+    procedure ExportResultsAsMarkdownForSkillDirectories;
     function GetSelectedSkillFile: string;
     function GetSelectedSkillRoot: string;
     procedure HideToTray;
@@ -191,6 +194,7 @@ type
     procedure HandleDiagnosticsButtonClick(Sender: TObject);
     procedure HandleDockerGpuButtonClick(Sender: TObject);
     procedure HandleExportResultsClick(Sender: TObject);
+    procedure HandleExportResultsForSkillDirectoriesClick(Sender: TObject);
     procedure HandleExternalToolClick(Sender: TObject);
     procedure HandleFormClose(Sender: TObject; var Action: TCloseAction);
     procedure HandleFormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
@@ -1131,8 +1135,21 @@ begin
     Exit;
   end;
 
-  Clipboard.AsText := lMarkdown;
-  UpdateStatus(Format('Copied %d results as markdown list.', [Length(fResults)]));
+  CopyResultsMarkdownToClipboard(lMarkdown, 'Copied %d results as markdown list (git URLs).', Length(fResults));
+end;
+
+procedure TAppMainForm.ExportResultsAsMarkdownForSkillDirectories;
+var
+  lMarkdown: string;
+begin
+  if not TryBuildResultsMarkdownListForSkillRoots(fResults, lMarkdown) then
+  begin
+    UpdateStatus('No results to export.');
+    Exit;
+  end;
+
+  CopyResultsMarkdownToClipboard(lMarkdown, 'Copied %d results as markdown list (local skill paths).',
+    Length(fResults));
 end;
 
 procedure TAppMainForm.PopulateExternalToolsMenu;
@@ -1841,9 +1858,20 @@ begin
   ShowDiagnosticsDialog(self);
 end;
 
+procedure TAppMainForm.CopyResultsMarkdownToClipboard(const aMarkdown, aStatusText: string; const aCount: Integer);
+begin
+  Clipboard.AsText := aMarkdown;
+  UpdateStatus(Format(aStatusText, [aCount]));
+end;
+
 procedure TAppMainForm.HandleExportResultsClick(Sender: TObject);
 begin
   ExportResultsAsMarkdown;
+end;
+
+procedure TAppMainForm.HandleExportResultsForSkillDirectoriesClick(Sender: TObject);
+begin
+  ExportResultsAsMarkdownForSkillDirectories;
 end;
 
 procedure TAppMainForm.HandleExternalToolClick(Sender: TObject);

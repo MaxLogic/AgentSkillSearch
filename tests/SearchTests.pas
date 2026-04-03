@@ -276,32 +276,75 @@ begin
   AssertEqualInt(0, ScaleStoredUiValue(0, 96, 144), 'Expected zero UI dimensions to remain zero');
 end;
 
+procedure CreateGitResultFixture(const aRepoRoot: string);
+var
+  lConfigPath: string;
+  lHeadPath: string;
+  lRemoteHeadPath: string;
+begin
+  ForceDirectories(TPath.Combine(aRepoRoot, '.git'));
+  lConfigPath := TPath.Combine(aRepoRoot, '.git\config');
+  lHeadPath := TPath.Combine(aRepoRoot, '.git\HEAD');
+  lRemoteHeadPath := TPath.Combine(aRepoRoot, '.git\refs\remotes\origin\HEAD');
+  TFile.WriteAllText(
+    lConfigPath,
+    '[core]' + sLineBreak +
+    '	repositoryformatversion = 0' + sLineBreak +
+    '	filemode = false' + sLineBreak +
+    '	bare = false' + sLineBreak +
+    '	logallrefupdates = true' + sLineBreak +
+    '[remote "origin"]' + sLineBreak +
+    '	url = https://github.com/MaxLogic/AgentSkillSearch.git' + sLineBreak +
+    '	fetch = +refs/heads/*:refs/remotes/origin/*' + sLineBreak +
+    '[branch "main"]' + sLineBreak +
+    '	remote = origin' + sLineBreak +
+    '	merge = refs/heads/main' + sLineBreak,
+    TEncoding.UTF8
+  );
+  ForceDirectories(ExtractFilePath(lRemoteHeadPath));
+  TFile.WriteAllText(lHeadPath, '0123456789abcdef0123456789abcdef01234567', TEncoding.UTF8);
+  TFile.WriteAllText(lRemoteHeadPath, 'ref: refs/remotes/origin/main', TEncoding.UTF8);
+end;
+
 procedure TestSearchResultActions;
 var
   lMarkdown: string;
+  lMarkdownSkillRoots: string;
+  lRepoRoot: string;
   lResults: TArray<TSkillSearchResult>;
   lSortMode: TSearchSortMode;
 begin
+  lRepoRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchGitUrlFixture');
+  if TDirectory.Exists(lRepoRoot) then
+  begin
+    TDirectory.Delete(lRepoRoot, True);
+  end;
+  ForceDirectories(lRepoRoot);
+  CreateGitResultFixture(lRepoRoot);
+
   SetLength(lResults, 3);
 
   lResults[0] := Default(TSkillSearchResult);
   lResults[0].Name := 'Zulu Skill';
-  lResults[0].SkillFile := 'C:\skills\zulu\SKILL.md';
-  lResults[0].SkillRoot := 'C:\skills\zulu';
+  lResults[0].SkillFile := TPath.Combine(lRepoRoot, 'skills\zulu\SKILL.md');
+  lResults[0].SkillRoot := TPath.Combine(lRepoRoot, 'skills\zulu');
+  lResults[0].Description := 'Zulu description';
   lResults[0].FinalScore := 1.5;
   lResults[0].IndexedUtc := '2026-03-10T08:00:00Z';
 
   lResults[1] := Default(TSkillSearchResult);
   lResults[1].Name := 'Alpha Skill';
-  lResults[1].SkillFile := 'C:\skills\alpha\SKILL.md';
-  lResults[1].SkillRoot := 'C:\skills\alpha';
+  lResults[1].SkillFile := TPath.Combine(lRepoRoot, 'skills\alpha\SKILL.md');
+  lResults[1].SkillRoot := TPath.Combine(lRepoRoot, 'skills\alpha');
+  lResults[1].Description := 'Alpha description';
   lResults[1].FinalScore := 0.5;
   lResults[1].IndexedUtc := '2026-03-12T08:00:00Z';
 
   lResults[2] := Default(TSkillSearchResult);
   lResults[2].Name := 'Bravo Skill';
-  lResults[2].SkillFile := 'C:\skills\bravo\SKILL.md';
-  lResults[2].SkillRoot := 'C:\skills\bravo';
+  lResults[2].SkillFile := TPath.Combine(lRepoRoot, 'skills\bravo\SKILL.md');
+  lResults[2].SkillRoot := TPath.Combine(lRepoRoot, 'skills\bravo');
+  lResults[2].Description := 'Bravo description';
   lResults[2].FinalScore := 1.0;
   lResults[2].IndexedUtc := '2026-03-11T08:00:00Z';
 
@@ -316,7 +359,7 @@ begin
   SortSearchResults(lResults, TSearchSortMode.ssmNameDesc);
   AssertEqualText('Zulu Skill', lResults[0].Name, 'Expected name sort descending');
   SortSearchResults(lResults, TSearchSortMode.ssmPathAsc);
-  AssertEqualText('C:\skills\alpha', lResults[0].SkillRoot, 'Expected path sort ascending');
+  AssertEqualText(TPath.Combine(lRepoRoot, 'skills\alpha'), lResults[0].SkillRoot, 'Expected path sort ascending');
   SortSearchResults(lResults, TSearchSortMode.ssmDateIndexedDesc);
   AssertEqualText('Alpha Skill', lResults[0].Name, 'Expected newest indexed result first');
   SortSearchResults(lResults, TSearchSortMode.ssmScore);
@@ -324,14 +367,27 @@ begin
 
   lMarkdown := BuildResultsMarkdownList(lResults);
   AssertEqualText(
-    '- [Zulu Skill](C:\skills\zulu\SKILL.md)' + sLineBreak +
-    '- [Bravo Skill](C:\skills\bravo\SKILL.md)' + sLineBreak +
-    '- [Alpha Skill](C:\skills\alpha\SKILL.md)',
+    '- [Zulu Skill](https://github.com/MaxLogic/AgentSkillSearch/blob/main/skills/zulu/SKILL.md) - Zulu description' +
+    sLineBreak +
+    '- [Bravo Skill](https://github.com/MaxLogic/AgentSkillSearch/blob/main/skills/bravo/SKILL.md) - Bravo description' +
+    sLineBreak +
+    '- [Alpha Skill](https://github.com/MaxLogic/AgentSkillSearch/blob/main/skills/alpha/SKILL.md) - Alpha description',
     lMarkdown,
-    'Expected markdown export list for current results'
+    'Expected markdown export list for git URLs'
+  );
+  lMarkdownSkillRoots := BuildResultsMarkdownListForSkillRoots(lResults);
+  AssertEqualText(
+    '- [Zulu Skill](' + TPath.Combine(lRepoRoot, 'skills\zulu') + ') - Zulu description' + sLineBreak +
+    '- [Bravo Skill](' + TPath.Combine(lRepoRoot, 'skills\bravo') + ') - Bravo description' + sLineBreak +
+    '- [Alpha Skill](' + TPath.Combine(lRepoRoot, 'skills\alpha') + ') - Alpha description',
+    lMarkdownSkillRoots,
+    'Expected markdown export list for local skill directories'
   );
   AssertTrue(not TryBuildResultsMarkdownList(nil, lMarkdown), 'Expected empty export list to report no export payload');
   AssertEqualText('', lMarkdown, 'Expected empty export list markdown to stay empty');
+  AssertTrue(not TryBuildResultsMarkdownListForSkillRoots(nil, lMarkdownSkillRoots),
+    'Expected empty local-path export list to report no export payload');
+  AssertEqualText('', lMarkdownSkillRoots, 'Expected empty local-path export list markdown to stay empty');
   AssertTrue(not ShouldShowDuplicateDetails(0), 'Expected no duplicate panel for zero duplicates');
   AssertTrue(not ShouldShowDuplicateDetails(1), 'Expected no duplicate panel for canonical-only result');
   AssertTrue(ShouldShowDuplicateDetails(2), 'Expected duplicate panel when duplicate paths exist');
