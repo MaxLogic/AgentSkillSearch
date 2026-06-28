@@ -26,12 +26,12 @@ type
   TGitPullWorker = class
   private
     function BuildEnvironmentBlock: string;
-    function ExecuteGitCommand(const aRepoPath, aGitExePath, aArgs: string; const aTimeoutSeconds: Integer): TGitPullResult;
     procedure DrainPipeOutput(const aPipeHandle: THandle; var aOutput: string);
     function ReadHeadCommit(const aRepoPath, aGitExePath: string; const aTimeoutSeconds: Integer): string;
   public
     class function IsThrottled(const aLastPullUtc: string; const aMinPullIntervalMinutes: Integer;
       const aNowUtc: TDateTime): Boolean; static;
+    function ExecuteGitCommand(const aRepoPath, aGitExePath, aArgs: string; const aTimeoutSeconds: Integer): TGitPullResult;
     function PullRepo(const aRepoPath: string; const aOptions: TGitPullOptions): TGitPullResult;
   end;
 

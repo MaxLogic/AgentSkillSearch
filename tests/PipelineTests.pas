@@ -1615,6 +1615,107 @@ begin
     'Unknown failures should not offer automatic repair');
 end;
 
+procedure TestGitPullRepairRunnerStashesAndBlocksUnconfirmedDiscard;
+var
+  lFetchRepoPath: string;
+  lFixtureRoot: string;
+  lInfraRoot: string;
+  lPruneRepoPath: string;
+  lPruneRemotePath: string;
+  lRepoPath: string;
+  lResetLocalHead: string;
+  lResetRemoteHead: string;
+  lResetRepoPath: string;
+  lResult: TGitPullRepairResult;
+  lResults: TArray<TGitPullRepairResult>;
+  lScanRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchGitRepairRunnerFixture', lFixtureRoot, lInfraRoot, lScanRoot);
+  lRepoPath := TPath.Combine(lScanRoot, 'repo-repair');
+  ForceDirectories(lRepoPath);
+
+  RunShellOrFail(lRepoPath, 'git init');
+  RunShellOrFail(lRepoPath, 'git config user.email "tests@example.com"');
+  RunShellOrFail(lRepoPath, 'git config user.name "Pipeline Tests"');
+  TFile.WriteAllText(TPath.Combine(lRepoPath, 'tracked.txt'), 'clean', TEncoding.UTF8);
+  RunShellOrFail(lRepoPath, 'git add tracked.txt');
+  RunShellOrFail(lRepoPath, 'git commit -m "seed"');
+
+  TFile.WriteAllText(TPath.Combine(lRepoPath, 'tracked.txt'), 'dirty', TEncoding.UTF8);
+  lResult := ExecuteGitPullRepair(lRepoPath, 'git.exe', TGitPullRepairActionKind.gpaStashChanges, False);
+
+  AssertTrue(lResult.Success, 'Stash repair should succeed');
+  AssertEqualText(lRepoPath, lResult.RepoPath, 'Repair result repo path mismatch');
+  AssertTrue(lResult.ActionKind = TGitPullRepairActionKind.gpaStashChanges, 'Repair result action mismatch');
+  AssertEqualInt(0, lResult.ExitCode, 'Successful stash should return exit code 0');
+  AssertTrue(Trim(lResult.OutputText) <> '', 'Repair result should include command output');
+  RunShellOrFail(lRepoPath, 'git diff --quiet');
+
+  TFile.WriteAllText(TPath.Combine(lRepoPath, 'tracked.txt'), 'dirty again', TEncoding.UTF8);
+  lResult := ExecuteGitPullRepair(lRepoPath, 'git.exe', TGitPullRepairActionKind.gpaDiscardChanges, False);
+
+  AssertTrue(not lResult.Success, 'Unconfirmed discard should be blocked');
+  AssertTrue(ContainsText(lResult.OutputText, 'confirmation'), 'Blocked discard should explain confirmation requirement');
+  AssertTrue(TFile.ReadAllText(TPath.Combine(lRepoPath, 'tracked.txt'), TEncoding.UTF8) = 'dirty again',
+    'Blocked discard must not modify the repo');
+
+  lResult := ExecuteGitPullRepair(lRepoPath, 'git.exe', TGitPullRepairActionKind.gpaResetToUpstream, False);
+  AssertTrue(not lResult.Success, 'Unconfirmed reset to upstream should be blocked');
+  AssertTrue(ContainsText(lResult.OutputText, 'confirmation'),
+    'Blocked reset to upstream should explain confirmation requirement');
+
+  lResult := ExecuteGitPullRepair(lRepoPath, 'git.exe', TGitPullRepairActionKind.gpaDiscardChanges, True);
+  AssertTrue(lResult.Success, 'Confirmed discard should succeed');
+  AssertEqualInt(0, lResult.ExitCode, 'Confirmed discard should return exit code 0');
+  AssertEqualText('clean', TFile.ReadAllText(TPath.Combine(lRepoPath, 'tracked.txt'), TEncoding.UTF8),
+    'Confirmed discard should restore tracked content');
+
+  lResults := ExecuteGitPullRepairGroup([TPath.Combine(lScanRoot, 'missing-repo'), lRepoPath], 'git.exe',
+    TGitPullRepairActionKind.gpaStashChanges, False);
+
+  AssertEqualInt(2, Length(lResults), 'Group repair should report one result per repo');
+  AssertTrue(not lResults[0].Success, 'Group repair should report failed repos');
+  AssertTrue(lResults[1].Success, 'Group repair should continue after a failed repo');
+  RunShellOrFail(lRepoPath, 'git diff --quiet');
+
+  CreateRemoteBackedRepo(lInfraRoot, lScanRoot, 'repo-fetch', lFetchRepoPath);
+  lResult := ExecuteGitPullRepair(lFetchRepoPath, 'git.exe', TGitPullRepairActionKind.gpaFetch, False);
+  AssertTrue(lResult.Success, 'Fetch repair should succeed against a remote-backed repo');
+  AssertEqualInt(0, lResult.ExitCode, 'Fetch repair should return exit code 0');
+
+  lPruneRemotePath := TPath.Combine(lInfraRoot, 'repo-prune-remote.git');
+  lPruneRepoPath := TPath.Combine(lScanRoot, 'repo-prune');
+  RunShellOrFail(lInfraRoot, 'git init --bare ' + QuoteArg(lPruneRemotePath));
+  RunShellOrFail(lScanRoot, 'git clone ' + QuoteArg(lPruneRemotePath) + ' ' + QuoteArg(lPruneRepoPath));
+  lResult := ExecuteGitPullRepair(lPruneRepoPath, 'git.exe', TGitPullRepairActionKind.gpaPruneRemote, False);
+  AssertTrue(lResult.Success, 'Prune repair should succeed against origin');
+  AssertEqualInt(0, lResult.ExitCode, 'Prune repair should return exit code 0');
+
+  CreateRemoteBackedRepo(lInfraRoot, lScanRoot, 'repo-reset', lResetRepoPath);
+  RunShellOrFail(lResetRepoPath, 'git checkout -b local-only');
+  TFile.WriteAllText(TPath.Combine(lResetRepoPath, 'local.txt'), 'local', TEncoding.UTF8);
+  RunShellOrFail(lResetRepoPath, 'git add local.txt');
+  RunShellOrFail(lResetRepoPath, 'git commit -m "local"');
+  RunShellOrFail(lResetRepoPath, 'git rev-parse HEAD > local-head.txt');
+  lResetLocalHead := Trim(TFile.ReadAllText(TPath.Combine(lResetRepoPath, 'local-head.txt'), TEncoding.UTF8));
+  RunShellOrFail(lResetRepoPath, 'git checkout -');
+  RunShellOrFail(lResetRepoPath, 'git reset --hard local-only');
+  TFile.WriteAllText(TPath.Combine(lResetRepoPath, 'untracked.txt'), 'remove me', TEncoding.UTF8);
+  RunShellOrFail(lResetRepoPath, 'git rev-parse @{u} > remote-head.txt');
+  lResetRemoteHead := Trim(TFile.ReadAllText(TPath.Combine(lResetRepoPath, 'remote-head.txt'), TEncoding.UTF8));
+
+  AssertTrue(lResetLocalHead <> lResetRemoteHead, 'Reset fixture should start with local HEAD ahead of upstream');
+  lResult := ExecuteGitPullRepair(lResetRepoPath, 'git.exe', TGitPullRepairActionKind.gpaResetToUpstream, True);
+  AssertTrue(lResult.Success, 'Confirmed reset to upstream should succeed');
+  AssertEqualInt(0, lResult.ExitCode, 'Confirmed reset to upstream should return exit code 0');
+  RunShellOrFail(lResetRepoPath, 'git diff --quiet');
+  AssertTrue(not TFile.Exists(TPath.Combine(lResetRepoPath, 'untracked.txt')),
+    'Confirmed reset to upstream should remove untracked files');
+  RunShellOrFail(lResetRepoPath, 'git rev-parse HEAD > after-reset-head.txt');
+  AssertEqualText(lResetRemoteHead, Trim(TFile.ReadAllText(TPath.Combine(lResetRepoPath, 'after-reset-head.txt'),
+    TEncoding.UTF8)), 'Confirmed reset should move HEAD to upstream');
+end;
+
 procedure RunPipelineTests;
 begin
   TestPipelineHonorsComputeHasScriptsSetting;
@@ -1641,6 +1742,7 @@ begin
   TestGitPullFailureDoesNotBlockOtherRepos;
   TestGitPullRunsInNonInteractiveMode;
   TestGitPullFailureClassificationAndRepairPlanning;
+  TestGitPullRepairRunnerStashesAndBlocksUnconfirmedDiscard;
   TestDockerHealthMonitorStopDropsQueuedCallbacks;
   TestDockerStatusUiStateHidesAlertWhenHealthy;
   TestDockerStatusUiStateShowsDockerAlert;
