@@ -71,6 +71,7 @@ begin
   lText := LowerCase(aOutput);
 
   if (ContainsText(lText, 'your local changes') and ContainsText(lText, 'would be overwritten')) or
+    ContainsText(lText, 'please commit your changes or stash them') or
     ContainsText(lText, 'untracked working tree files would be overwritten') then
   begin
     Exit(TGitPullFailureReason.gfrLocalChanges);

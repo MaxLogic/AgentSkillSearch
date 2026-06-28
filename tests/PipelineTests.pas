@@ -9,11 +9,11 @@ implementation
 uses
   System.Classes, System.Diagnostics, System.IniFiles, System.IOUtils, System.StrUtils, System.SyncObjs, System.SysUtils,
   Winapi.Messages, Winapi.Windows,
-  Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
+  Vcl.Buttons, Vcl.Controls, Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   MaxLogic.GitHubReleaseChecker,
   AppPaths, AppUpdateActions, DatabaseManager, DockerHealthMonitor, DockerStatusUi, ExternalTools, GitPullFailures, Logging,
   PipelineCoordinator, Settings, RelatedSkillActions, ScanActivityUi, ScanProgressBuffer, SettingsModel,
-  SkillSearchService, SkillTypes, UpdateAvailableDialogHtml,
+  SkillSearchService, SkillTypes, FailedRepoPullsDialog, UpdateAvailableDialogHtml,
   TagBrowserActions, TrayActions;
 
 var
@@ -40,6 +40,52 @@ begin
   if not aCondition then
   begin
     raise Exception.Create(aMessage);
+  end;
+end;
+
+function CountBitButtonsWithCaption(aControl: TWinControl; const aCaption: string): Integer;
+var
+  i: Integer;
+  lChild: TControl;
+begin
+  Result := 0;
+  for i := 0 to Pred(aControl.ControlCount) do
+  begin
+    lChild := aControl.Controls[i];
+    if (lChild is TBitBtn) and SameText((lChild as TBitBtn).Caption, aCaption) then
+    begin
+      Inc(Result);
+    end;
+
+    if lChild is TWinControl then
+    begin
+      Inc(Result, CountBitButtonsWithCaption(lChild as TWinControl, aCaption));
+    end;
+  end;
+end;
+
+function FindBitButtonWithCaption(aControl: TWinControl; const aCaption: string): TBitBtn;
+var
+  i: Integer;
+  lChild: TControl;
+begin
+  Result := nil;
+  for i := 0 to Pred(aControl.ControlCount) do
+  begin
+    lChild := aControl.Controls[i];
+    if (lChild is TBitBtn) and SameText((lChild as TBitBtn).Caption, aCaption) then
+    begin
+      Exit(lChild as TBitBtn);
+    end;
+
+    if lChild is TWinControl then
+    begin
+      Result := FindBitButtonWithCaption(lChild as TWinControl, aCaption);
+      if Assigned(Result) then
+      begin
+        Exit;
+      end;
+    end;
   end;
 end;
 
@@ -1716,6 +1762,117 @@ begin
     TEncoding.UTF8)), 'Confirmed reset should move HEAD to upstream');
 end;
 
+procedure TestFailedRepoPullDialogGroupsFailuresByReason;
+var
+  lGroups: TArray<TFailedRepoPullGroup>;
+  lPulls: TArray<TRepoPullUpdate>;
+begin
+  SetLength(lPulls, 3);
+  lPulls[0] := Default(TRepoPullUpdate);
+  lPulls[0].RootPath := 'C:\repos\dirty';
+  lPulls[0].LastPullStatus := 'failed';
+  lPulls[0].LastPullOutput := 'error: Your local changes to the following files would be overwritten by merge:';
+
+  lPulls[1] := Default(TRepoPullUpdate);
+  lPulls[1].RootPath := 'C:\repos\missing';
+  lPulls[1].LastPullStatus := 'failed';
+  lPulls[1].LastPullOutput := 'remote: Repository not found.';
+
+  lPulls[2] := Default(TRepoPullUpdate);
+  lPulls[2].RootPath := 'C:\repos\dirty-two';
+  lPulls[2].LastPullStatus := 'failed';
+  lPulls[2].LastPullOutput := 'Please commit your changes or stash them before you merge.';
+
+  lGroups := BuildFailedRepoPullGroups(lPulls);
+
+  AssertEqualInt(2, Length(lGroups), 'Dialog grouping should merge repos by failure reason');
+  AssertTrue(lGroups[0].Reason = TGitPullFailureReason.gfrLocalChanges, 'Expected local changes as first group');
+  AssertEqualInt(2, Length(lGroups[0].Pulls), 'Expected two local-changes repos');
+  AssertEqualInt(2, Length(lGroups[0].Actions), 'Local-changes group should expose repair actions');
+  AssertTrue(lGroups[1].Reason = TGitPullFailureReason.gfrRemoteMissing, 'Expected remote missing as second group');
+  AssertEqualInt(1, Length(lGroups[1].Pulls), 'Expected one missing-remote repo');
+  AssertEqualInt(0, Length(lGroups[1].Actions), 'Missing remote group should not expose repair actions');
+end;
+
+procedure TestFailedRepoPullDialogRendersRepoButtonsByReason;
+var
+  lDialog: TFailedRepoPullsDialog;
+  lPulls: TArray<TRepoPullUpdate>;
+begin
+  SetLength(lPulls, 2);
+  lPulls[0] := Default(TRepoPullUpdate);
+  lPulls[0].RootPath := 'C:\repos\dirty';
+  lPulls[0].LastPullStatus := 'failed';
+  lPulls[0].LastPullOutput := 'error: Your local changes to the following files would be overwritten by merge:';
+
+  lPulls[1] := Default(TRepoPullUpdate);
+  lPulls[1].RootPath := 'C:\repos\missing';
+  lPulls[1].LastPullStatus := 'failed';
+  lPulls[1].LastPullOutput := 'remote: Repository not found.';
+
+  lDialog := TFailedRepoPullsDialog.Create(nil);
+  try
+    lDialog.LoadFailures(lPulls);
+
+    AssertEqualInt(2, CountBitButtonsWithCaption(lDialog, 'Open'), 'Expected one Open button per repo');
+    AssertEqualInt(1, CountBitButtonsWithCaption(lDialog, 'Stash changes all'),
+      'Expected local-changes group stash action');
+    AssertEqualInt(1, CountBitButtonsWithCaption(lDialog, 'Discard changes all'),
+      'Expected local-changes group discard action');
+    AssertEqualInt(1, CountBitButtonsWithCaption(lDialog, 'Stash changes'),
+      'Expected local-changes repo stash action');
+    AssertEqualInt(1, CountBitButtonsWithCaption(lDialog, 'Discard changes'),
+      'Expected local-changes repo discard action');
+    AssertEqualInt(0, CountBitButtonsWithCaption(lDialog, 'Fetch'),
+      'Missing-remote repos should not expose unrelated repair buttons');
+  finally
+    lDialog.Free;
+  end;
+end;
+
+procedure TestFailedRepoPullDialogSetsRepairsAppliedAfterSuccessfulRepair;
+var
+  lButton: TBitBtn;
+  lDialog: TFailedRepoPullsDialog;
+  lFixtureRoot: string;
+  lInfraRoot: string;
+  lPulls: TArray<TRepoPullUpdate>;
+  lRepoPath: string;
+  lScanRoot: string;
+begin
+  PrepareFixtureDirectory('SkillSearchFailedRepoPullDialogFixture', lFixtureRoot, lInfraRoot, lScanRoot);
+  lRepoPath := TPath.Combine(lScanRoot, 'repo-dialog-repair');
+  ForceDirectories(lRepoPath);
+
+  RunShellOrFail(lRepoPath, 'git init');
+  RunShellOrFail(lRepoPath, 'git config user.email "tests@example.com"');
+  RunShellOrFail(lRepoPath, 'git config user.name "Pipeline Tests"');
+  TFile.WriteAllText(TPath.Combine(lRepoPath, 'tracked.txt'), 'clean', TEncoding.UTF8);
+  RunShellOrFail(lRepoPath, 'git add tracked.txt');
+  RunShellOrFail(lRepoPath, 'git commit -m "seed"');
+  TFile.WriteAllText(TPath.Combine(lRepoPath, 'tracked.txt'), 'dirty', TEncoding.UTF8);
+
+  SetLength(lPulls, 1);
+  lPulls[0] := Default(TRepoPullUpdate);
+  lPulls[0].RootPath := lRepoPath;
+  lPulls[0].LastPullStatus := 'failed';
+  lPulls[0].LastPullOutput := 'Please commit your changes or stash them before you merge.';
+
+  lDialog := TFailedRepoPullsDialog.Create(nil);
+  try
+    lDialog.LoadFailures(lPulls);
+    lButton := FindBitButtonWithCaption(lDialog, 'Stash changes');
+    AssertTrue(Assigned(lButton), 'Expected per-repo Stash changes button');
+
+    lButton.Click;
+
+    AssertTrue(lDialog.RepairsApplied, 'Successful repair click should mark repairs as applied');
+    RunShellOrFail(lRepoPath, 'git diff --quiet');
+  finally
+    lDialog.Free;
+  end;
+end;
+
 procedure RunPipelineTests;
 begin
   TestPipelineHonorsComputeHasScriptsSetting;
@@ -1743,6 +1900,9 @@ begin
   TestGitPullRunsInNonInteractiveMode;
   TestGitPullFailureClassificationAndRepairPlanning;
   TestGitPullRepairRunnerStashesAndBlocksUnconfirmedDiscard;
+  TestFailedRepoPullDialogGroupsFailuresByReason;
+  TestFailedRepoPullDialogRendersRepoButtonsByReason;
+  TestFailedRepoPullDialogSetsRepairsAppliedAfterSuccessfulRepair;
   TestDockerHealthMonitorStopDropsQueuedCallbacks;
   TestDockerStatusUiStateHidesAlertWhenHealthy;
   TestDockerStatusUiStateShowsDockerAlert;

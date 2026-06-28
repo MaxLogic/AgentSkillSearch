@@ -191,6 +191,7 @@
         <DCCReference Include="..\src\Docker\DockerOps.pas"/>
         <DCCReference Include="..\src\Docker\DockerStatusUi.pas"/>
         <DCCReference Include="..\src\ExternalTools.pas"/>
+        <DCCReference Include="..\src\Git\GitPullFailures.pas"/>
         <DCCReference Include="..\src\Git\GitPullWorker.pas"/>
         <DCCReference Include="..\src\Git\RepoDetection.pas"/>
         <DCCReference Include="..\src\Indexer\SkillIndexer.pas"/>
@@ -216,6 +217,9 @@
             <Form>ConfigDlg</Form>
         </DCCReference>
         <DCCReference Include="..\src\UI\DiagnosticsForm.pas"/>
+        <DCCReference Include="..\src\UI\FailedRepoPullsDialog.pas">
+            <Form>FailedRepoPullsDialog</Form>
+        </DCCReference>
         <DCCReference Include="..\src\UI\MainForm.pas">
             <Form>AppMainForm</Form>
         </DCCReference>

@@ -54,6 +54,7 @@
     <DCCReference Include="..\src\Pipeline\PipelineCoordinator.pas" />
     <DCCReference Include="..\src\ScanActivityUi.pas" />
     <DCCReference Include="..\src\Scanner\RepoScanner.pas" />
+    <DCCReference Include="..\src\UI\FailedRepoPullsDialog.pas" />
     <BuildConfiguration Include="Base">
       <Key>Base</Key>
     </BuildConfiguration>
