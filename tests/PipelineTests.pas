@@ -1873,6 +1873,20 @@ begin
   end;
 end;
 
+procedure TestFailedRepoPullResolutionPromptDecision;
+begin
+  AssertTrue(ShouldResolveFailedRepoPullsAfterScan(True, False, '', 1),
+    'Executed scans with failed pulls should prompt for repair');
+  AssertTrue(not ShouldResolveFailedRepoPullsAfterScan(False, False, '', 1),
+    'Skipped scans should not prompt for repair');
+  AssertTrue(not ShouldResolveFailedRepoPullsAfterScan(True, True, '', 1),
+    'Cancelled scans should not prompt for repair');
+  AssertTrue(not ShouldResolveFailedRepoPullsAfterScan(True, False, 'boom', 1),
+    'Failed scan completion should not prompt for repair');
+  AssertTrue(not ShouldResolveFailedRepoPullsAfterScan(True, False, '', 0),
+    'Scans without failed pulls should not prompt for repair');
+end;
+
 procedure RunPipelineTests;
 begin
   TestPipelineHonorsComputeHasScriptsSetting;
@@ -1903,6 +1917,7 @@ begin
   TestFailedRepoPullDialogGroupsFailuresByReason;
   TestFailedRepoPullDialogRendersRepoButtonsByReason;
   TestFailedRepoPullDialogSetsRepairsAppliedAfterSuccessfulRepair;
+  TestFailedRepoPullResolutionPromptDecision;
   TestDockerHealthMonitorStopDropsQueuedCallbacks;
   TestDockerStatusUiStateHidesAlertWhenHealthy;
   TestDockerStatusUiStateShowsDockerAlert;

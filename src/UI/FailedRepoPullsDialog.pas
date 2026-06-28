@@ -59,6 +59,8 @@ type
 
 function BuildFailedRepoPullGroups(const aFailedPulls: TArray<TRepoPullUpdate>): TArray<TFailedRepoPullGroup>;
 function GitPullFailureReasonCaption(const aReason: TGitPullFailureReason): string;
+function ShouldResolveFailedRepoPullsAfterScan(const aExecuted, aCancelled: Boolean; const aFailure: string;
+  const aFailedPullCount: Integer): Boolean;
 
 implementation
 
@@ -85,6 +87,12 @@ begin
   else
     Result := 'Unknown pull failure';
   end;
+end;
+
+function ShouldResolveFailedRepoPullsAfterScan(const aExecuted, aCancelled: Boolean; const aFailure: string;
+  const aFailedPullCount: Integer): Boolean;
+begin
+  Result := aExecuted and (not aCancelled) and (Trim(aFailure) = '') and (aFailedPullCount > 0);
 end;
 
 procedure AddPullToGroup(var aGroup: TFailedRepoPullGroup; const aPull: TRepoPullUpdate);

@@ -239,8 +239,8 @@ uses
   Winapi.Windows,
   Vcl.Clipbrd, Vcl.Dialogs,
   MaxLogic.BalloonDefaultImageList,
-  AppPaths, AutoHourGlass, ConfigDlg, DiagnosticsForm, Logging, PathExclusions, PreviewEmptyStateHtml,
-  PreviewRenderer, Settings, SourcesList, TagFilterDialog, UpdateAvailableDialog,
+  AppPaths, AutoHourGlass, ConfigDlg, DiagnosticsForm, FailedRepoPullsDialog, Logging, PathExclusions,
+  PreviewEmptyStateHtml, PreviewRenderer, Settings, SourcesList, TagFilterDialog, UpdateAvailableDialog,
   MaxMadExcept, MaxLogic.ioUtils;
 
 {$R *.dfm}
@@ -1739,6 +1739,8 @@ procedure TAppMainForm.HandleScanCompleted(const aExecuted: Boolean; const aResu
   const aStatusText, aFailure: string; const aCompletion: TScanCompletionSnapshot);
 var
   lCompletedAt: TDateTime;
+  lRepairsApplied: Boolean;
+  lShouldResolveFailedPulls: Boolean;
 begin
   try
     if aFailure <> '' then
@@ -1772,9 +1774,21 @@ begin
     end;
     StatusBar.Panels[cStatusPanelLastScan].Text := 'Last scan: ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', lCompletedAt);
     QueueSearch(True);
+    lShouldResolveFailedPulls := ShouldResolveFailedRepoPullsAfterScan(aExecuted, aResult.Cancelled, aFailure,
+      Length(aResult.FailedRepoPulls));
   finally
     EndScanProgress;
     WaitForWorkerThread(fScanThread);
+  end;
+
+  if lShouldResolveFailedPulls then
+  begin
+    lRepairsApplied := False;
+    TFailedRepoPullsDialog.Execute(self, aResult.FailedRepoPulls, fAppSettings.Git.GitExePath, lRepairsApplied);
+    if lRepairsApplied and (not fScanInProgress) and (not Assigned(fScanThread)) then
+    begin
+      HandleScanButtonClick(nil);
+    end;
   end;
 end;
 
