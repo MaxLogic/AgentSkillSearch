@@ -1513,6 +1513,16 @@ begin
     AssertTrue(lDbManager.TryGetRepoState(lBadRepoPath, lBadState), 'Bad repo state missing');
     AssertTrue(AnsiStartsText('failed', lBadState.LastPullStatus), 'Bad repo should be marked failed');
 
+    lOptions.MinPullIntervalMinutes := 120;
+    lCoordinator := TPipelineCoordinator.Create(lDbManager, lOptions);
+    try
+      lResult := lCoordinator.Run([lScanRoot], nil);
+    finally
+      lCoordinator.Free;
+    end;
+    AssertEqualInt(1, lResult.ReposThrottled, 'Previously successful repos should still be throttled');
+    AssertEqualInt(1, lResult.ReposFailed, 'Previously failed repos should be retried on the next scan');
+
     lDiagnostics := BuildDiagnosticsText;
     AssertTrue(ContainsText(lDiagnostics, 'Git pull failed for "'), 'Diagnostics should include git failure details');
     AssertTrue(ContainsText(lDiagnostics, 'repo-bad'), 'Diagnostics should mention failed repo path');

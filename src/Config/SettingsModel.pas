@@ -120,7 +120,7 @@ begin
 
   Result.Git.GitExePath := 'git.exe';
   Result.Git.PullEnabled := True;
-  Result.Git.MinPullIntervalMinutes := 1440;
+  Result.Git.MinPullIntervalMinutes := 5;
   Result.Git.GitPullTimeoutSeconds := 1800;
   Result.Git.GitPullArgs := 'pull --ff-only';
   Result.Git.SkipFolders := '.git;node_modules;bin;obj;.vs;.idea;dist;build;.venv;__pycache__';

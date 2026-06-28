@@ -123,7 +123,7 @@ begin
   Result.MaxGitPullThreads := 2;
   Result.MaxIndexThreads := 4;
   Result.MaxScanThreads := 4;
-  Result.MinPullIntervalMinutes := 1440;
+  Result.MinPullIntervalMinutes := 5;
   Result.OnEmbeddingProgress := nil;
   Result.OnProgress := nil;
   Result.PullEnabled := True;
@@ -443,6 +443,9 @@ var
   lSkillSearchService: TSkillSearchService;
   lSkillFilesToEmbed: TArray<string>;
 begin
+  lBatchRepos := nil;
+  lBatchRepoPulls := nil;
+  lBatchSkills := nil;
   lLocalDbManager := nil;
   lSummary := Default(TScanSummary);
   fReposFailed := 0;
@@ -521,6 +524,7 @@ begin
             end;
 
             if lRepoStateReader.TryGetRepoState(lReposForGit[i], lKnownRepoState) and
+              (not AnsiStartsText('failed', lKnownRepoState.LastPullStatus)) and
               TGitPullWorker.IsThrottled(lKnownRepoState.LastPullUtc, fOptions.MinPullIntervalMinutes, lNowUtc) then
             begin
               AddRepoPullResult(lRepoPullUpdates, BuildThrottledPullUpdate(lReposForGit[i], lKnownRepoState.LastPullUtc));
