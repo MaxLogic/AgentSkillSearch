@@ -1,4 +1,4 @@
-﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{C96E0AB4-AE5C-4E19-B898-00EC6AC3595D}</ProjectGuid>
         <MainSource>AgentSkillSearch.dpr</MainSource>
@@ -104,7 +104,6 @@
         <DCC_Namespace>Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;System;Xml;Data;Datasnap;Web;Soap;TMS;$(DCC_Namespace)</DCC_Namespace>
         <VerInfo_Locale>1045</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=;FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=;ProductVersion=1.0.0.0;Comments=;CFBundleName=</VerInfo_Keys>
-        <DCC_Define>madExcept;$(DCC_Define)</DCC_Define>
         <DCC_ExeOutput>..\bin</DCC_ExeOutput>
         <DCC_UnitSearchPath>..\src;..\lib\maxlogicfoundation;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <CfgDependentOn>..\lib\MaxLogicFoundation\MaxLogicDefault.optset</CfgDependentOn>
@@ -147,6 +146,9 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
         <AppDPIAwarenessMode>PerMonitorV2</AppDPIAwarenessMode>
+        <DCC_MapFile>3</DCC_MapFile>
+        <DCC_DebugInformation>2</DCC_DebugInformation>
+        <DCC_LocalDebugSymbols>true</DCC_LocalDebugSymbols>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2)'!=''">
         <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
@@ -184,6 +186,7 @@
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
+        <DCCReference Include="..\src\AppUpdateActions.pas"/>
         <DCCReference Include="..\src\AppPaths.pas"/>
         <DCCReference Include="..\src\Config\SettingsModel.pas"/>
         <DCCReference Include="..\src\Db\DatabaseManager.pas"/>
@@ -227,6 +230,10 @@
         <DCCReference Include="..\src\UI\TagFilterDialog.pas">
             <Form>TagFilterDialog</Form>
         </DCCReference>
+        <DCCReference Include="..\src\UI\UpdateAvailableDialog.pas">
+            <Form>UpdateAvailableDialog</Form>
+        </DCCReference>
+        <DCCReference Include="..\src\UI\UpdateAvailableDialogHtml.pas"/>
         <DCCReference Include="..\src\UI\SourcesEditorForm.pas">
             <Form>SourcesEditorForm</Form>
         </DCCReference>

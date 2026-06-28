@@ -99,3 +99,7 @@ pas-api-map.md
 /spec.md
 /.agents/
 /docs/spec-slices/
+bin/settings.ini
+_build_verify/
+AgentSkillSearch.dfmcheck.cache
+*.log
