@@ -11,7 +11,7 @@ uses
   Winapi.Messages, Winapi.Windows,
   Vcl.Forms, Vcl.Menus, Vcl.StdCtrls,
   MaxLogic.GitHubReleaseChecker,
-  AppPaths, AppUpdateActions, DatabaseManager, DockerHealthMonitor, DockerStatusUi, ExternalTools, Logging,
+  AppPaths, AppUpdateActions, DatabaseManager, DockerHealthMonitor, DockerStatusUi, ExternalTools, GitPullFailures, Logging,
   PipelineCoordinator, Settings, RelatedSkillActions, ScanActivityUi, ScanProgressBuffer, SettingsModel,
   SkillSearchService, SkillTypes, UpdateAvailableDialogHtml,
   TagBrowserActions, TrayActions;
@@ -41,6 +41,53 @@ begin
   begin
     raise Exception.Create(aMessage);
   end;
+end;
+
+function HasRepairAction(const aActions: TArray<TGitPullRepairAction>; const aKind: TGitPullRepairActionKind): Boolean;
+var
+  i: Integer;
+begin
+  for i := 0 to Pred(Length(aActions)) do
+  begin
+    if aActions[i].Kind = aKind then
+    begin
+      Exit(True);
+    end;
+  end;
+
+  Result := False;
+end;
+
+function RepairActionRequiresConfirmation(const aActions: TArray<TGitPullRepairAction>;
+  const aKind: TGitPullRepairActionKind): Boolean;
+var
+  i: Integer;
+begin
+  for i := 0 to Pred(Length(aActions)) do
+  begin
+    if aActions[i].Kind = aKind then
+    begin
+      Exit(aActions[i].RequiresConfirmation);
+    end;
+  end;
+
+  Result := False;
+end;
+
+function RepairActionIsDestructive(const aActions: TArray<TGitPullRepairAction>;
+  const aKind: TGitPullRepairActionKind): Boolean;
+var
+  i: Integer;
+begin
+  for i := 0 to Pred(Length(aActions)) do
+  begin
+    if aActions[i].Kind = aKind then
+    begin
+      Exit(aActions[i].IsDestructive);
+    end;
+  end;
+
+  Result := False;
 end;
 
 function QuoteArg(const aValue: string): string;
@@ -1472,6 +1519,102 @@ begin
   end;
 end;
 
+procedure TestGitPullFailureClassificationAndRepairPlanning;
+var
+  lActions: TArray<TGitPullRepairAction>;
+begin
+  AssertTrue(
+    ClassifyGitPullFailure('error: Your local changes to the following files would be overwritten by merge:') =
+      TGitPullFailureReason.gfrLocalChanges,
+    'Expected local-changes failure classification'
+  );
+  AssertTrue(
+    ClassifyGitPullFailure(
+      'error: Your local changes to the following files would be overwritten by merge:' + sLineBreak +
+      #9'README.md' + sLineBreak +
+      'Please commit your changes or stash them before you merge.' + sLineBreak +
+      'Aborting'
+    ) = TGitPullFailureReason.gfrLocalChanges,
+    'Expected full local-changes sample classification'
+  );
+  AssertTrue(
+    ClassifyGitPullFailure(
+      'error: The following untracked working tree files would be overwritten by merge:' + sLineBreak +
+      #9'local.json' + sLineBreak +
+      'Please move or remove them before you merge.'
+    ) = TGitPullFailureReason.gfrLocalChanges,
+    'Expected untracked-overwrite sample classification'
+  );
+  lActions := BuildGitPullRepairActions(TGitPullFailureReason.gfrLocalChanges);
+  AssertEqualInt(2, Length(lActions), 'Local changes should offer only stash and discard');
+  AssertTrue(HasRepairAction(lActions, TGitPullRepairActionKind.gpaStashChanges),
+    'Local changes should offer stash');
+  AssertTrue(not RepairActionRequiresConfirmation(lActions, TGitPullRepairActionKind.gpaStashChanges),
+    'Stash should be safe by default');
+  AssertTrue(RepairActionRequiresConfirmation(lActions, TGitPullRepairActionKind.gpaDiscardChanges),
+    'Discard should require confirmation');
+  AssertTrue(RepairActionIsDestructive(lActions, TGitPullRepairActionKind.gpaDiscardChanges),
+    'Discard should be marked destructive');
+
+  AssertTrue(
+    ClassifyGitPullFailure('fatal: Not possible to fast-forward, aborting.') =
+      TGitPullFailureReason.gfrDiverged,
+    'Expected diverged failure classification'
+  );
+  lActions := BuildGitPullRepairActions(TGitPullFailureReason.gfrDiverged);
+  AssertEqualInt(2, Length(lActions), 'Diverged repos should offer only fetch and reset');
+  AssertTrue(HasRepairAction(lActions, TGitPullRepairActionKind.gpaFetch),
+    'Diverged repos should offer fetch');
+  AssertTrue(RepairActionRequiresConfirmation(lActions, TGitPullRepairActionKind.gpaResetToUpstream),
+    'Reset to upstream should require confirmation');
+  AssertTrue(RepairActionIsDestructive(lActions, TGitPullRepairActionKind.gpaResetToUpstream),
+    'Reset to upstream should be marked destructive');
+
+  AssertTrue(
+    ClassifyGitPullFailure('some local refs could not be updated; try running git remote prune origin') =
+      TGitPullFailureReason.gfrStaleRemoteRefs,
+    'Expected stale remote refs classification'
+  );
+  AssertTrue(
+    ClassifyGitPullFailure(
+      'error: some local refs could not be updated; try running' + sLineBreak +
+      ' ''git remote prune origin'' to remove any old, conflicting branches' + sLineBreak +
+      'error: ''refs/remotes/origin/copilot'' exists; cannot create ' +
+      '''refs/remotes/origin/copilot/fix-canvas-a2ui-render-issue'''
+    ) = TGitPullFailureReason.gfrStaleRemoteRefs,
+    'Expected stale remote refs conflict sample classification'
+  );
+  lActions := BuildGitPullRepairActions(TGitPullFailureReason.gfrStaleRemoteRefs);
+  AssertEqualInt(1, Length(lActions), 'Stale remote refs should offer only prune');
+  AssertTrue(HasRepairAction(lActions, TGitPullRepairActionKind.gpaPruneRemote),
+    'Stale remote refs should offer remote prune');
+  AssertTrue(not RepairActionRequiresConfirmation(lActions, TGitPullRepairActionKind.gpaPruneRemote),
+    'Remote prune should not require confirmation');
+
+  AssertTrue(
+    ClassifyGitPullFailure('remote: Repository not found.') =
+      TGitPullFailureReason.gfrRemoteMissing,
+    'Expected missing remote classification'
+  );
+  AssertEqualInt(0, Length(BuildGitPullRepairActions(TGitPullFailureReason.gfrRemoteMissing)),
+    'Missing remote should not offer automatic repair');
+
+  AssertTrue(
+    ClassifyGitPullFailure('fatal: could not read Username for ''https://github.com'': terminal prompts disabled') =
+      TGitPullFailureReason.gfrAuthentication,
+    'Expected authentication classification'
+  );
+  AssertEqualInt(0, Length(BuildGitPullRepairActions(TGitPullFailureReason.gfrAuthentication)),
+    'Authentication failures should not offer automatic repair');
+
+  AssertTrue(
+    ClassifyGitPullFailure('unexpected git failure') = TGitPullFailureReason.gfrUnknown,
+    'Expected unknown classification fallback'
+  );
+  AssertEqualInt(0, Length(BuildGitPullRepairActions(TGitPullFailureReason.gfrUnknown)),
+    'Unknown failures should not offer automatic repair');
+end;
+
 procedure RunPipelineTests;
 begin
   TestPipelineHonorsComputeHasScriptsSetting;
@@ -1497,6 +1640,7 @@ begin
   TestGitPullIsThrottledOnSecondRun;
   TestGitPullFailureDoesNotBlockOtherRepos;
   TestGitPullRunsInNonInteractiveMode;
+  TestGitPullFailureClassificationAndRepairPlanning;
   TestDockerHealthMonitorStopDropsQueuedCallbacks;
   TestDockerStatusUiStateHidesAlertWhenHealthy;
   TestDockerStatusUiStateShowsDockerAlert;

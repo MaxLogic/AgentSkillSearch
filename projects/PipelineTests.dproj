@@ -46,6 +46,7 @@
     <DCCReference Include="..\tests\PipelineTests.pas" />
     <DCCReference Include="..\src\AppPaths.pas" />
     <DCCReference Include="..\src\Db\DatabaseManager.pas" />
+    <DCCReference Include="..\src\Git\GitPullFailures.pas" />
     <DCCReference Include="..\src\Git\RepoDetection.pas" />
     <DCCReference Include="..\src\Indexer\SkillIndexer.pas" />
     <DCCReference Include="..\src\Indexer\SkillTypes.pas" />
