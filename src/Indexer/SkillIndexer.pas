@@ -136,12 +136,128 @@ begin
   Result := lKey <> '';
 end;
 
+function NormalizeFrontMatterFenceLine(const aLine: string): string;
+begin
+  Result := Trim(StringReplace(aLine, #$00A0, ' ', [rfReplaceAll]));
+  Result := StringReplace(Result, '`', '', [rfReplaceAll]);
+end;
+
+function IsFrontMatterFenceLine(const aLine: string): Boolean;
+begin
+  Result := NormalizeFrontMatterFenceLine(aLine) = '---';
+end;
+
+function NormalizeEscapedFrontMatterNewlines(const aBody: string): string;
+begin
+  if StartsStr('---\n', aBody) then
+  begin
+    Exit(StringReplace(aBody, '\n', sLineBreak, [rfReplaceAll]));
+  end;
+
+  Result := aBody;
+end;
+
+procedure CheckInlineFrontMatterKey(const aText, aKey: string; aStart: Integer; var aBestPos: Integer);
+var
+  lPos: Integer;
+begin
+  lPos := PosEx(' ' + aKey + ':', aText, aStart);
+  if (lPos > 0) and ((aBestPos = 0) or (lPos < aBestPos)) then
+  begin
+    aBestPos := lPos;
+  end;
+end;
+
+function FindNextInlineFrontMatterKey(const aText: string; aStart: Integer): Integer;
+begin
+  Result := 0;
+  CheckInlineFrontMatterKey(aText, 'name', aStart, Result);
+  CheckInlineFrontMatterKey(aText, 'description', aStart, Result);
+  CheckInlineFrontMatterKey(aText, 'tags', aStart, Result);
+  CheckInlineFrontMatterKey(aText, 'type', aStart, Result);
+  CheckInlineFrontMatterKey(aText, 'version', aStart, Result);
+  CheckInlineFrontMatterKey(aText, 'author', aStart, Result);
+  CheckInlineFrontMatterKey(aText, 'license', aStart, Result);
+  CheckInlineFrontMatterKey(aText, 'user-invocable', aStart, Result);
+end;
+
+function NormalizeSingleLineFrontMatter(const aBody: string; out aRepaired: Boolean): string;
+var
+  lColonPos: Integer;
+  lFirstLine: string;
+  lInner: string;
+  lKey: string;
+  lLineBreakPos: Integer;
+  lNextKeyPos: Integer;
+  lPos: Integer;
+  lRest: string;
+  lValue: string;
+begin
+  aRepaired := False;
+  lLineBreakPos := Pos(#10, aBody);
+  if lLineBreakPos > 0 then
+  begin
+    lFirstLine := Copy(aBody, 1, lLineBreakPos - 1);
+    lRest := Copy(aBody, lLineBreakPos + 1, MaxInt);
+  end else begin
+    lFirstLine := aBody;
+    lRest := '';
+  end;
+
+  lFirstLine := Trim(lFirstLine);
+  if (not StartsText('--- ', lFirstLine)) or (not EndsText(' ---', lFirstLine)) then
+  begin
+    Exit(aBody);
+  end;
+
+  lInner := Trim(Copy(lFirstLine, 5, Length(lFirstLine) - 7));
+  lPos := 1;
+  Result := '---' + sLineBreak;
+  while lPos <= Length(lInner) do
+  begin
+    while (lPos <= Length(lInner)) and CharInSet(lInner[lPos], [' ', #9]) do
+    begin
+      Inc(lPos);
+    end;
+
+    lColonPos := PosEx(':', lInner, lPos);
+    if lColonPos <= lPos then
+    begin
+      Exit(aBody);
+    end;
+
+    lKey := Trim(Copy(lInner, lPos, lColonPos - lPos));
+    lNextKeyPos := FindNextInlineFrontMatterKey(LowerCase(lInner), lColonPos + 1);
+    if lNextKeyPos > 0 then
+    begin
+      lValue := Trim(Copy(lInner, lColonPos + 1, lNextKeyPos - lColonPos - 1));
+      lPos := lNextKeyPos + 1;
+    end else begin
+      lValue := Trim(Copy(lInner, lColonPos + 1, MaxInt));
+      lPos := Length(lInner) + 1;
+    end;
+
+    if lKey = '' then
+    begin
+      Exit(aBody);
+    end;
+
+    Result := Result + lKey + ': ' + lValue + sLineBreak;
+  end;
+
+  Result := Result + '---' + sLineBreak + lRest;
+  aRepaired := True;
+end;
+
 function TryExtractFrontMatter(const aBody: string; out aName, aDescription, aTags, aBodyWithoutFrontMatter: string;
   out aFrontMatterRepaired: Boolean): Boolean;
 var
   i: Integer;
+  lBodyForLines: string;
   lCloseIndex: Integer;
+  lInlineFrontMatterRepaired: Boolean;
   lKey: string;
+  lLastFrontMatterIndex: Integer;
   lLine: string;
   lLines: TStringList;
   lPos: Integer;
@@ -155,8 +271,11 @@ begin
 
   lLines := TStringList.Create;
   try
-    lLines.Text := aBody;
-    if (lLines.Count = 0) or (Trim(lLines[0]) <> '---') then
+    lBodyForLines := NormalizeEscapedFrontMatterNewlines(aBody);
+    lBodyForLines := NormalizeSingleLineFrontMatter(lBodyForLines, lInlineFrontMatterRepaired);
+    aFrontMatterRepaired := lInlineFrontMatterRepaired;
+    lLines.Text := lBodyForLines;
+    if (lLines.Count = 0) or (not IsFrontMatterFenceLine(lLines[0])) then
     begin
       Exit(False);
     end;
@@ -164,7 +283,7 @@ begin
     lCloseIndex := -1;
     for i := 1 to Pred(lLines.Count) do
     begin
-      if Trim(lLines[i]) = '---' then
+      if IsFrontMatterFenceLine(lLines[i]) then
       begin
         lCloseIndex := i;
         Break;
@@ -191,7 +310,14 @@ begin
       end;
     end;
 
-    for i := 1 to Pred(lCloseIndex) do
+    if aFrontMatterRepaired then
+    begin
+      lLastFrontMatterIndex := lCloseIndex;
+    end else begin
+      lLastFrontMatterIndex := Pred(lCloseIndex);
+    end;
+
+    for i := 1 to lLastFrontMatterIndex do
     begin
       lLine := Trim(lLines[i]);
       if lLine = '' then

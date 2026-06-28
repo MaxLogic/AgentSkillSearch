@@ -229,6 +229,101 @@ begin
     'Diagnostics should include non-fatal frontmatter repair notice');
 end;
 
+procedure TestIndexerRepairsLooseFrontMatterFences;
+var
+  lError: string;
+  lSkill: TIndexedSkill;
+  lSkillFile: string;
+  lSkillRoot: string;
+  lFixtureRoot: string;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchIndexerLooseFenceFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-loose-fence');
+  ForceDirectories(lSkillRoot);
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  TFile.WriteAllText(
+    lSkillFile,
+    '---' + #$00A0 + sLineBreak +
+    'name: Loose Fence Skill' + sLineBreak +
+    'description: fence with nbsp' + sLineBreak +
+    '---`' + sLineBreak +
+    '# Loose fence heading' + sLineBreak,
+    TEncoding.UTF8
+  );
+
+  AssertTrue(TryBuildIndexedSkill(lSkillFile, lSkill, lError),
+    'Loose frontmatter fences should be repaired: ' + lError);
+  AssertEqualText('Loose Fence Skill', lSkill.Name, 'Expected loose-fence frontmatter name');
+  AssertTrue(ContainsText(lSkill.Description, 'fence with nbsp'), 'Expected loose-fence description');
+end;
+
+procedure TestIndexerRepairsLiteralBackslashNewlineFrontMatter;
+var
+  lError: string;
+  lSkill: TIndexedSkill;
+  lSkillFile: string;
+  lSkillRoot: string;
+  lFixtureRoot: string;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchIndexerLiteralNewlineFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-literal-newlines');
+  ForceDirectories(lSkillRoot);
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  TFile.WriteAllText(
+    lSkillFile,
+    '---\nname: Literal Newline Skill\ndescription: escaped newline frontmatter\n---\n\n# Literal heading',
+    TEncoding.UTF8
+  );
+
+  AssertTrue(TryBuildIndexedSkill(lSkillFile, lSkill, lError),
+    'Literal backslash-n frontmatter should be repaired: ' + lError);
+  AssertEqualText('Literal Newline Skill', lSkill.Name, 'Expected literal-newline frontmatter name');
+  AssertTrue(ContainsText(lSkill.Description, 'escaped newline'), 'Expected literal-newline description');
+end;
+
+procedure TestIndexerRepairsSingleLineFrontMatter;
+var
+  lError: string;
+  lSkill: TIndexedSkill;
+  lSkillFile: string;
+  lSkillRoot: string;
+  lFixtureRoot: string;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchIndexerSingleLineFrontMatterFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-single-line-frontmatter');
+  ForceDirectories(lSkillRoot);
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  TFile.WriteAllText(
+    lSkillFile,
+    '--- name: File-Repair description: Repair damaged files user-invocable: true ---' + sLineBreak +
+    '# File repair' + sLineBreak,
+    TEncoding.UTF8
+  );
+
+  AssertTrue(TryBuildIndexedSkill(lSkillFile, lSkill, lError),
+    'Single-line frontmatter should be repaired: ' + lError);
+  AssertEqualText('File-Repair', lSkill.Name, 'Expected single-line frontmatter name');
+  AssertTrue(ContainsText(lSkill.Description, 'Repair damaged files'), 'Expected single-line description');
+end;
+
 procedure TestIndexerRejectsUnrecoverableFrontMatter;
 var
   lError: string;
@@ -333,6 +428,9 @@ begin
   TestIndexerUpsertAndSkipUnchanged;
   TestIndexerDetectsScriptChangesEvenWhenSkillMarkdownIsUnchanged;
   TestIndexerRepairsMissingClosingFrontMatterFence;
+  TestIndexerRepairsLooseFrontMatterFences;
+  TestIndexerRepairsLiteralBackslashNewlineFrontMatter;
+  TestIndexerRepairsSingleLineFrontMatter;
   TestIndexerRejectsUnrecoverableFrontMatter;
   TestChunkVectorsAreUpdatedIncrementallyByChunkHash;
 end;
