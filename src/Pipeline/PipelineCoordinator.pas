@@ -47,6 +47,7 @@ type
   TPipelineRunResult = record
     Cancelled: Boolean;
     ErrorCount: Integer;
+    FailedRepoPulls: TArray<TRepoPullUpdate>;
     LastError: string;
     ReposFailed: Integer;
     ReposPulled: Integer;
@@ -88,6 +89,7 @@ type
     procedure AddRepoPullResult(aRepoPulls: TList<TRepoPullUpdate>; const aPullResult: TRepoPullUpdate);
     procedure AddSkillDiscovered(aSkills: TList<string>; const aSkillFilePath: string);
     function BuildPullUpdate(const aRepoPath: string; const aPullResult: TGitPullResult): TRepoPullUpdate;
+    function BuildFailedRepoPulls(const aRepoPulls: TArray<TRepoPullUpdate>): TArray<TRepoPullUpdate>;
     function BuildThrottledPullUpdate(const aRepoPath, aLastPullUtc: string): TRepoPullUpdate;
     function BuildUniquePaths(const aInput: TList<string>): TArray<string>;
     function IsExcludedPath(const aPath: string): Boolean;
@@ -250,6 +252,26 @@ begin
   Result.LastPullOutput := aPullResult.OutputText;
   Result.LastPullDurationMs := aPullResult.DurationMs;
   Result.HeadCommit := aPullResult.HeadCommit;
+end;
+
+function TPipelineCoordinator.BuildFailedRepoPulls(const aRepoPulls: TArray<TRepoPullUpdate>): TArray<TRepoPullUpdate>;
+var
+  i: Integer;
+  lCount: Integer;
+begin
+  lCount := 0;
+  SetLength(Result, Length(aRepoPulls));
+
+  for i := 0 to Pred(Length(aRepoPulls)) do
+  begin
+    if AnsiStartsText('failed', aRepoPulls[i].LastPullStatus) then
+    begin
+      Result[lCount] := aRepoPulls[i];
+      Inc(lCount);
+    end;
+  end;
+
+  SetLength(Result, lCount);
 end;
 
 function TPipelineCoordinator.BuildThrottledPullUpdate(const aRepoPath, aLastPullUtc: string): TRepoPullUpdate;
@@ -748,6 +770,7 @@ begin
     end;
 
     Result.Cancelled := fCancelToken.IsCancelled;
+    Result.FailedRepoPulls := BuildFailedRepoPulls(lBatchRepoPulls);
     Result.ReposFailed := fReposFailed;
     Result.ReposPulled := fReposPulled;
     Result.ReposQueued := fReposQueued;

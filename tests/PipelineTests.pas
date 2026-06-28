@@ -1349,6 +1349,7 @@ begin
 
       lResult := lCoordinator.Run([lScanRoot], nil);
       AssertEqualInt(1, lResult.ReposThrottled, 'Second run should throttle one repo');
+      AssertEqualInt(0, Length(lResult.FailedRepoPulls), 'Throttled pulls should not be failed pull records');
       AssertTrue(lDbManager.TryGetRepoState(lRepoPath, lSecondState), 'Repo state missing after second run');
       AssertEqualText('skipped (throttled)', lSecondState.LastPullStatus, 'Second run pull status mismatch');
       AssertEqualText(lFirstState.LastPullUtc, lSecondState.LastPullUtc,
@@ -1399,7 +1400,18 @@ begin
       lCoordinator.Free;
     end;
 
-    AssertTrue(lResult.ReposFailed >= 1, 'Expected at least one failed pull');
+    AssertEqualInt(1, lResult.ReposPulled, 'Expected one successful pull');
+    AssertEqualInt(1, lResult.ReposFailed, 'Expected one failed pull');
+    AssertEqualInt(0, lResult.ReposThrottled, 'Expected no throttled pulls');
+    AssertEqualInt(1, Length(lResult.FailedRepoPulls), 'Expected failed pull records to include only failed repos');
+    AssertEqualText(lBadRepoPath, lResult.FailedRepoPulls[0].RootPath, 'Failed pull record path mismatch');
+    AssertTrue(AnsiStartsText('failed', lResult.FailedRepoPulls[0].LastPullStatus),
+      'Failed pull record status mismatch');
+    AssertTrue(ContainsText(lResult.FailedRepoPulls[0].LastPullOutput, '127.0.0.1'),
+      'Failed pull record should include pull output');
+    AssertTrue(Trim(lResult.FailedRepoPulls[0].LastPullUtc) <> '', 'Failed pull record should include pull timestamp');
+    AssertTrue(lResult.FailedRepoPulls[0].LastPullDurationMs > 0, 'Failed pull record should include pull duration');
+    AssertTrue(Trim(lResult.FailedRepoPulls[0].HeadCommit) <> '', 'Failed pull record should include head commit');
     AssertTrue(lResult.SkillsWritten >= 2, 'Skill indexing should continue despite failed pull');
 
     AssertTrue(lDbManager.TryGetRepoState(lGoodRepoPath, lGoodState), 'Good repo state missing');
