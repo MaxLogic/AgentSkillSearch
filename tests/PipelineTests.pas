@@ -89,6 +89,27 @@ begin
   end;
 end;
 
+function CountStaticTextsContaining(aControl: TWinControl; const aText: string): Integer;
+var
+  i: Integer;
+  lChild: TControl;
+begin
+  Result := 0;
+  for i := 0 to Pred(aControl.ControlCount) do
+  begin
+    lChild := aControl.Controls[i];
+    if (lChild is TStaticText) and ContainsText((lChild as TStaticText).Caption, aText) then
+    begin
+      Inc(Result);
+    end;
+
+    if lChild is TWinControl then
+    begin
+      Inc(Result, CountStaticTextsContaining(lChild as TWinControl, aText));
+    end;
+  end;
+end;
+
 function HasRepairAction(const aActions: TArray<TGitPullRepairAction>; const aKind: TGitPullRepairActionKind): Boolean;
 var
   i: Integer;
@@ -1837,6 +1858,8 @@ begin
       'Missing-remote repos should not expose unrelated repair buttons');
     AssertTrue(lDialog.RepoHostPanel.Height > 1,
       'Repo host panel should grow to show generated failure groups');
+    AssertTrue(CountStaticTextsContaining(lDialog, 'Reason') >= 2,
+      'Each failure group should render a clear reason header');
   finally
     lDialog.Free;
   end;
@@ -1879,6 +1902,8 @@ begin
     lButton.Click;
 
     AssertTrue(lDialog.RepairsApplied, 'Successful repair click should mark repairs as applied');
+    AssertTrue(ContainsText(lDialog.StatusText.Caption, 'fixed'), 'Repair status should show fixed count');
+    AssertTrue(ContainsText(lDialog.StatusText.Caption, lRepoPath), 'Repair status should mention the updated repo');
     RunShellOrFail(lRepoPath, 'git diff --quiet');
   finally
     lDialog.Free;

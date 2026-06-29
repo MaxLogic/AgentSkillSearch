@@ -3,7 +3,7 @@ unit FailedRepoPullsDialog;
 interface
 
 uses
-  System.Classes, System.Generics.Collections, System.SysUtils,
+  System.Classes, System.Generics.Collections, System.SysUtils, System.Types,
   Vcl.Buttons, Vcl.Controls, Vcl.ExtCtrls, Vcl.Forms, Vcl.Graphics, Vcl.StdCtrls,
   DatabaseManager, GitPullFailures;
 
@@ -34,6 +34,8 @@ type
     SummaryText: TStaticText;
     TitleText: TStaticText;
     procedure HandleCloseClick(Sender: TObject);
+  protected
+    function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean; override;
   private
     fButtonContexts: TDictionary<TObject, TRepairButtonContext>;
     fGitExePath: string;
@@ -103,6 +105,34 @@ begin
   lIndex := Length(aGroup.Pulls);
   SetLength(aGroup.Pulls, lIndex + 1);
   aGroup.Pulls[lIndex] := aPull;
+end;
+
+function BuildRepairStatusText(const aAction: TGitPullRepairAction; const aResults: TArray<TGitPullRepairResult>;
+  const aSuccessCount: Integer): string;
+var
+  i: Integer;
+  lFailedCount: Integer;
+  lUpdatedRepos: string;
+begin
+  lFailedCount := Length(aResults) - aSuccessCount;
+  lUpdatedRepos := '';
+  for i := 0 to Pred(Length(aResults)) do
+  begin
+    if aResults[i].Success then
+    begin
+      if lUpdatedRepos <> '' then
+      begin
+        lUpdatedRepos := lUpdatedRepos + '; ';
+      end;
+      lUpdatedRepos := lUpdatedRepos + aResults[i].RepoPath;
+    end;
+  end;
+
+  Result := Format('%s finished: %d fixed, %d failed.', [aAction.Caption, aSuccessCount, lFailedCount]);
+  if lUpdatedRepos <> '' then
+  begin
+    Result := Result + ' Updated: ' + lUpdatedRepos;
+  end;
 end;
 
 function BuildFailedRepoPullGroups(const aFailedPulls: TArray<TRepoPullUpdate>): TArray<TFailedRepoPullGroup>;
@@ -200,6 +230,7 @@ var
   i: Integer;
   lActionPanel: TPanel;
   lContext: TRepairButtonContext;
+  lGroupHeaderPanel: TPanel;
   lGroupPanel: TPanel;
   lHeaderText: TStaticText;
 begin
@@ -219,7 +250,7 @@ begin
   lGroupPanel.Padding.Top := ScaleVal(12);
   lGroupPanel.Padding.Right := ScaleVal(12);
   lGroupPanel.Padding.Bottom := ScaleVal(12);
-  lGroupPanel.Height := ScaleVal(76) + (Length(fGroups[aGroupIndex].Pulls) * ScaleVal(96));
+  lGroupPanel.Height := ScaleVal(86) + (Length(fGroups[aGroupIndex].Pulls) * ScaleVal(96));
   lGroupPanel.TabOrder := Pred(RepoHostPanel.ControlCount);
 
   lActionPanel := TPanel.Create(lGroupPanel);
@@ -228,7 +259,7 @@ begin
   lActionPanel.Height := ScaleVal(36);
   lActionPanel.BevelOuter := bvNone;
   lActionPanel.Caption := '';
-  lActionPanel.TabOrder := 0;
+  lActionPanel.TabOrder := 1;
 
   for i := 0 to Pred(Length(fGroups[aGroupIndex].Actions)) do
   begin
@@ -239,12 +270,26 @@ begin
     CreateActionButton(lActionPanel, fGroups[aGroupIndex].Actions[i].Caption + ' all', lContext);
   end;
 
-  lHeaderText := TStaticText.Create(lGroupPanel);
-  lHeaderText.Parent := lGroupPanel;
-  lHeaderText.Align := alTop;
+  lGroupHeaderPanel := TPanel.Create(lGroupPanel);
+  lGroupHeaderPanel.Parent := lGroupPanel;
+  lGroupHeaderPanel.Align := alTop;
+  lGroupHeaderPanel.Height := ScaleVal(38);
+  lGroupHeaderPanel.BevelOuter := bvNone;
+  lGroupHeaderPanel.Caption := '';
+  lGroupHeaderPanel.Color := clBtnFace;
+  lGroupHeaderPanel.ParentBackground := False;
+  lGroupHeaderPanel.Padding.Left := ScaleVal(10);
+  lGroupHeaderPanel.Padding.Top := ScaleVal(7);
+  lGroupHeaderPanel.Padding.Right := ScaleVal(10);
+  lGroupHeaderPanel.Padding.Bottom := ScaleVal(7);
+  lGroupHeaderPanel.TabOrder := 0;
+
+  lHeaderText := TStaticText.Create(lGroupHeaderPanel);
+  lHeaderText.Parent := lGroupHeaderPanel;
+  lHeaderText.Align := alClient;
   lHeaderText.AutoSize := False;
-  lHeaderText.Height := ScaleVal(28);
-  lHeaderText.Caption := Format('%s (%d)', [fGroups[aGroupIndex].Caption, Length(fGroups[aGroupIndex].Pulls)]);
+  lHeaderText.Caption := Format('Reason: %s  |  %d repo(s), %d repair action(s)',
+    [fGroups[aGroupIndex].Caption, Length(fGroups[aGroupIndex].Pulls), Length(fGroups[aGroupIndex].Actions)]);
   lHeaderText.Font.Style := [fsBold];
   lHeaderText.TabStop := False;
 
@@ -333,6 +378,34 @@ begin
   lPathText.Caption := lPull.RootPath;
   lPathText.Font.Style := [fsBold];
   lPathText.TabStop := False;
+end;
+
+function TFailedRepoPullsDialog.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
+var
+  lContentPoint: TPoint;
+  lStep: Integer;
+begin
+  Result := inherited DoMouseWheel(Shift, WheelDelta, MousePos);
+  if Result then
+  begin
+    Exit;
+  end;
+
+  lContentPoint := ContentPanel.ScreenToClient(MousePos);
+  if not PtInRect(ContentPanel.ClientRect, lContentPoint) then
+  begin
+    Exit(False);
+  end;
+
+  lStep := RepoScrollBox.VertScrollBar.Increment;
+  if lStep <= 0 then
+  begin
+    lStep := ScaleVal(48);
+  end;
+
+  RepoScrollBox.VertScrollBar.Position := RepoScrollBox.VertScrollBar.Position -
+    ((WheelDelta div WHEEL_DELTA) * lStep * 3);
+  Result := True;
 end;
 
 class function TFailedRepoPullsDialog.Execute(aOwner: TComponent; const aFailedPulls: TArray<TRepoPullUpdate>;
@@ -431,7 +504,7 @@ begin
   begin
     fRepairsApplied := True;
   end;
-  SetStatus(Format('%s: %d of %d repo(s) repaired.', [lAction.Caption, lSuccessCount, Length(lResults)]));
+  SetStatus(BuildRepairStatusText(lAction, lResults, lSuccessCount));
 end;
 
 function TFailedRepoPullsDialog.ScaleVal(const aValue: Integer): Integer;
