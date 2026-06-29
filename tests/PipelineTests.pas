@@ -1966,11 +1966,12 @@ begin
   end;
 end;
 
-procedure TestFailedRepoPullDialogStartsLongListAtTop;
+procedure TestFailedRepoPullDialogKeepsScrollPositionWhenReloadingFailures;
 var
   i: Integer;
   lDialog: TFailedRepoPullsDialog;
   lPulls: TArray<TRepoPullUpdate>;
+  lScrollPosition: Integer;
 begin
   SetLength(lPulls, 12);
   for i := 0 to Pred(Length(lPulls)) do
@@ -1987,8 +1988,14 @@ begin
 
     AssertTrue(lDialog.RepoHostPanel.Height > lDialog.RepoScrollBox.ClientHeight,
       'Long failed-pull lists should overflow the scrollbox');
-    AssertEqualInt(0, lDialog.RepoScrollBox.VertScrollBar.Position,
-      'Long failed-pull lists should open at the top');
+    lDialog.RepoScrollBox.VertScrollBar.Position := 40;
+    lScrollPosition := lDialog.RepoScrollBox.VertScrollBar.Position;
+    AssertTrue(lScrollPosition > 0, 'Long failed-pull fixture should allow scrolling');
+
+    lDialog.LoadFailures(lPulls);
+
+    AssertEqualInt(lScrollPosition, lDialog.RepoScrollBox.VertScrollBar.Position,
+      'Reloading failed pulls should not move the user scroll position');
   finally
     lDialog.Free;
   end;
@@ -2087,7 +2094,7 @@ begin
   TestFailedRepoPullDialogGroupsFailuresByReason;
   TestFailedRepoPullDialogRendersRepoButtonsByReason;
   TestFailedRepoPullDialogSizesMultiLineOutput;
-  TestFailedRepoPullDialogStartsLongListAtTop;
+  TestFailedRepoPullDialogKeepsScrollPositionWhenReloadingFailures;
   TestFailedRepoPullDialogSetsRepairsAppliedAfterSuccessfulRepair;
   TestFailedRepoPullResolutionPromptDecision;
   TestDockerHealthMonitorStopDropsQueuedCallbacks;

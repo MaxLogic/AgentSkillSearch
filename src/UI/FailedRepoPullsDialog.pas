@@ -498,6 +498,7 @@ begin
       lDialog.fGitExePath := aGitExePath;
     end;
     lDialog.LoadFailures(aFailedPulls);
+    lDialog.ResetRepoScrollToTop;
     Result := lDialog.ShowModal = mrOk;
     aRepairsApplied := lDialog.RepairsApplied;
   finally
@@ -730,7 +731,9 @@ procedure TFailedRepoPullsDialog.LoadFailures(const aFailedPulls: TArray<TRepoPu
 var
   i: Integer;
   lRepoCount: Integer;
+  lScrollPosition: Integer;
 begin
+  lScrollPosition := RepoScrollBox.VertScrollBar.Position;
   fGroups := BuildFailedRepoPullGroups(aFailedPulls);
   lRepoCount := 0;
   for i := 0 to Pred(Length(fGroups)) do
@@ -745,7 +748,7 @@ begin
     CreateGroupSection(i);
   end;
   ResizeRepoHostPanel;
-  ResetRepoScrollToTop;
+  RepoScrollBox.VertScrollBar.Position := lScrollPosition;
 end;
 
 procedure TFailedRepoPullsDialog.SetStatus(const aText: string);
