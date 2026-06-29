@@ -1904,8 +1904,12 @@ begin
       'Missing-remote repos should not expose unrelated repair buttons');
     AssertTrue(lDialog.RepoHostPanel.Height > 1,
       'Repo host panel should grow to show generated failure groups');
+    AssertEqualInt(0, lDialog.RepoScrollBox.VertScrollBar.Position,
+      'Failed pull dialog should open at the top of the grouped repo list');
     AssertTrue(CountStaticTextsContaining(lDialog, 'Reason') >= 2,
       'Each failure group should render a clear reason header');
+    AssertTrue(CountStaticTextsContaining(lDialog, 'available fix') >= 2,
+      'Group headers should describe available fixes instead of repair result counts');
 
     lHeaderText := FindStaticTextContaining(lDialog, 'Reason: Remote repository not found');
     lMissingPathText := FindStaticTextContaining(lDialog, 'C:\repos\missing');
@@ -1962,6 +1966,34 @@ begin
   end;
 end;
 
+procedure TestFailedRepoPullDialogStartsLongListAtTop;
+var
+  i: Integer;
+  lDialog: TFailedRepoPullsDialog;
+  lPulls: TArray<TRepoPullUpdate>;
+begin
+  SetLength(lPulls, 12);
+  for i := 0 to Pred(Length(lPulls)) do
+  begin
+    lPulls[i] := Default(TRepoPullUpdate);
+    lPulls[i].RootPath := Format('C:\repos\diverged-%d', [i]);
+    lPulls[i].LastPullStatus := 'failed';
+    lPulls[i].LastPullOutput := 'hint: Diverging branches can''t be fast-forwarded, you need to either:';
+  end;
+
+  lDialog := TFailedRepoPullsDialog.Create(nil);
+  try
+    lDialog.LoadFailures(lPulls);
+
+    AssertTrue(lDialog.RepoHostPanel.Height > lDialog.RepoScrollBox.ClientHeight,
+      'Long failed-pull lists should overflow the scrollbox');
+    AssertEqualInt(0, lDialog.RepoScrollBox.VertScrollBar.Position,
+      'Long failed-pull lists should open at the top');
+  finally
+    lDialog.Free;
+  end;
+end;
+
 procedure TestFailedRepoPullDialogSetsRepairsAppliedAfterSuccessfulRepair;
 var
   lButton: TBitBtn;
@@ -2000,6 +2032,8 @@ begin
 
     AssertTrue(lDialog.RepairsApplied, 'Successful repair click should mark repairs as applied');
     AssertTrue(ContainsText(lDialog.StatusText.Caption, 'fixed'), 'Repair status should show fixed count');
+    AssertTrue(not ContainsText(lDialog.StatusText.Caption, '0 failed'),
+      'Repair status should not show a zero-failure count');
     AssertTrue(ContainsText(lDialog.StatusText.Caption, lRepoPath), 'Repair status should mention the updated repo');
     AssertTrue(Assigned(FindStaticTextContaining(lDialog, 'Fixed by Stash changes')),
       'Repo card should show the repair result after a successful action');
@@ -2053,6 +2087,7 @@ begin
   TestFailedRepoPullDialogGroupsFailuresByReason;
   TestFailedRepoPullDialogRendersRepoButtonsByReason;
   TestFailedRepoPullDialogSizesMultiLineOutput;
+  TestFailedRepoPullDialogStartsLongListAtTop;
   TestFailedRepoPullDialogSetsRepairsAppliedAfterSuccessfulRepair;
   TestFailedRepoPullResolutionPromptDecision;
   TestDockerHealthMonitorStopDropsQueuedCallbacks;

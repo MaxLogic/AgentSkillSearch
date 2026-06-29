@@ -53,6 +53,7 @@ type
     function NormalizePullOutputText(const aText: string): string;
     procedure ResizeGroupSections;
     procedure ResizeRepoHostPanel;
+    procedure ResetRepoScrollToTop;
     function ScaleVal(const aValue: Integer): Integer;
     procedure SetStatus(const aText: string);
     function StackedChildrenHeight(const aParent: TWinControl; const aIncludePadding: Boolean): Integer;
@@ -77,7 +78,7 @@ implementation
 
 uses
   System.IOUtils, System.UITypes,
-  Winapi.ShellAPI, Winapi.Windows,
+  Winapi.Messages, Winapi.ShellAPI, Winapi.Windows,
   Vcl.Dialogs;
 
 {$R *.dfm}
@@ -115,6 +116,16 @@ begin
   aGroup.Pulls[lIndex] := aPull;
 end;
 
+function CountText(const aCount: Integer; const aSingular, aPlural: string): string;
+begin
+  if aCount = 1 then
+  begin
+    Exit(Format('%d %s', [aCount, aSingular]));
+  end;
+
+  Result := Format('%d %s', [aCount, aPlural]);
+end;
+
 function BuildRepairStatusText(const aAction: TGitPullRepairAction; const aResults: TArray<TGitPullRepairResult>;
   const aSuccessCount: Integer): string;
 var
@@ -136,7 +147,14 @@ begin
     end;
   end;
 
-  Result := Format('%s finished: %d fixed, %d failed.', [aAction.Caption, aSuccessCount, lFailedCount]);
+  if lFailedCount > 0 then
+  begin
+    Result := Format('%s: fixed %s, %s failed.',
+      [aAction.Caption, CountText(aSuccessCount, 'repo', 'repos'), CountText(lFailedCount, 'repo', 'repos')]);
+  end else begin
+    Result := Format('%s: fixed %s.', [aAction.Caption, CountText(aSuccessCount, 'repo', 'repos')]);
+  end;
+
   if lUpdatedRepos <> '' then
   begin
     Result := Result + ' Updated: ' + lUpdatedRepos;
@@ -330,8 +348,9 @@ begin
   lHeaderText.Parent := lGroupHeaderPanel;
   lHeaderText.Align := alClient;
   lHeaderText.AutoSize := False;
-  lHeaderText.Caption := Format('Reason: %s%s%d repo(s), %d repair action(s)',
-    [fGroups[aGroupIndex].Caption, sLineBreak, Length(fGroups[aGroupIndex].Pulls), Length(fGroups[aGroupIndex].Actions)]);
+  lHeaderText.Caption := Format('Reason: %s%s%s, %s',
+    [fGroups[aGroupIndex].Caption, sLineBreak, CountText(Length(fGroups[aGroupIndex].Pulls), 'repo', 'repos'),
+    CountText(Length(fGroups[aGroupIndex].Actions), 'available fix', 'available fixes')]);
   lHeaderText.Height := ScaleVal(40);
   lHeaderText.Font.Height := -15;
   lHeaderText.Font.Style := [fsBold];
@@ -655,6 +674,12 @@ begin
   RepoHostPanel.Height := lHeight;
 end;
 
+procedure TFailedRepoPullsDialog.ResetRepoScrollToTop;
+begin
+  RepoScrollBox.VertScrollBar.Position := 0;
+  RepoScrollBox.Perform(WM_VSCROLL, SB_TOP, 0);
+end;
+
 procedure TFailedRepoPullsDialog.ResizeGroupSections;
 var
   i: Integer;
@@ -720,6 +745,7 @@ begin
     CreateGroupSection(i);
   end;
   ResizeRepoHostPanel;
+  ResetRepoScrollToTop;
 end;
 
 procedure TFailedRepoPullsDialog.SetStatus(const aText: string);
