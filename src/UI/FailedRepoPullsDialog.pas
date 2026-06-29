@@ -46,6 +46,7 @@ type
     procedure CreateRepoCard(aParent: TWinControl; const aGroupIndex, aPullIndex: Integer);
     procedure HandleOpenRepoClick(Sender: TObject);
     procedure HandleRepairClick(Sender: TObject);
+    procedure ResizeRepoHostPanel;
     function ScaleVal(const aValue: Integer): Integer;
     procedure SetStatus(const aText: string);
   public
@@ -171,6 +172,7 @@ begin
   begin
     RepoHostPanel.Controls[0].Free;
   end;
+  RepoHostPanel.Height := ScaleVal(1);
 end;
 
 procedure TFailedRepoPullsDialog.CreateActionButton(aParent: TWinControl; const aCaption: string;
@@ -188,6 +190,7 @@ begin
   lButton.Margins.Bottom := 0;
   lButton.Width := ScaleVal(128);
   lButton.Caption := aCaption;
+  lButton.TabOrder := Pred(aParent.ControlCount);
   lButton.OnClick := HandleRepairClick;
   fButtonContexts.Add(lButton, aContext);
 end;
@@ -217,6 +220,7 @@ begin
   lGroupPanel.Padding.Right := ScaleVal(12);
   lGroupPanel.Padding.Bottom := ScaleVal(12);
   lGroupPanel.Height := ScaleVal(76) + (Length(fGroups[aGroupIndex].Pulls) * ScaleVal(96));
+  lGroupPanel.TabOrder := Pred(RepoHostPanel.ControlCount);
 
   lActionPanel := TPanel.Create(lGroupPanel);
   lActionPanel.Parent := lGroupPanel;
@@ -280,6 +284,7 @@ begin
   lRepoPanel.Padding.Top := ScaleVal(8);
   lRepoPanel.Padding.Right := ScaleVal(10);
   lRepoPanel.Padding.Bottom := ScaleVal(8);
+  lRepoPanel.TabOrder := Pred(aParent.ControlCount);
 
   lButtonPanel := TPanel.Create(lRepoPanel);
   lButtonPanel.Parent := lRepoPanel;
@@ -300,6 +305,7 @@ begin
   lOpenButton.Width := ScaleVal(96);
   lOpenButton.Caption := 'Open';
   lOpenButton.Hint := lPull.RootPath;
+  lOpenButton.TabOrder := 0;
   lOpenButton.OnClick := HandleOpenRepoClick;
 
   for i := 0 to Pred(Length(fGroups[aGroupIndex].Actions)) do
@@ -433,6 +439,29 @@ begin
   Result := MulDiv(aValue, CurrentPPI, 96);
 end;
 
+procedure TFailedRepoPullsDialog.ResizeRepoHostPanel;
+var
+  i: Integer;
+  lControl: TControl;
+  lHeight: Integer;
+begin
+  lHeight := 0;
+  for i := 0 to Pred(RepoHostPanel.ControlCount) do
+  begin
+    lControl := RepoHostPanel.Controls[i];
+    if lControl.Visible then
+    begin
+      Inc(lHeight, lControl.Height + lControl.Margins.Top + lControl.Margins.Bottom);
+    end;
+  end;
+
+  if lHeight < ScaleVal(1) then
+  begin
+    lHeight := ScaleVal(1);
+  end;
+  RepoHostPanel.Height := lHeight;
+end;
+
 procedure TFailedRepoPullsDialog.LoadFailures(const aFailedPulls: TArray<TRepoPullUpdate>);
 var
   i: Integer;
@@ -451,6 +480,7 @@ begin
   begin
     CreateGroupSection(i);
   end;
+  ResizeRepoHostPanel;
 end;
 
 procedure TFailedRepoPullsDialog.SetStatus(const aText: string);

@@ -1835,6 +1835,8 @@ begin
       'Expected local-changes repo discard action');
     AssertEqualInt(0, CountBitButtonsWithCaption(lDialog, 'Fetch'),
       'Missing-remote repos should not expose unrelated repair buttons');
+    AssertTrue(lDialog.RepoHostPanel.Height > 1,
+      'Repo host panel should grow to show generated failure groups');
   finally
     lDialog.Free;
   end;
