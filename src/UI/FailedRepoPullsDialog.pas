@@ -40,17 +40,25 @@ type
     fButtonContexts: TDictionary<TObject, TRepairButtonContext>;
     fGitExePath: string;
     fGroups: TArray<TFailedRepoPullGroup>;
+    fRepoStatusTexts: TDictionary<string, TStaticText>;
     fRepairsApplied: Boolean;
     function ConfirmRepair(const aAction: TGitPullRepairAction; const aRepoCount: Integer): Boolean;
+    function CountTextRows(const aText: string): Integer;
     procedure ClearDynamicContent;
     procedure CreateActionButton(aParent: TWinControl; const aCaption: string; const aContext: TRepairButtonContext);
     procedure CreateGroupSection(const aGroupIndex: Integer);
     procedure CreateRepoCard(aParent: TWinControl; const aGroupIndex, aPullIndex: Integer);
     procedure HandleOpenRepoClick(Sender: TObject);
     procedure HandleRepairClick(Sender: TObject);
+    function NormalizePullOutputText(const aText: string): string;
+    procedure ResizeGroupSections;
     procedure ResizeRepoHostPanel;
     function ScaleVal(const aValue: Integer): Integer;
     procedure SetStatus(const aText: string);
+    function StackedChildrenHeight(const aParent: TWinControl; const aIncludePadding: Boolean): Integer;
+    function StaticTextHeightForRows(const aText: TStaticText; const aCaption: string): Integer;
+    function StaticTextRowHeight(const aText: TStaticText): Integer;
+    procedure UpdateRepoRepairResult(const aAction: TGitPullRepairAction; const aResult: TGitPullRepairResult);
   public
     constructor Create(aOwner: TComponent); override;
     destructor Destroy; override;
@@ -175,11 +183,13 @@ constructor TFailedRepoPullsDialog.Create(aOwner: TComponent);
 begin
   inherited Create(aOwner);
   fButtonContexts := TDictionary<TObject, TRepairButtonContext>.Create;
+  fRepoStatusTexts := TDictionary<string, TStaticText>.Create;
   fGitExePath := 'git.exe';
 end;
 
 destructor TFailedRepoPullsDialog.Destroy;
 begin
+  fRepoStatusTexts.Free;
   fButtonContexts.Free;
   inherited Destroy;
 end;
@@ -195,9 +205,33 @@ begin
     [aAction.Caption, aRepoCount]), mtWarning, [mbYes, mbNo], 0) = mrYes;
 end;
 
+function TFailedRepoPullsDialog.CountTextRows(const aText: string): Integer;
+var
+  i: Integer;
+  lText: string;
+begin
+  lText := StringReplace(aText, #13#10, #10, [rfReplaceAll]);
+  lText := StringReplace(lText, #13, #10, [rfReplaceAll]);
+  lText := TrimRight(lText);
+  if lText = '' then
+  begin
+    Exit(1);
+  end;
+
+  Result := 1;
+  for i := 1 to Length(lText) do
+  begin
+    if lText[i] = #10 then
+    begin
+      Inc(Result);
+    end;
+  end;
+end;
+
 procedure TFailedRepoPullsDialog.ClearDynamicContent;
 begin
   fButtonContexts.Clear;
+  fRepoStatusTexts.Clear;
   while RepoHostPanel.ControlCount > 0 do
   begin
     RepoHostPanel.Controls[0].Free;
@@ -253,50 +287,58 @@ begin
   lGroupPanel.Height := ScaleVal(86) + (Length(fGroups[aGroupIndex].Pulls) * ScaleVal(96));
   lGroupPanel.TabOrder := Pred(RepoHostPanel.ControlCount);
 
-  lActionPanel := TPanel.Create(lGroupPanel);
-  lActionPanel.Parent := lGroupPanel;
-  lActionPanel.Align := alTop;
-  lActionPanel.Height := ScaleVal(36);
-  lActionPanel.BevelOuter := bvNone;
-  lActionPanel.Caption := '';
-  lActionPanel.TabOrder := 1;
-
-  for i := 0 to Pred(Length(fGroups[aGroupIndex].Actions)) do
+  for i := Pred(Length(fGroups[aGroupIndex].Pulls)) downto 0 do
   begin
-    lContext.ActionKind := fGroups[aGroupIndex].Actions[i].Kind;
-    lContext.GroupIndex := aGroupIndex;
-    lContext.IsGroup := True;
-    lContext.RepoPath := '';
-    CreateActionButton(lActionPanel, fGroups[aGroupIndex].Actions[i].Caption + ' all', lContext);
+    CreateRepoCard(lGroupPanel, aGroupIndex, i);
+  end;
+
+  if Length(fGroups[aGroupIndex].Actions) > 0 then
+  begin
+    lActionPanel := TPanel.Create(lGroupPanel);
+    lActionPanel.Parent := lGroupPanel;
+    lActionPanel.Align := alTop;
+    lActionPanel.Height := ScaleVal(36);
+    lActionPanel.BevelOuter := bvNone;
+    lActionPanel.Caption := '';
+    lActionPanel.TabOrder := 1;
+
+    for i := 0 to Pred(Length(fGroups[aGroupIndex].Actions)) do
+    begin
+      lContext.ActionKind := fGroups[aGroupIndex].Actions[i].Kind;
+      lContext.GroupIndex := aGroupIndex;
+      lContext.IsGroup := True;
+      lContext.RepoPath := '';
+      CreateActionButton(lActionPanel, fGroups[aGroupIndex].Actions[i].Caption + ' all', lContext);
+    end;
   end;
 
   lGroupHeaderPanel := TPanel.Create(lGroupPanel);
   lGroupHeaderPanel.Parent := lGroupPanel;
   lGroupHeaderPanel.Align := alTop;
-  lGroupHeaderPanel.Height := ScaleVal(38);
+  lGroupHeaderPanel.Height := ScaleVal(56);
   lGroupHeaderPanel.BevelOuter := bvNone;
   lGroupHeaderPanel.Caption := '';
   lGroupHeaderPanel.Color := clBtnFace;
   lGroupHeaderPanel.ParentBackground := False;
   lGroupHeaderPanel.Padding.Left := ScaleVal(10);
-  lGroupHeaderPanel.Padding.Top := ScaleVal(7);
+  lGroupHeaderPanel.Padding.Top := ScaleVal(8);
   lGroupHeaderPanel.Padding.Right := ScaleVal(10);
-  lGroupHeaderPanel.Padding.Bottom := ScaleVal(7);
+  lGroupHeaderPanel.Padding.Bottom := ScaleVal(8);
   lGroupHeaderPanel.TabOrder := 0;
 
   lHeaderText := TStaticText.Create(lGroupHeaderPanel);
   lHeaderText.Parent := lGroupHeaderPanel;
   lHeaderText.Align := alClient;
   lHeaderText.AutoSize := False;
-  lHeaderText.Caption := Format('Reason: %s  |  %d repo(s), %d repair action(s)',
-    [fGroups[aGroupIndex].Caption, Length(fGroups[aGroupIndex].Pulls), Length(fGroups[aGroupIndex].Actions)]);
+  lHeaderText.Caption := Format('Reason: %s%s%d repo(s), %d repair action(s)',
+    [fGroups[aGroupIndex].Caption, sLineBreak, Length(fGroups[aGroupIndex].Pulls), Length(fGroups[aGroupIndex].Actions)]);
+  lHeaderText.Height := ScaleVal(40);
+  lHeaderText.Font.Height := -15;
   lHeaderText.Font.Style := [fsBold];
+  lHeaderText.ParentFont := False;
   lHeaderText.TabStop := False;
 
-  for i := Pred(Length(fGroups[aGroupIndex].Pulls)) downto 0 do
-  begin
-    CreateRepoCard(lGroupPanel, aGroupIndex, i);
-  end;
+  lGroupPanel.Height := StackedChildrenHeight(lGroupPanel, True);
 end;
 
 procedure TFailedRepoPullsDialog.CreateRepoCard(aParent: TWinControl; const aGroupIndex, aPullIndex: Integer);
@@ -306,9 +348,11 @@ var
   lContext: TRepairButtonContext;
   lOpenButton: TBitBtn;
   lOutputText: TStaticText;
+  lOutputCaption: string;
   lPathText: TStaticText;
   lPull: TRepoPullUpdate;
   lRepoPanel: TPanel;
+  lRepoStatusText: TStaticText;
 begin
   lPull := fGroups[aGroupIndex].Pulls[aPullIndex];
 
@@ -362,11 +406,23 @@ begin
     CreateActionButton(lButtonPanel, fGroups[aGroupIndex].Actions[i].Caption, lContext);
   end;
 
+  lRepoStatusText := TStaticText.Create(lRepoPanel);
+  lRepoStatusText.Parent := lRepoPanel;
+  lRepoStatusText.Align := alTop;
+  lRepoStatusText.AutoSize := False;
+  lRepoStatusText.Caption := '';
+  lRepoStatusText.Height := 0;
+  lRepoStatusText.Font.Color := clGrayText;
+  lRepoStatusText.TabStop := False;
+  fRepoStatusTexts.AddOrSetValue(lPull.RootPath, lRepoStatusText);
+
   lOutputText := TStaticText.Create(lRepoPanel);
   lOutputText.Parent := lRepoPanel;
-  lOutputText.Align := alClient;
+  lOutputText.Align := alTop;
   lOutputText.AutoSize := False;
-  lOutputText.Caption := Copy(StringReplace(lPull.LastPullOutput, sLineBreak, ' ', [rfReplaceAll]), 1, 220);
+  lOutputCaption := NormalizePullOutputText(lPull.LastPullOutput);
+  lOutputText.Caption := lOutputCaption;
+  lOutputText.Height := StaticTextHeightForRows(lOutputText, lOutputCaption);
   lOutputText.Font.Color := clGrayText;
   lOutputText.TabStop := False;
 
@@ -378,6 +434,8 @@ begin
   lPathText.Caption := lPull.RootPath;
   lPathText.Font.Style := [fsBold];
   lPathText.TabStop := False;
+
+  lRepoPanel.Height := StackedChildrenHeight(lRepoPanel, True);
 end;
 
 function TFailedRepoPullsDialog.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint): Boolean;
@@ -494,6 +552,7 @@ begin
   lSuccessCount := 0;
   for i := 0 to Pred(Length(lResults)) do
   begin
+    UpdateRepoRepairResult(lAction, lResults[i]);
     if lResults[i].Success then
     begin
       Inc(lSuccessCount);
@@ -507,9 +566,70 @@ begin
   SetStatus(BuildRepairStatusText(lAction, lResults, lSuccessCount));
 end;
 
+function TFailedRepoPullsDialog.NormalizePullOutputText(const aText: string): string;
+var
+  lText: string;
+begin
+  lText := StringReplace(aText, #13#10, #10, [rfReplaceAll]);
+  lText := StringReplace(lText, #13, #10, [rfReplaceAll]);
+  lText := StringReplace(TrimRight(lText), #10, sLineBreak, [rfReplaceAll]);
+  Result := lText;
+end;
+
 function TFailedRepoPullsDialog.ScaleVal(const aValue: Integer): Integer;
 begin
   Result := MulDiv(aValue, CurrentPPI, 96);
+end;
+
+function TFailedRepoPullsDialog.StackedChildrenHeight(const aParent: TWinControl;
+  const aIncludePadding: Boolean): Integer;
+var
+  i: Integer;
+  lControl: TControl;
+begin
+  Result := 0;
+  if aIncludePadding then
+  begin
+    Inc(Result, aParent.Padding.Top + aParent.Padding.Bottom);
+  end;
+
+  for i := 0 to Pred(aParent.ControlCount) do
+  begin
+    lControl := aParent.Controls[i];
+    if lControl.Visible then
+    begin
+      Inc(Result, lControl.Height + lControl.Margins.Top + lControl.Margins.Bottom);
+    end;
+  end;
+
+  if Result < ScaleVal(1) then
+  begin
+    Result := ScaleVal(1);
+  end;
+end;
+
+function TFailedRepoPullsDialog.StaticTextHeightForRows(const aText: TStaticText; const aCaption: string): Integer;
+begin
+  Result := (CountTextRows(aCaption) * StaticTextRowHeight(aText)) + ScaleVal(4);
+end;
+
+function TFailedRepoPullsDialog.StaticTextRowHeight(const aText: TStaticText): Integer;
+var
+  lCanvas: TControlCanvas;
+begin
+  lCanvas := TControlCanvas.Create;
+  try
+    lCanvas.Control := aText;
+    lCanvas.Font.Assign(aText.Font);
+    Result := lCanvas.TextHeight('Hg');
+  finally
+    lCanvas.Free;
+  end;
+
+  if Result < ScaleVal(1) then
+  begin
+    Result := ScaleVal(17);
+  end;
 end;
 
 procedure TFailedRepoPullsDialog.ResizeRepoHostPanel;
@@ -533,6 +653,52 @@ begin
     lHeight := ScaleVal(1);
   end;
   RepoHostPanel.Height := lHeight;
+end;
+
+procedure TFailedRepoPullsDialog.ResizeGroupSections;
+var
+  i: Integer;
+  lControl: TControl;
+begin
+  for i := 0 to Pred(RepoHostPanel.ControlCount) do
+  begin
+    lControl := RepoHostPanel.Controls[i];
+    if lControl is TPanel then
+    begin
+      lControl.Height := StackedChildrenHeight(lControl as TWinControl, True);
+    end;
+  end;
+  ResizeRepoHostPanel;
+end;
+
+procedure TFailedRepoPullsDialog.UpdateRepoRepairResult(const aAction: TGitPullRepairAction;
+  const aResult: TGitPullRepairResult);
+var
+  lCaption: string;
+  lStatusText: TStaticText;
+begin
+  if not fRepoStatusTexts.TryGetValue(aResult.RepoPath, lStatusText) then
+  begin
+    Exit;
+  end;
+
+  if aResult.Success then
+  begin
+    lCaption := Format('Fixed by %s.', [aAction.Caption]);
+    lStatusText.Font.Color := clGreen;
+  end else begin
+    lCaption := Format('%s failed (exit %d): %s',
+      [aAction.Caption, aResult.ExitCode, Copy(NormalizePullOutputText(aResult.OutputText), 1, 180)]);
+    lStatusText.Font.Color := clRed;
+  end;
+
+  lStatusText.Caption := lCaption;
+  lStatusText.Height := StaticTextHeightForRows(lStatusText, lCaption);
+  if Assigned(lStatusText.Parent) then
+  begin
+    lStatusText.Parent.Height := StackedChildrenHeight(lStatusText.Parent, True);
+  end;
+  ResizeGroupSections;
 end;
 
 procedure TFailedRepoPullsDialog.LoadFailures(const aFailedPulls: TArray<TRepoPullUpdate>);

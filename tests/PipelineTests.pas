@@ -110,6 +110,50 @@ begin
   end;
 end;
 
+function FindStaticTextContaining(aControl: TWinControl; const aText: string): TStaticText;
+var
+  i: Integer;
+  lChild: TControl;
+begin
+  Result := nil;
+  for i := 0 to Pred(aControl.ControlCount) do
+  begin
+    lChild := aControl.Controls[i];
+    if (lChild is TStaticText) and ContainsText((lChild as TStaticText).Caption, aText) then
+    begin
+      Exit(lChild as TStaticText);
+    end;
+
+    if lChild is TWinControl then
+    begin
+      Result := FindStaticTextContaining(lChild as TWinControl, aText);
+      if Assigned(Result) then
+      begin
+        Exit;
+      end;
+    end;
+  end;
+end;
+
+function ControlTopRelativeTo(aControl: TWinControl; aParent: TWinControl): Integer;
+begin
+  Result := aParent.ScreenToClient(aControl.ClientToScreen(Point(0, 0))).Y;
+end;
+
+function StaticTextRowHeight(aText: TStaticText): Integer;
+var
+  lCanvas: TControlCanvas;
+begin
+  lCanvas := TControlCanvas.Create;
+  try
+    lCanvas.Control := aText;
+    lCanvas.Font.Assign(aText.Font);
+    Result := lCanvas.TextHeight('Hg');
+  finally
+    lCanvas.Free;
+  end;
+end;
+
 function HasRepairAction(const aActions: TArray<TGitPullRepairAction>; const aKind: TGitPullRepairActionKind): Boolean;
 var
   i: Integer;
@@ -1828,6 +1872,8 @@ end;
 procedure TestFailedRepoPullDialogRendersRepoButtonsByReason;
 var
   lDialog: TFailedRepoPullsDialog;
+  lHeaderText: TStaticText;
+  lMissingPathText: TStaticText;
   lPulls: TArray<TRepoPullUpdate>;
 begin
   SetLength(lPulls, 2);
@@ -1860,6 +1906,57 @@ begin
       'Repo host panel should grow to show generated failure groups');
     AssertTrue(CountStaticTextsContaining(lDialog, 'Reason') >= 2,
       'Each failure group should render a clear reason header');
+
+    lHeaderText := FindStaticTextContaining(lDialog, 'Reason: Remote repository not found');
+    lMissingPathText := FindStaticTextContaining(lDialog, 'C:\repos\missing');
+    AssertTrue(Assigned(lHeaderText), 'Expected missing-remote group header');
+    AssertTrue(Assigned(lMissingPathText), 'Expected missing-remote repo path');
+    AssertTrue(ControlTopRelativeTo(lHeaderText, lDialog.RepoHostPanel) <
+      ControlTopRelativeTo(lMissingPathText, lDialog.RepoHostPanel),
+      'Reason header should render above the repos in its group');
+  finally
+    lDialog.Free;
+  end;
+end;
+
+procedure TestFailedRepoPullDialogSizesMultiLineOutput;
+var
+  lDialog: TFailedRepoPullsDialog;
+  lHeaderText: TStaticText;
+  lOutputText: TStaticText;
+  lPathText: TStaticText;
+  lPulls: TArray<TRepoPullUpdate>;
+begin
+  SetLength(lPulls, 1);
+  lPulls[0] := Default(TRepoPullUpdate);
+  lPulls[0].RootPath := 'C:\repos\diverged';
+  lPulls[0].LastPullStatus := 'failed';
+  lPulls[0].LastPullOutput :=
+    'From https://github.com/example/repo' + sLineBreak +
+    ' + 5430bc6...7871e65 main       -> origin/main  (forced update)' + sLineBreak +
+    'hint: Diverging branches can''t be fast-forwarded, you need to either:' + sLineBreak +
+    'hint:' + sLineBreak +
+    'hint:     git merge --no-ff' + sLineBreak +
+    'hint:     git rebase';
+
+  lDialog := TFailedRepoPullsDialog.Create(nil);
+  try
+    lDialog.LoadFailures(lPulls);
+
+    lHeaderText := FindStaticTextContaining(lDialog, 'Reason: Branch cannot fast-forward');
+    lPathText := FindStaticTextContaining(lDialog, 'C:\repos\diverged');
+    AssertTrue(Assigned(lHeaderText), 'Expected diverged group header');
+    AssertTrue(Assigned(lPathText), 'Expected diverged repo path');
+    AssertTrue(ControlTopRelativeTo(lHeaderText, lDialog.RepoHostPanel) <
+      ControlTopRelativeTo(lPathText, lDialog.RepoHostPanel),
+      'Reason header should render above the repos in its group');
+
+    lOutputText := FindStaticTextContaining(lDialog, 'Diverging branches');
+    AssertTrue(Assigned(lOutputText), 'Expected multi-line git output text');
+    AssertTrue(ContainsText(lOutputText.Caption, sLineBreak + 'hint:'),
+      'Git output text should preserve explicit rows');
+    AssertTrue(lOutputText.Height >= (6 * StaticTextRowHeight(lOutputText)),
+      'Git output text should be tall enough for every explicit row');
   finally
     lDialog.Free;
   end;
@@ -1904,6 +2001,8 @@ begin
     AssertTrue(lDialog.RepairsApplied, 'Successful repair click should mark repairs as applied');
     AssertTrue(ContainsText(lDialog.StatusText.Caption, 'fixed'), 'Repair status should show fixed count');
     AssertTrue(ContainsText(lDialog.StatusText.Caption, lRepoPath), 'Repair status should mention the updated repo');
+    AssertTrue(Assigned(FindStaticTextContaining(lDialog, 'Fixed by Stash changes')),
+      'Repo card should show the repair result after a successful action');
     RunShellOrFail(lRepoPath, 'git diff --quiet');
   finally
     lDialog.Free;
@@ -1953,6 +2052,7 @@ begin
   TestGitPullRepairRunnerStashesAndBlocksUnconfirmedDiscard;
   TestFailedRepoPullDialogGroupsFailuresByReason;
   TestFailedRepoPullDialogRendersRepoButtonsByReason;
+  TestFailedRepoPullDialogSizesMultiLineOutput;
   TestFailedRepoPullDialogSetsRepairsAppliedAfterSuccessfulRepair;
   TestFailedRepoPullResolutionPromptDecision;
   TestDockerHealthMonitorStopDropsQueuedCallbacks;
