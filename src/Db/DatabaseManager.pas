@@ -73,12 +73,18 @@ type
     procedure ConfigureConnection;
     function EncodeVectorBlob(const aVector: TArray<Single>): TBytes;
     procedure EnsureDatabaseFolder;
+    procedure EnsureMetaTable;
     function IsSkillUnchanged(const aSkill: TIndexedSkill): Boolean;
+    procedure EnsureSkillFtsSchema;
+    procedure MigrateTo1;
+    procedure MigrateTo2;
     function QueryScalarInt(const aSql: string): Integer;
     function QuerySkillIdBySkillFile(const aSkillFile: string): Integer;
     function QueryScalarText(const aSql: string): string;
+    function ReadSchemaVersion: Integer;
     procedure ReplaceChunkVector(const aChunkId: Integer; const aChunkText: string);
     procedure RunMigrations;
+    procedure SetSchemaVersion(const aVersion: Integer);
     procedure UpsertSkillChunksAndVectors(const aSkillId: Integer; const aBodyMarkdown: string);
     procedure VerifyFts5Support;
   public
@@ -108,14 +114,84 @@ type
 implementation
 
 uses
-  System.Classes, System.DateUtils, System.Generics.Collections, System.Hash, System.IOUtils, System.Math, Data.DB,
+  System.Classes, System.DateUtils, System.Generics.Collections, System.Hash, System.IOUtils, System.Math,
+  System.StrUtils, Data.DB,
   FireDAC.DApt, FireDAC.Stan.Async, FireDAC.Stan.Def, FireDAC.Stan.Intf, FireDAC.Stan.Option,
   FireDAC.Stan.Param,
   Chunker;
 
 const
+  cCurrentSchemaVersion = 2;
   cSemanticVectorDim = 16;
   cSemanticVectorModel = 'deterministic-v1';
+  cBaseSchemaSql =
+    'CREATE TABLE IF NOT EXISTS sources (' +
+    '  id INTEGER PRIMARY KEY,' +
+    '  path TEXT NOT NULL UNIQUE,' +
+    '  enabled INTEGER NOT NULL DEFAULT 1,' +
+    '  last_scan_utc TEXT' +
+    ');' +
+    'CREATE TABLE IF NOT EXISTS repos (' +
+    '  id INTEGER PRIMARY KEY,' +
+    '  root_path TEXT NOT NULL UNIQUE,' +
+    '  last_pull_utc TEXT,' +
+    '  last_pull_status TEXT,' +
+    '  last_pull_output TEXT,' +
+    '  last_pull_duration_ms INTEGER,' +
+    '  head_commit TEXT,' +
+    '  last_seen_utc TEXT' +
+    ');' +
+    'CREATE TABLE IF NOT EXISTS skills (' +
+    '  id INTEGER PRIMARY KEY,' +
+    '  source_id INTEGER NOT NULL,' +
+    '  repo_id INTEGER,' +
+    '  skill_root TEXT NOT NULL UNIQUE,' +
+    '  skill_file TEXT NOT NULL UNIQUE,' +
+    '  name TEXT NOT NULL,' +
+    '  description TEXT,' +
+    '  tags TEXT,' +
+    '  body_md TEXT NOT NULL,' +
+    '  body_hash TEXT NOT NULL,' +
+    '  file_mtime_utc TEXT NOT NULL,' +
+    '  indexed_utc TEXT NOT NULL,' +
+    '  has_scripts INTEGER NOT NULL DEFAULT 0,' +
+    '  scripts_count INTEGER NOT NULL DEFAULT 0,' +
+    '  scripts_exts TEXT,' +
+    '  FOREIGN KEY(source_id) REFERENCES sources(id),' +
+    '  FOREIGN KEY(repo_id) REFERENCES repos(id)' +
+    ');' +
+    'CREATE TABLE IF NOT EXISTS skill_chunks (' +
+    '  id INTEGER PRIMARY KEY,' +
+    '  skill_id INTEGER NOT NULL,' +
+    '  chunk_index INTEGER NOT NULL,' +
+    '  chunk_text TEXT NOT NULL,' +
+    '  chunk_hash TEXT NOT NULL,' +
+    '  UNIQUE(skill_id, chunk_index),' +
+    '  FOREIGN KEY(skill_id) REFERENCES skills(id) ON DELETE CASCADE' +
+    ');' +
+    'CREATE TABLE IF NOT EXISTS chunk_vec (' +
+    '  chunk_id INTEGER PRIMARY KEY,' +
+    '  model TEXT NOT NULL,' +
+    '  dim INTEGER NOT NULL,' +
+    '  vec BLOB NOT NULL,' +
+    '  updated_utc TEXT NOT NULL,' +
+    '  FOREIGN KEY(chunk_id) REFERENCES skill_chunks(id) ON DELETE CASCADE' +
+    ');' +
+    'CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(' +
+    '  name,' +
+    '  description,' +
+    '  tags,' +
+    '  body_md,' +
+    '  tokenize=''unicode61''' +
+    ');';
+  cSkillFtsCreateSql =
+    'CREATE VIRTUAL TABLE skills_fts USING fts5(' +
+    '  name,' +
+    '  description,' +
+    '  tags,' +
+    '  body_md,' +
+    '  tokenize=''unicode61''' +
+    ');';
 
 constructor TDatabaseManager.Create(const aDatabasePath, aSqliteDllPath: string);
 begin
@@ -267,81 +343,107 @@ begin
   fConnection.ExecSQL('DROP TABLE IF EXISTS temp.fts5_probe;');
 end;
 
-procedure TDatabaseManager.RunMigrations;
-const
-  cSchemaSql =
+procedure TDatabaseManager.EnsureMetaTable;
+begin
+  fConnection.ExecSQL(
     'CREATE TABLE IF NOT EXISTS meta (' +
     '  key TEXT PRIMARY KEY,' +
     '  value TEXT NOT NULL' +
-    ');' +
-    'CREATE TABLE IF NOT EXISTS sources (' +
-    '  id INTEGER PRIMARY KEY,' +
-    '  path TEXT NOT NULL UNIQUE,' +
-    '  enabled INTEGER NOT NULL DEFAULT 1,' +
-    '  last_scan_utc TEXT' +
-    ');' +
-    'CREATE TABLE IF NOT EXISTS repos (' +
-    '  id INTEGER PRIMARY KEY,' +
-    '  root_path TEXT NOT NULL UNIQUE,' +
-    '  last_pull_utc TEXT,' +
-    '  last_pull_status TEXT,' +
-    '  last_pull_output TEXT,' +
-    '  last_pull_duration_ms INTEGER,' +
-    '  head_commit TEXT,' +
-    '  last_seen_utc TEXT' +
-    ');' +
-    'CREATE TABLE IF NOT EXISTS skills (' +
-    '  id INTEGER PRIMARY KEY,' +
-    '  source_id INTEGER NOT NULL,' +
-    '  repo_id INTEGER,' +
-    '  skill_root TEXT NOT NULL UNIQUE,' +
-    '  skill_file TEXT NOT NULL UNIQUE,' +
-    '  name TEXT NOT NULL,' +
-    '  description TEXT,' +
-    '  tags TEXT,' +
-    '  body_md TEXT NOT NULL,' +
-    '  body_hash TEXT NOT NULL,' +
-    '  file_mtime_utc TEXT NOT NULL,' +
-    '  indexed_utc TEXT NOT NULL,' +
-    '  has_scripts INTEGER NOT NULL DEFAULT 0,' +
-    '  scripts_count INTEGER NOT NULL DEFAULT 0,' +
-    '  scripts_exts TEXT,' +
-    '  FOREIGN KEY(source_id) REFERENCES sources(id),' +
-    '  FOREIGN KEY(repo_id) REFERENCES repos(id)' +
-    ');' +
-    'CREATE TABLE IF NOT EXISTS skill_chunks (' +
-    '  id INTEGER PRIMARY KEY,' +
-    '  skill_id INTEGER NOT NULL,' +
-    '  chunk_index INTEGER NOT NULL,' +
-    '  chunk_text TEXT NOT NULL,' +
-    '  chunk_hash TEXT NOT NULL,' +
-    '  UNIQUE(skill_id, chunk_index),' +
-    '  FOREIGN KEY(skill_id) REFERENCES skills(id) ON DELETE CASCADE' +
-    ');' +
-    'CREATE TABLE IF NOT EXISTS chunk_vec (' +
-    '  chunk_id INTEGER PRIMARY KEY,' +
-    '  model TEXT NOT NULL,' +
-    '  dim INTEGER NOT NULL,' +
-    '  vec BLOB NOT NULL,' +
-    '  updated_utc TEXT NOT NULL,' +
-    '  FOREIGN KEY(chunk_id) REFERENCES skill_chunks(id) ON DELETE CASCADE' +
-    ');' +
-    'CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(' +
-    '  name,' +
-    '  description,' +
-    '  tags,' +
-    '  body_md,' +
-    '  tokenize=''unicode61''' +
-    ');';
+    ');'
+  );
+end;
+
+function TDatabaseManager.ReadSchemaVersion: Integer;
+var
+  lVersion: string;
+begin
+  lVersion := QueryScalarText('SELECT value FROM meta WHERE key = ''schema_version'';');
+  if lVersion = '' then
+  begin
+    Exit(0);
+  end;
+
+  if not TryStrToInt(lVersion, Result) then
+  begin
+    raise Exception.CreateFmt('Invalid database schema version: %s', [lVersion]);
+  end;
+end;
+
+procedure TDatabaseManager.SetSchemaVersion(const aVersion: Integer);
+begin
+  fConnection.ExecSQL(
+    'INSERT INTO meta(key, value) VALUES(''schema_version'', :version) ' +
+    'ON CONFLICT(key) DO UPDATE SET value=excluded.value;',
+    [IntToStr(aVersion)]
+  );
+end;
+
+procedure TDatabaseManager.EnsureSkillFtsSchema;
+var
+  lSql: string;
+begin
+  lSql := QueryScalarText(
+    'SELECT sql FROM sqlite_master WHERE type = ''table'' AND name = ''skills_fts'';'
+  );
+
+  if not ContainsText(lSql, 'content=') then
+  begin
+    Exit;
+  end;
+
+  fConnection.ExecSQL('DROP TABLE IF EXISTS skills_fts;');
+  fConnection.ExecSQL(cSkillFtsCreateSql);
+  fConnection.ExecSQL(
+    'INSERT INTO skills_fts(rowid, name, description, tags, body_md) ' +
+    'SELECT id, name, description, tags, body_md FROM skills;'
+  );
+end;
+
+procedure TDatabaseManager.MigrateTo1;
+begin
+  fConnection.ExecSQL(cBaseSchemaSql);
+  fConnection.ExecSQL(
+    'INSERT INTO sources(id, path, enabled, last_scan_utc) VALUES (1, ''(auto)'', 1, NULL) ' +
+    'ON CONFLICT(id) DO NOTHING;'
+  );
+end;
+
+procedure TDatabaseManager.MigrateTo2;
+begin
+  EnsureSkillFtsSchema;
+  fConnection.ExecSQL('CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);');
+  fConnection.ExecSQL('CREATE INDEX IF NOT EXISTS idx_skills_body_hash ON skills(body_hash);');
+end;
+
+procedure TDatabaseManager.RunMigrations;
+var
+  lSchemaVersion: Integer;
 begin
   fConnection.StartTransaction;
   try
-    fConnection.ExecSQL(cSchemaSql);
-    fConnection.ExecSQL(
-      'INSERT INTO sources(id, path, enabled, last_scan_utc) VALUES (1, ''(auto)'', 1, NULL) ' +
-      'ON CONFLICT(id) DO NOTHING;'
-    );
-    fConnection.ExecSQL('INSERT INTO meta(key, value) VALUES (''schema_version'', ''1'') ON CONFLICT(key) DO UPDATE SET value=excluded.value;');
+    EnsureMetaTable;
+    lSchemaVersion := ReadSchemaVersion;
+    if lSchemaVersion > cCurrentSchemaVersion then
+    begin
+      raise Exception.CreateFmt(
+        'Database was created by a newer schema version (%d); this executable supports up to version %d.',
+        [lSchemaVersion, cCurrentSchemaVersion]
+      );
+    end;
+
+    if lSchemaVersion < 1 then
+    begin
+      MigrateTo1;
+      SetSchemaVersion(1);
+      lSchemaVersion := 1;
+    end;
+
+    if lSchemaVersion < 2 then
+    begin
+      MigrateTo2;
+      SetSchemaVersion(2);
+    end;
+
     fConnection.Commit;
   except
     on E: Exception do

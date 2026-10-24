@@ -8,6 +8,7 @@ implementation
 
 uses
   System.Classes, System.IOUtils, System.StrUtils, System.SysUtils,
+  FireDAC.Comp.Client, FireDAC.Phys.SQLite,
   AppPaths, DatabaseManager, Logging, SkillIndexer, SkillTypes;
 
 procedure AssertEqualInt(const aExpected, aActual: Integer; const aMessage: string);
@@ -41,6 +42,127 @@ var
 begin
   AssertTrue(TryBuildIndexedSkill(aSkillFilePath, lSkill, lError), 'Index build failed: ' + lError);
   aDbManager.WriteBatch(nil, [lSkill]);
+end;
+
+procedure CreateLegacyContentlessFtsDatabase(const aDbPath: string);
+var
+  lConnection: TFDConnection;
+  lDriverLink: TFDPhysSQLiteDriverLink;
+begin
+  ForceDirectories(ExtractFilePath(aDbPath));
+  lDriverLink := TFDPhysSQLiteDriverLink.Create(nil);
+  lConnection := TFDConnection.Create(nil);
+  try
+    lDriverLink.VendorLib := GetSqliteDllPath;
+    lConnection.LoginPrompt := False;
+    lConnection.Params.Add('DriverID=SQLite');
+    lConnection.Params.Add('Database=' + aDbPath);
+    lConnection.Params.Add('OpenMode=CreateUTF8');
+    lConnection.Connected := True;
+    lConnection.ExecSQL('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);');
+    lConnection.ExecSQL('INSERT INTO meta(key, value) VALUES(''schema_version'', ''1'');');
+    lConnection.ExecSQL(
+      'CREATE TABLE sources (' +
+      'id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL DEFAULT 1, last_scan_utc TEXT);'
+    );
+    lConnection.ExecSQL(
+      'CREATE TABLE repos (' +
+      'id INTEGER PRIMARY KEY, root_path TEXT NOT NULL UNIQUE, last_pull_utc TEXT, last_pull_status TEXT, ' +
+      'last_pull_output TEXT, last_pull_duration_ms INTEGER, head_commit TEXT, last_seen_utc TEXT);'
+    );
+    lConnection.ExecSQL(
+      'CREATE TABLE skills (' +
+      'id INTEGER PRIMARY KEY, source_id INTEGER NOT NULL, repo_id INTEGER, skill_root TEXT NOT NULL UNIQUE, ' +
+      'skill_file TEXT NOT NULL UNIQUE, name TEXT NOT NULL, description TEXT, tags TEXT, body_md TEXT NOT NULL, ' +
+      'body_hash TEXT NOT NULL, file_mtime_utc TEXT NOT NULL, indexed_utc TEXT NOT NULL, ' +
+      'has_scripts INTEGER NOT NULL DEFAULT 0, scripts_count INTEGER NOT NULL DEFAULT 0, scripts_exts TEXT);'
+    );
+    lConnection.ExecSQL(
+      'INSERT INTO sources(id, path, enabled, last_scan_utc) VALUES(1, ''(auto)'', 1, NULL);'
+    );
+    lConnection.ExecSQL(
+      'INSERT INTO skills(id, source_id, skill_root, skill_file, name, description, tags, body_md, body_hash, ' +
+      'file_mtime_utc, indexed_utc, has_scripts, scripts_count, scripts_exts) ' +
+      'VALUES(1, 1, ''C:\legacy\skill'', ''C:\legacy\skill\SKILL.md'', ''Legacy Row'', ' +
+      '''Legacy description'', ''legacy'', ''Original legacy body text'', ''hash-legacy'', ' +
+      '''2026-01-01T00:00:00Z'', ''2026-01-01T00:00:00Z'', 0, 0, '''');'
+    );
+    lConnection.ExecSQL(
+      'CREATE VIRTUAL TABLE skills_fts USING fts5(' +
+      'name, description, tags, body_md, content='''', tokenize=''unicode61'');'
+    );
+    lConnection.ExecSQL(
+      'CREATE TABLE skill_chunks (' +
+      'id INTEGER PRIMARY KEY, skill_id INTEGER NOT NULL, chunk_index INTEGER NOT NULL, chunk_text TEXT NOT NULL, ' +
+      'chunk_hash TEXT NOT NULL, UNIQUE(skill_id, chunk_index));'
+    );
+    lConnection.ExecSQL(
+      'CREATE TABLE chunk_vec (' +
+      'chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, dim INTEGER NOT NULL, vec BLOB NOT NULL, updated_utc TEXT NOT NULL);'
+    );
+    lConnection.ExecSQL(
+      'INSERT INTO skills_fts(rowid, name, description, tags, body_md) ' +
+      'SELECT id, name, description, tags, body_md FROM skills;'
+    );
+  finally
+    lConnection.Free;
+    lDriverLink.Free;
+  end;
+end;
+
+procedure CreateFutureSchemaDatabase(const aDbPath: string);
+var
+  lConnection: TFDConnection;
+  lDriverLink: TFDPhysSQLiteDriverLink;
+begin
+  ForceDirectories(ExtractFilePath(aDbPath));
+  lDriverLink := TFDPhysSQLiteDriverLink.Create(nil);
+  lConnection := TFDConnection.Create(nil);
+  try
+    lDriverLink.VendorLib := GetSqliteDllPath;
+    lConnection.LoginPrompt := False;
+    lConnection.Params.Add('DriverID=SQLite');
+    lConnection.Params.Add('Database=' + aDbPath);
+    lConnection.Params.Add('OpenMode=CreateUTF8');
+    lConnection.Connected := True;
+    lConnection.ExecSQL('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);');
+    lConnection.ExecSQL('INSERT INTO meta(key, value) VALUES(''schema_version'', ''99'');');
+  finally
+    lConnection.Free;
+    lDriverLink.Free;
+  end;
+end;
+
+function QueryTestDbScalarText(const aDbPath, aSql: string): string;
+var
+  lConnection: TFDConnection;
+  lDriverLink: TFDPhysSQLiteDriverLink;
+  lQuery: TFDQuery;
+begin
+  lDriverLink := TFDPhysSQLiteDriverLink.Create(nil);
+  lConnection := TFDConnection.Create(nil);
+  lQuery := TFDQuery.Create(nil);
+  try
+    lDriverLink.VendorLib := GetSqliteDllPath;
+    lConnection.LoginPrompt := False;
+    lConnection.Params.Add('DriverID=SQLite');
+    lConnection.Params.Add('Database=' + aDbPath);
+    lConnection.Params.Add('OpenMode=ReadWrite');
+    lConnection.Connected := True;
+    lQuery.Connection := lConnection;
+    lQuery.SQL.Text := aSql;
+    lQuery.Open;
+    if lQuery.IsEmpty then
+    begin
+      Exit('');
+    end;
+
+    Result := lQuery.Fields[0].AsString;
+  finally
+    lQuery.Free;
+    lConnection.Free;
+    lDriverLink.Free;
+  end;
 end;
 
 procedure TestIndexerUpsertAndSkipUnchanged;
@@ -183,6 +305,118 @@ begin
   finally
     lDbManager.Free;
   end;
+end;
+
+procedure TestInitializeMigratesLegacyContentlessFtsTable;
+var
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lFixtureRoot: string;
+  lFtsBody: string;
+  lInitialSkillCount: string;
+  lSkillFile: string;
+  lSkillRoot: string;
+  lState: TSkillState;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchLegacyContentlessFtsFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  CreateLegacyContentlessFtsDatabase(lDbPath);
+  lInitialSkillCount := QueryTestDbScalarText(lDbPath, 'SELECT COUNT(1) FROM skills;');
+
+  lSkillRoot := TPath.Combine(lFixtureRoot, 'skill-legacy-fts');
+  ForceDirectories(lSkillRoot);
+  lSkillFile := TPath.Combine(lSkillRoot, 'SKILL.md');
+  TFile.WriteAllText(
+    lSkillFile,
+    '# Legacy FTS Migration' + sLineBreak +
+    sLineBreak +
+    'Migrated body text should be searchable and stored for snippets.' + sLineBreak,
+    TEncoding.UTF8
+  );
+
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    lDbManager.Initialize;
+    IndexSkillFile(lDbManager, lSkillFile);
+
+    AssertTrue(lDbManager.TryGetSkillState(TPath.GetFullPath(lSkillFile), lState),
+      'Missing skill state after legacy FTS migration');
+    AssertEqualText('Legacy FTS Migration', lState.Name, 'Legacy migration skill name mismatch');
+
+    lFtsBody := lDbManager.GetSkillFtsBodyBySkillFile(TPath.GetFullPath(lSkillFile));
+    AssertTrue(ContainsText(lFtsBody, 'Migrated body text should be searchable'),
+      'Migrated FTS table should store updated body text');
+  finally
+    lDbManager.Free;
+  end;
+
+  AssertEqualText('2', QueryTestDbScalarText(lDbPath, 'SELECT value FROM meta WHERE key = ''schema_version'';'),
+    'Expected migration runner to persist schema version 2');
+  AssertEqualText('2', QueryTestDbScalarText(lDbPath, 'SELECT COUNT(1) FROM skills;'),
+    'Expected legacy row plus newly indexed row after migration');
+  AssertEqualText('2', QueryTestDbScalarText(lDbPath, 'SELECT COUNT(1) FROM skills_fts;'),
+    'Expected FTS rows to match migrated skills');
+  AssertTrue(not ContainsText(
+    QueryTestDbScalarText(lDbPath, 'SELECT sql FROM sqlite_master WHERE type = ''table'' AND name = ''skills_fts'';'),
+    'content='
+  ), 'Expected migrated FTS table to be ordinary, not contentless');
+
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    lDbManager.Initialize;
+  finally
+    lDbManager.Free;
+  end;
+
+  AssertEqualText('2', QueryTestDbScalarText(lDbPath, 'SELECT COUNT(1) FROM skills;'),
+    'Second Initialize should not lose skill rows');
+  AssertEqualText('2', QueryTestDbScalarText(lDbPath, 'SELECT COUNT(1) FROM skills_fts;'),
+    'Second Initialize should not duplicate or lose FTS rows');
+  AssertEqualText('1', lInitialSkillCount, 'Legacy fixture should start with one skill row');
+end;
+
+procedure TestInitializeRejectsFutureSchemaVersion;
+var
+  lDbManager: TDatabaseManager;
+  lDbPath: string;
+  lError: string;
+  lFixtureRoot: string;
+begin
+  lFixtureRoot := TPath.Combine(TPath.GetTempPath, 'SkillSearchFutureSchemaFixture');
+  if TDirectory.Exists(lFixtureRoot) then
+  begin
+    TDirectory.Delete(lFixtureRoot, True);
+  end;
+  ForceDirectories(lFixtureRoot);
+
+  lDbPath := TPath.Combine(lFixtureRoot, 'cache\SkillCache.db');
+  CreateFutureSchemaDatabase(lDbPath);
+
+  lError := '';
+  lDbManager := TDatabaseManager.Create(lDbPath, GetSqliteDllPath);
+  try
+    try
+      lDbManager.Initialize;
+    except
+      on E: Exception do
+      begin
+        lError := E.Message;
+      end;
+    end;
+  finally
+    lDbManager.Free;
+  end;
+
+  AssertTrue(ContainsText(lError, 'newer schema version'),
+    'Future schema version should be rejected instead of overwritten');
+  AssertEqualText('99', QueryTestDbScalarText(lDbPath, 'SELECT value FROM meta WHERE key = ''schema_version'';'),
+    'Rejected future DB version should remain untouched');
 end;
 
 procedure TestIndexerRepairsMissingClosingFrontMatterFence;
@@ -427,6 +661,8 @@ procedure RunIndexerTests;
 begin
   TestIndexerUpsertAndSkipUnchanged;
   TestIndexerDetectsScriptChangesEvenWhenSkillMarkdownIsUnchanged;
+  TestInitializeMigratesLegacyContentlessFtsTable;
+  TestInitializeRejectsFutureSchemaVersion;
   TestIndexerRepairsMissingClosingFrontMatterFence;
   TestIndexerRepairsLooseFrontMatterFences;
   TestIndexerRepairsLiteralBackslashNewlineFrontMatter;
