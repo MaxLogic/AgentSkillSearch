@@ -103,3 +103,7 @@ bin/settings.ini
 _build_verify/
 AgentSkillSearch.dfmcheck.cache
 *.log
+.agents/
+.codex/
+.claude/skills/
+/releases/
